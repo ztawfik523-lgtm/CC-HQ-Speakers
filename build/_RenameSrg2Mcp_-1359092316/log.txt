@@ -1,0 +1,17 @@
+Java Launcher: C:\Users\jvrcruz\scoop\apps\temurin17-jdk\current\bin\java.exe
+Arguments: '--task, SRG_TO_MCP, --input, C:\Users\CodexSandboxOffline\.gradle\caches\modules-2\files-2.1\cc.tweaked\cc-tweaked-1.20.1-forge\1.116.1\117f78ad17ef779220b4bc028b130824034ec045\cc-tweaked-1.20.1-forge-1.116.1.jar, --output, C:\Users\CodexSandboxOffline\.gradle\caches\forge_gradle\deobf_dependencies\cc\tweaked\cc-tweaked-1.20.1-forge\1.116.1_mapped_official_1.20.1\cc-tweaked-1.20.1-forge-1.116.1_mapped_official_1.20.1.jar, --mcp, C:\Users\CodexSandboxOffline\.gradle\caches\forge_gradle\mcp_repo\net\minecraft\mapping\1.20.1\mapping-1.20.1-mapping.zip, --strip-signatures'
+Classpath:
+ - C:\Users\CodexSandboxOffline\.gradle\caches\forge_gradle\maven_downloader\net\minecraftforge\installertools\1.3.2\installertools-1.3.2-fatjar.jar
+Working directory: C:\Users\jvrcruz\Documents\Projects\CC-HQ-Speakers\build\_RenameSrg2Mcp_-1359092316
+Main class: net.minecraftforge.installertools.ConsoleTool
+====================================
+Task: SRG_TO_MCP
+Input:  C:\Users\CodexSandboxOffline\.gradle\caches\modules-2\files-2.1\cc.tweaked\cc-tweaked-1.20.1-forge\1.116.1\117f78ad17ef779220b4bc028b130824034ec045\cc-tweaked-1.20.1-forge-1.116.1.jar
+Output: C:\Users\CodexSandboxOffline\.gradle\caches\forge_gradle\deobf_dependencies\cc\tweaked\cc-tweaked-1.20.1-forge\1.116.1_mapped_official_1.20.1\cc-tweaked-1.20.1-forge-1.116.1_mapped_official_1.20.1.jar
+MCP:    C:\Users\CodexSandboxOffline\.gradle\caches\forge_gradle\mcp_repo\net\minecraft\mapping\1.20.1\mapping-1.20.1-mapping.zip
+Loading MCP Data
+Processing ZIP file
+Stripped Manifest of sha digests
+Stripped Manifest of sha digests
+Stripped Manifest of sha digests
+Process complete

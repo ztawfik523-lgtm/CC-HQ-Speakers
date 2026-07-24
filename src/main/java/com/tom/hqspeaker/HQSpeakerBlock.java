@@ -1,6 +1,7 @@
 package com.tom.hqspeaker;
 
 import com.tom.hqspeaker.peripheral.HQSpeakerBlockEntity;
+import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.RenderShape;
@@ -16,12 +17,27 @@ import org.jetbrains.annotations.Nullable;
 
 public class HQSpeakerBlock extends BaseEntityBlock {
 
+    public static final MapCodec<HQSpeakerBlock> CODEC = simpleCodec(HQSpeakerBlock::new);
+
     public HQSpeakerBlock() {
-        super(BlockBehaviour.Properties.of()
+        this(defaultProperties());
+    }
+
+    public HQSpeakerBlock(BlockBehaviour.Properties properties) {
+        super(properties);
+    }
+
+    private static BlockBehaviour.Properties defaultProperties() {
+        return BlockBehaviour.Properties.of()
             .mapColor(MapColor.METAL)
             .strength(2.0f, 6.0f)
             .sound(SoundType.METAL)
-            .requiresCorrectToolForDrops());
+            .requiresCorrectToolForDrops();
+    }
+
+    @Override
+    protected MapCodec<? extends BaseEntityBlock> codec() {
+        return CODEC;
     }
 
     @Override

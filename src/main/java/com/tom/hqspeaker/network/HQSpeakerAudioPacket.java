@@ -2,13 +2,32 @@ package com.tom.hqspeaker.network;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraftforge.network.NetworkEvent;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.UUID;
-import java.util.function.Supplier;
 
 
-public class HQSpeakerAudioPacket {
+public class HQSpeakerAudioPacket implements CustomPacketPayload {
+
+    public static final Type<HQSpeakerAudioPacket> TYPE =
+        new Type<>(ResourceLocation.fromNamespaceAndPath(HQSpeakerMod.MOD_ID, "audio"));
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, HQSpeakerAudioPacket> STREAM_CODEC =
+        new StreamCodec<>() {
+            @Override
+            public HQSpeakerAudioPacket decode(RegistryFriendlyByteBuf buf) {
+                return HQSpeakerAudioPacket.decode(buf);
+            }
+
+            @Override
+            public void encode(RegistryFriendlyByteBuf buf, HQSpeakerAudioPacket pkt) {
+                HQSpeakerAudioPacket.encode(pkt, buf);
+            }
+        };
 
     public enum AudioFormat {
         PCM_S16LE,
@@ -196,9 +215,12 @@ public class HQSpeakerAudioPacket {
         }
     }
 
-    public static void handle(HQSpeakerAudioPacket pkt, Supplier<NetworkEvent.Context> ctxSupplier) {
-        NetworkEvent.Context ctx = ctxSupplier.get();
-        ctx.setPacketHandled(true);
-        ctx.enqueueWork(() -> com.tom.hqspeaker.client.HQSpeakerClientHandler.receive(pkt));
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
+
+    public static void handle(HQSpeakerAudioPacket pkt, IPayloadContext ctx) {
+        com.tom.hqspeaker.client.HQSpeakerClientHandler.receive(pkt);
     }
 }

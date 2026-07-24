@@ -16,6 +16,7 @@ import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.world.level.Level;
 
 import javax.annotation.Nonnull;
@@ -780,7 +781,7 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         return new float[]{wx, wy, wz};
     }
 
-    private void sendToNearby(ServerLevel sl, Object pkt, float wx, float wy, float wz) {
+    private void sendToNearby(ServerLevel sl, CustomPacketPayload pkt, float wx, float wy, float wz) {
         for (ServerPlayer player : sl.players()) {
             double dx = player.getX() - wx, dy = player.getY() - wy, dz = player.getZ() - wz;
             if (dx*dx + dy*dy + dz*dz <= SPEAKER_RADIUS*SPEAKER_RADIUS)

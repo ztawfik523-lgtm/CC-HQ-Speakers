@@ -14,8 +14,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Matrix4dc;
 import org.joml.Vector3d;
 
@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class HQSpeakerClientHandler {
 
     private static final ResourceLocation HQ_SOUND_LOC =
-        new ResourceLocation("hqspeaker", "hq_speaker");
+        ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_speaker");
 
     private static final ConcurrentHashMap<UUID, SpeakerState> states =
         new ConcurrentHashMap<>();

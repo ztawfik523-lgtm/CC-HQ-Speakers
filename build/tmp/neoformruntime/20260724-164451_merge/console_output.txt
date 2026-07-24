@@ -1,0 +1,18 @@
+--------------------------------------------------------------------------------
+
+Command-Line:
+ - C:\Users\jvrcruz\scoop\apps\temurin21-jdk\current\bin\java.exe
+ - -jar
+ - C:\Users\CodexSandboxOffline\.gradle\caches\modules-2\files-2.1\net.neoforged\mergetool\2.0.3\85c096b0155715275f84922d41462484c9a0285c\mergetool-2.0.3-fatjar.jar
+ - --client
+ - C:\Users\CodexSandboxOffline\.gradle\caches\neoformruntime\intermediate_results\stripClient_3f5c6fea4895472c1de5dec09e79c62409c39888_output.jar
+ - --server
+ - C:\Users\CodexSandboxOffline\.gradle\caches\neoformruntime\intermediate_results\stripServer_cb23fa2688be4ab079894c4eee350dc3791c9441_output.jar
+ - --ann
+ - 1.21.1
+ - --output
+ - ./output.jar
+ - --inject
+ - false
+--------------------------------------------------------------------------------
+

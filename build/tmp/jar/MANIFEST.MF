@@ -2,7 +2,6 @@ Manifest-Version: 1.0
 Specification-Title: HQSpeaker
 Specification-Version: 1
 Implementation-Title: hqspeaker
-Implementation-Version: 1.1.4-ccaudiofix
+Implementation-Version: 1.1.4-1.21.1-neoforge
 Implementation-Vendor: HQSpeaker
-MixinConfigs: hqspeaker.mixins.json
 

@@ -48,6 +48,7 @@ public class StreamingAudioSource {
     private final AtomicBoolean running  = new AtomicBoolean(false);
     private final AtomicBoolean stopped  = new AtomicBoolean(false);
     private final AtomicReference<AudioFormat> detectedFormat = new AtomicReference<>();
+    private ByteBuffer carry = null;
 
     private Thread streamThread;
 
@@ -94,12 +95,41 @@ public class StreamingAudioSource {
     public ByteBuffer readPCM(int maxBytes) {
         if (!isRunning() && pcmQueue.isEmpty()) return null; 
 
+        if (carry != null && carry.hasRemaining()) {
+            int len = Math.min(carry.remaining(), maxBytes);
+            len -= len % 2;
+            if (len <= 0) return EMPTY_SENTINEL;
+            int oldLimit = carry.limit();
+            carry.limit(carry.position() + len);
+            ByteBuffer out = ByteBuffer.allocateDirect(len);
+            out.put(carry);
+            out.flip();
+            carry.limit(oldLimit);
+            if (!carry.hasRemaining()) carry = null;
+            return out;
+        }
+
         byte[] data = pcmQueue.poll(); 
         if (data == null) return EMPTY_SENTINEL; 
 
-        
         int len = Math.min(data.length, maxBytes);
-        return ByteBuffer.wrap(data, 0, len);
+        len -= len % 2;
+        if (len <= 0) return EMPTY_SENTINEL;
+
+        ByteBuffer src = ByteBuffer.allocateDirect(data.length);
+        src.put(data).flip();
+        if (src.remaining() <= len) {
+            return src;
+        }
+
+        int oldLimit = src.limit();
+        src.limit(src.position() + len);
+        ByteBuffer out = ByteBuffer.allocateDirect(len);
+        out.put(src);
+        out.flip();
+        src.limit(oldLimit);
+        carry = src.slice();
+        return out;
     }
 
     

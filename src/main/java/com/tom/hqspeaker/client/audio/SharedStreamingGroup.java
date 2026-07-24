@@ -52,9 +52,11 @@ public final class SharedStreamingGroup {
         public ByteBuffer readPCM(int maxBytes) {
             if (carry != null && carry.hasRemaining()) {
                 int len = Math.min(carry.remaining(), maxBytes);
-                ByteBuffer out = ByteBuffer.allocate(len);
+                len -= len % 2;
+                if (len <= 0) return ByteBuffer.allocateDirect(0).asReadOnlyBuffer();
                 int oldLimit = carry.limit();
                 carry.limit(carry.position() + len);
+                ByteBuffer out = ByteBuffer.allocateDirect(len);
                 out.put(carry);
                 out.flip();
                 carry.limit(oldLimit);
@@ -64,10 +66,13 @@ public final class SharedStreamingGroup {
             if (!session.isRunning() && pcmQueue.isEmpty()) return null;
             byte[] data = pcmQueue.poll();
             if (data == null) return ByteBuffer.allocateDirect(0).asReadOnlyBuffer();
-            ByteBuffer src = ByteBuffer.wrap(data);
-            if (src.remaining() <= maxBytes) return src;
-            int len = maxBytes;
-            ByteBuffer out = ByteBuffer.allocate(len);
+            int len = Math.min(data.length, maxBytes);
+            len -= len % 2;
+            if (len <= 0) return ByteBuffer.allocateDirect(0).asReadOnlyBuffer();
+            ByteBuffer src = ByteBuffer.allocateDirect(data.length);
+            src.put(data).flip();
+            if (src.remaining() <= len) return src;
+            ByteBuffer out = ByteBuffer.allocateDirect(len);
             int oldLimit = src.limit();
             src.limit(src.position() + len);
             out.put(src);

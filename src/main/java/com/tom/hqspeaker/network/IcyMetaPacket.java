@@ -1,13 +1,34 @@
 package com.tom.hqspeaker.network;
 
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraftforge.network.NetworkEvent;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import com.tom.hqspeaker.HQSpeakerMod;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.UUID;
-import java.util.function.Supplier;
 
 
-public class IcyMetaPacket {
+public class IcyMetaPacket implements CustomPacketPayload {
+
+    public static final Type<IcyMetaPacket> TYPE =
+        new Type<>(ResourceLocation.fromNamespaceAndPath(HQSpeakerMod.MOD_ID, "icy_meta"));
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, IcyMetaPacket> STREAM_CODEC =
+        new StreamCodec<>() {
+            @Override
+            public IcyMetaPacket decode(RegistryFriendlyByteBuf buf) {
+                return IcyMetaPacket.decode(buf);
+            }
+
+            @Override
+            public void encode(RegistryFriendlyByteBuf buf, IcyMetaPacket pkt) {
+                IcyMetaPacket.encode(pkt, buf);
+            }
+        };
 
     
     public static final java.util.concurrent.ConcurrentHashMap<java.util.UUID,
@@ -53,17 +74,17 @@ public class IcyMetaPacket {
         return new IcyMetaPacket(source, rawTitle, stationName, genre, description);
     }
 
-    public static void handle(IcyMetaPacket pkt, Supplier<NetworkEvent.Context> ctxSupplier) {
-        NetworkEvent.Context ctx = ctxSupplier.get();
-        ctx.setPacketHandled(true);
-        if (ctx.getSender() == null) return; 
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 
-        ctx.enqueueWork(() -> {
-            
-            com.tom.hqspeaker.peripheral.HQSpeakerPeripheral p = SPEAKER_REGISTRY.get(pkt.source);
-            if (p != null && p.canAcceptIcyMetadata(ctx.getSender())) {
-                p.onIcyMetadata(pkt.rawTitle, pkt.stationName, pkt.genre, pkt.description);
-            }
-        });
+    public static void handle(IcyMetaPacket pkt, IPayloadContext ctx) {
+        if (!(ctx.player() instanceof ServerPlayer sender)) return;
+
+        com.tom.hqspeaker.peripheral.HQSpeakerPeripheral p = SPEAKER_REGISTRY.get(pkt.source);
+        if (p != null && p.canAcceptIcyMetadata(sender)) {
+            p.onIcyMetadata(pkt.rawTitle, pkt.stationName, pkt.genre, pkt.description);
+        }
     }
 }

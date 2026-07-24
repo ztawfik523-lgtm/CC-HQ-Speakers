@@ -1,47 +1,38 @@
 package com.tom.hqspeaker;
 
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.fml.loading.FMLEnvironment;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.api.distmarker.OnlyIn;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 @Mod("hqspeaker")
 public class HQSpeakerMod {
 
     public static final String MOD_ID = "hqspeaker";
 
-    public HQSpeakerMod() {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
-
-        
+    public HQSpeakerMod(IEventBus modEventBus) {
+        HQSpeakerRegistry.register(modEventBus);
         modEventBus.addListener(this::setup);
+        modEventBus.addListener(HQSpeakerNetwork::register);
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(this::clientSetup);
         }
 
-        MinecraftForge.EVENT_BUS.register(this);
+        NeoForge.EVENT_BUS.register(this);
         log("HQSpeaker mod loaded");
     }
 
     private void setup(FMLCommonSetupEvent event) {
-        event.enqueueWork(() -> {
-            HQSpeakerNetwork.register();
-            log("HQSpeaker network registered");
-
-            dan200.computercraft.api.ForgeComputerCraftAPI.registerPeripheralProvider(
-                new com.tom.hqspeaker.peripheral.HQSpeakerPeripheralProvider()
-            );
-            log("HQSpeaker provider registered on CC:Tweaked speaker blocks");
-        });
+        log("HQSpeaker common setup complete");
     }
 
     @OnlyIn(Dist.CLIENT)
@@ -50,18 +41,14 @@ public class HQSpeakerMod {
     }
 
     @SubscribeEvent
-    public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
-        }
+    public void onServerTick(ServerTickEvent.Post event) {
+        com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
     }
 
     @SubscribeEvent
     @OnlyIn(Dist.CLIENT)
-    public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            com.tom.hqspeaker.client.HQSpeakerClientHandler.tick();
-        }
+    public void onClientTick(ClientTickEvent.Post event) {
+        com.tom.hqspeaker.client.HQSpeakerClientHandler.tick();
     }
 
     public static void log(String msg)   { System.out.println("[HQSpeaker] " + msg); }
