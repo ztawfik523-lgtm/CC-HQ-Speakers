@@ -6,7 +6,7 @@ end
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach an HQ speaker")
 
-local function read(path)
+local function readFile(path)
   local handle = assert(fs.open(path, "rb"), "cannot open " .. path)
   local data = handle.readAll()
   handle.close()
@@ -27,6 +27,13 @@ local function waitFor(wanted, timeout)
     sleep(0.1)
   end
   error("timed out waiting for " .. wanted)
+end
+
+local function waitForEnter(message)
+  print("")
+  print(message)
+  print("Return to this computer and press Enter when finished.")
+  read()
 end
 
 local function finiteCase(name, method, data)
@@ -57,8 +64,19 @@ local function finiteCase(name, method, data)
   status(name .. " controls passed")
 end
 
-local mp3, ogg, wav = read(args[1]), read(args[2]), read(args[3])
+local mp3, ogg, wav = readFile(args[1]), readFile(args[2]), readFile(args[3])
 finiteCase("MP3", "speakMp3", mp3)
+
+speaker.audioStop()
+assert(speaker.speakMp3(mp3, 0.6), "manual-check MP3 was rejected")
+waitFor("playing", 15)
+assert(speaker.audioSetLooping(true), "manual-check loop enable failed")
+waitForEnter("While the MP3 plays, change MASTER and BLOCKS volume, then press F3+T once.")
+local afterReload = waitFor("playing", 15)
+assert(afterReload.observed == true, "renderer was not observed after F3+T")
+assert(afterReload.position >= 0 and afterReload.position <= afterReload.duration,
+  "position was invalid after F3+T")
+print("volume/reload phase passed at", string.format("%.2fs", afterReload.position))
 
 assert(speaker.audioSetLooping(true), "loop enable failed")
 local loopStatus = speaker.audioStatus()
