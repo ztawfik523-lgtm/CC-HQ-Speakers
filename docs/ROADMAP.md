@@ -56,6 +56,12 @@ streams.
 User result:
 > A Lua program can build a proper audio player.
 
+Implementation status: the M1 candidate is complete in source and automated
+validation. It retains decoded finite PCM, adds generation-aware renderer
+status and controls, and implements pause/resume, looping, duration, position,
+live volume, seek, natural completion, and group/all/at delegation. Final M1
+acceptance awaits the single client session in `M1-RUNTIME-TEST.md`.
+
 ## M2 — larger finite media
 
 Goal:

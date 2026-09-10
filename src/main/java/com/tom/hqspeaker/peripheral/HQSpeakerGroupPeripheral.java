@@ -101,6 +101,13 @@ public class HQSpeakerGroupPeripheral implements IPeripheral {
     @LuaFunction public final void speakVolume(IComputerAccess computer, IArguments args) throws LuaException { for (HQSpeakerPeripheral p : membersFor(computer)) p.speakVolume(args); }
     @LuaFunction public final void setLooping(IComputerAccess computer, boolean loop) { for (HQSpeakerPeripheral p : membersFor(computer)) p.setLooping(loop); }
     @LuaFunction public final boolean speakIsPlaying(IComputerAccess computer) throws LuaException { return leader(computer).speakIsPlaying(); }
+    @LuaFunction public final Map<String, Object> audioStatus(IComputerAccess computer) throws LuaException { return leader(computer).audioStatus(); }
+    @LuaFunction public final boolean audioPause(IComputerAccess computer) { boolean ok = false; for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioPause()); return ok; }
+    @LuaFunction public final boolean audioResume(IComputerAccess computer) { boolean ok = false; for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioResume()); return ok; }
+    @LuaFunction public final boolean audioSeek(IComputerAccess computer, double seconds) throws LuaException { boolean ok = false; for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSeek(seconds)); return ok; }
+    @LuaFunction public final boolean audioSetVolume(IComputerAccess computer, double volume) throws LuaException { boolean ok = false; for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetVolume(volume)); return ok; }
+    @LuaFunction public final boolean audioSetLooping(IComputerAccess computer, boolean loop) { boolean ok = false; for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetLooping(loop)); return ok; }
+    @LuaFunction public final void audioStop(IComputerAccess computer) { for (HQSpeakerPeripheral p : membersFor(computer)) p.audioStop(); }
     @LuaFunction public final int speakQueueSize(IComputerAccess computer) throws LuaException { return leader(computer).speakQueueSize(); }
     @LuaFunction public final int speakSampleRate(IComputerAccess computer) throws LuaException { return leader(computer).speakSampleRate(); }
     @LuaFunction public final int speakMaxSamples(IComputerAccess computer) throws LuaException { return leader(computer).speakMaxSamples(); }
@@ -138,4 +145,11 @@ public class HQSpeakerGroupPeripheral implements IPeripheral {
     @LuaFunction public final boolean speakPackedAt(IComputerAccess computer, int index, IArguments args) throws LuaException { return speakAudioAt(computer, index, args); }
     @LuaFunction public final boolean speakWavAt(IComputerAccess computer, int index, IArguments args) throws LuaException { return byIndex(computer, index).speakWav(args); }
     @LuaFunction public final void speakStopAt(IComputerAccess computer, int index) throws LuaException { byIndex(computer, index).speakStop(); }
+    @LuaFunction public final Map<String, Object> audioStatusAt(IComputerAccess computer, int index) throws LuaException { return byIndex(computer, index).audioStatus(); }
+    @LuaFunction public final boolean audioPauseAt(IComputerAccess computer, int index) throws LuaException { return byIndex(computer, index).audioPause(); }
+    @LuaFunction public final boolean audioResumeAt(IComputerAccess computer, int index) throws LuaException { return byIndex(computer, index).audioResume(); }
+    @LuaFunction public final boolean audioSeekAt(IComputerAccess computer, int index, double seconds) throws LuaException { return byIndex(computer, index).audioSeek(seconds); }
+    @LuaFunction public final boolean audioSetVolumeAt(IComputerAccess computer, int index, double volume) throws LuaException { return byIndex(computer, index).audioSetVolume(volume); }
+    @LuaFunction public final boolean audioSetLoopingAt(IComputerAccess computer, int index, boolean loop) throws LuaException { return byIndex(computer, index).audioSetLooping(loop); }
+    @LuaFunction public final void audioStopAt(IComputerAccess computer, int index) throws LuaException { byIndex(computer, index).audioStop(); }
 }

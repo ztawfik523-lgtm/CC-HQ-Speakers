@@ -15,6 +15,12 @@
 - NeoForge targets: 21.1.247 and 21.1.248
 - Minecraft audio classes of interest: `SoundEngine`, `SoundManager`, `AudioStream`, `Channel`, `Library`
 
+M1 channel control was checked against the locally resolved Minecraft 1.21.1
+mapped classes. The relevant exact members are `SoundManager.soundEngine`,
+`SoundEngine.instanceToChannel`, `ChannelAccess.ChannelHandle.execute`,
+`Channel.pause`, `Channel.unpause`, and `SoundManager.updateSourceVolume`.
+No external-version audio API was used as evidence for these hooks.
+
 ## Codec/runtime
 - LWJGL/STBVorbis: inherited OGG path and HighAudio incremental-decode research
 - mp3spi / JLayer / Tritonus: inherited MP3/JavaSound path

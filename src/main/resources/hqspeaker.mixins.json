@@ -6,7 +6,10 @@
   "mixins": [
     "ComputerCraftSpeakerBlockEntityMixin"
   ],
-  "client": [],
+  "client": [
+    "client.SoundManagerAccessor",
+    "client.SoundEngineAccessor"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

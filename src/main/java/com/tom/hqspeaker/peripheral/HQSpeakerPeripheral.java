@@ -2,7 +2,9 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
+import com.tom.hqspeaker.network.HQSpeakerControlPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
+import com.tom.hqspeaker.network.HQSpeakerStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerStopPacket;
 import com.tom.hqspeaker.network.IcyMetaPacket;
 
@@ -33,6 +35,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     private static final java.util.concurrent.ConcurrentHashMap<Integer, java.util.Set<HQSpeakerPeripheral>> COMPUTER_SPEAKERS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Set<HQSpeakerPeripheral> ACTIVE_SPEAKERS = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, HQSpeakerPeripheral> SOURCE_SPEAKERS = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final java.util.Set<IComputerAccess> attachedComputers = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
     private final BlockPos pos;
@@ -56,6 +59,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private volatile float speakerDefaultVolume = 1.0f;
     private volatile boolean looping = false;                     
 
+    private final Object playerLock = new Object();
+    private final ArrayDeque<FiniteServerTrack> finiteTracks = new ArrayDeque<>();
+    private long generationCounter;
+    private FiniteServerTrack terminalTrack;
+
     private final AtomicBoolean streamActive = new AtomicBoolean(false);
     private volatile String     streamUrl    = null;
 
@@ -63,11 +71,56 @@ public class HQSpeakerPeripheral implements IPeripheral {
                             icyStationName = "", icyGenre = "", icyDescription = "";
     private volatile long   icyMetaSerial = 0;
 
-    private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume, long startTick, java.util.UUID syncGroupId, int syncGroupSize) {}
+    private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume,
+                                long startTick, java.util.UUID syncGroupId, int syncGroupSize,
+                                long generation) {}
+
+    private enum PlayerState { LOADING, PLAYING, PAUSED, ENDED, ERROR }
+
+    private static final class FiniteServerTrack {
+        final long generation;
+        final HQSpeakerAudioPacket.AudioFormat format;
+        final Set<UUID> successfulRenderers = new HashSet<>();
+        float volume;
+        boolean looping;
+        boolean desiredPaused;
+        boolean observed;
+        PlayerState state = PlayerState.LOADING;
+        double duration;
+        double basePosition;
+        long anchorNanos;
+        UUID anchorRenderer;
+        String error = "";
+
+        FiniteServerTrack(long generation, HQSpeakerAudioPacket.AudioFormat format,
+                          float volume, boolean looping) {
+            this.generation = generation;
+            this.format = format;
+            this.volume = volume;
+            this.looping = looping;
+        }
+
+        double position(long now) {
+            double position = basePosition;
+            if (state == PlayerState.PLAYING && observed) {
+                position += Math.max(0L, now - anchorNanos) / 1_000_000_000.0;
+            }
+            if (duration > 0.0) {
+                if (looping) position %= duration;
+                else position = Math.min(position, duration);
+            }
+            return Math.max(0.0, position);
+        }
+    }
 
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
         this.world = world;
+        SOURCE_SPEAKERS.put(speakerSource, this);
+    }
+
+    public static HQSpeakerPeripheral findBySource(UUID source) {
+        return source == null ? null : SOURCE_SPEAKERS.get(source);
     }
 
     @Nonnull @Override public String getType() { return "speaker"; }
@@ -80,6 +133,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @Override
     public void attach(@Nonnull IComputerAccess computer) {
         ACTIVE_SPEAKERS.add(this);
+        SOURCE_SPEAKERS.put(speakerSource, this);
         attachedComputers.add(computer);
         COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), id -> java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>())).add(this);
         HQSpeakerMod.log("HQSpeaker attached to computer " + computer.getID() + " at " + pos);
@@ -153,6 +207,8 @@ public class HQSpeakerPeripheral implements IPeripheral {
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
+        SOURCE_SPEAKERS.remove(speakerSource, this);
+        clearFiniteState(true);
         broadcastStopPacket();
     }
 
@@ -180,9 +236,24 @@ public class HQSpeakerPeripheral implements IPeripheral {
                 HQSpeakerMod.warn("HQSpeaker: VS2 conversion failed: " + e.getMessage());
             }
 
+            float packetVolume = chunk.volume();
+            boolean packetLooping = false;
+            boolean packetPaused = false;
+            if (chunk.generation() > 0L) {
+                synchronized (playerLock) {
+                    FiniteServerTrack finite = findFiniteTrackLocked(chunk.generation());
+                    if (finite != null) {
+                        packetVolume = finite.volume;
+                        packetLooping = finite.looping;
+                        packetPaused = finite.desiredPaused;
+                    }
+                }
+            }
             var pkt = new HQSpeakerAudioPacket(
-                speakerSource, chunk.format(), chunk.volume(),
-                wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(), chunk.startTick(), chunk.syncGroupId(), chunk.syncGroupSize()
+                speakerSource, chunk.format(), packetVolume,
+                wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(),
+                chunk.startTick(), chunk.syncGroupId(), chunk.syncGroupSize(),
+                chunk.generation(), packetLooping, packetPaused
             );
 
             final float fwx = wx, fwy = wy, fwz = wz;
@@ -264,6 +335,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
+        clearFiniteState(true);
         broadcastStopPacket();
         HQSpeakerMod.log("HQSpeaker: stopped at " + pos);
     }
@@ -276,10 +348,124 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @LuaFunction
     public final void setLooping(boolean loop) {
         looping = loop;
+        FiniteServerTrack current;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current != null) current.looping = loop;
+        }
+        if (current != null) sendControl(current,
+            HQSpeakerControlPacket.Action.SET_LOOP, loop ? 1.0 : 0.0);
         HQSpeakerMod.log("HQSpeaker: looping set to " + loop + " at " + pos);
     }
 
-    @LuaFunction public final boolean speakIsPlaying() { return !speakerQueue.isEmpty() || streamActive.get(); }
+    @LuaFunction
+    public final boolean speakIsPlaying() {
+        if (streamActive.get()) return true;
+        synchronized (playerLock) {
+            FiniteServerTrack current = finiteTracks.peekFirst();
+            if (current != null) {
+                return current.state == PlayerState.LOADING
+                    || current.state == PlayerState.PLAYING
+                    || current.state == PlayerState.PAUSED;
+            }
+        }
+        return !speakerQueue.isEmpty();
+    }
+
+    @LuaFunction
+    public final Map<String, Object> audioStatus() {
+        synchronized (playerLock) {
+            FiniteServerTrack current = finiteTracks.peekFirst();
+            if (current != null) return finiteStatus(current);
+            if (terminalTrack != null) return finiteStatus(terminalTrack);
+        }
+        Map<String, Object> status = new HashMap<>();
+        if (streamActive.get()) {
+            status.put("state", "playing");
+            status.put("kind", "stream");
+            status.put("observed", false);
+        } else {
+            status.put("state", "idle");
+            status.put("kind", "none");
+            status.put("observed", false);
+        }
+        status.put("canPause", false);
+        status.put("canSeek", false);
+        status.put("canLoop", false);
+        return status;
+    }
+
+    @LuaFunction public final boolean audioPause() {
+        FiniteServerTrack current;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current == null || current.state == PlayerState.ENDED
+                    || current.state == PlayerState.ERROR) return false;
+            if (current.desiredPaused) return true;
+            current.basePosition = current.position(System.nanoTime());
+            current.desiredPaused = true;
+            current.state = PlayerState.PAUSED;
+        }
+        sendControl(current, HQSpeakerControlPacket.Action.PAUSE, 0.0);
+        return true;
+    }
+
+    @LuaFunction public final boolean audioResume() {
+        FiniteServerTrack current;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current == null || current.state == PlayerState.ENDED
+                    || current.state == PlayerState.ERROR) return false;
+            if (!current.desiredPaused) return true;
+            current.desiredPaused = false;
+            current.anchorNanos = System.nanoTime();
+            current.state = current.observed ? PlayerState.PLAYING : PlayerState.LOADING;
+        }
+        sendControl(current, HQSpeakerControlPacket.Action.RESUME, 0.0);
+        return true;
+    }
+
+    @LuaFunction public final boolean audioSeek(double seconds) throws LuaException {
+        if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
+        FiniteServerTrack current;
+        double target;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current == null || current.duration <= 0.0
+                    || current.state == PlayerState.ERROR || current.state == PlayerState.ENDED) return false;
+            target = Math.max(0.0, Math.min(current.duration, seconds));
+            current.basePosition = target;
+            current.anchorNanos = System.nanoTime();
+        }
+        sendControl(current, HQSpeakerControlPacket.Action.SEEK, target);
+        return true;
+    }
+
+    @LuaFunction public final boolean audioSetVolume(double volume) throws LuaException {
+        float applied = clampVolChecked(volume, "volume");
+        FiniteServerTrack current;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current == null) return false;
+            current.volume = applied;
+        }
+        sendControl(current, HQSpeakerControlPacket.Action.SET_VOLUME, applied);
+        return true;
+    }
+
+    @LuaFunction public final boolean audioSetLooping(boolean loop) {
+        looping = loop;
+        FiniteServerTrack current;
+        synchronized (playerLock) {
+            current = finiteTracks.peekFirst();
+            if (current == null) return false;
+            current.looping = loop;
+        }
+        sendControl(current, HQSpeakerControlPacket.Action.SET_LOOP, loop ? 1.0 : 0.0);
+        return true;
+    }
+
+    @LuaFunction public final void audioStop() { speakStop(); }
     @LuaFunction public final int speakQueueSize() { return speakerQueue.size(); }
     @LuaFunction public final int speakSampleRate() { return SPEAKER_SAMPLE_RATE; }
     @LuaFunction public final int speakMaxSamples() { return SPEAKER_MAX_PCM; }
@@ -347,6 +533,156 @@ public class HQSpeakerPeripheral implements IPeripheral {
         icyMetaSerial++;
 
         for (IComputerAccess comp : attachedComputers) comp.queueEvent("hqspeaker_metadata", getStreamMeta());
+    }
+
+    public void acceptPlaybackStatus(ServerPlayer sender, HQSpeakerStatusPacket packet) {
+        if (sender == null || packet == null || !speakerSource.equals(packet.source)
+                || !packet.hasSensibleNumbers() || !canAcceptPlaybackStatus(sender)) return;
+
+        boolean changed = false;
+        synchronized (playerLock) {
+            FiniteServerTrack track = findFiniteTrackLocked(packet.generation);
+            if (track == null) return;
+            long now = System.nanoTime();
+            UUID renderer = sender.getUUID();
+            switch (packet.transition) {
+                case READY -> {
+                    if (packet.duration > 0.0) track.duration = packet.duration;
+                    changed = true;
+                }
+                case STARTED -> {
+                    promoteLocked(track);
+                    if (track.successfulRenderers.size() < 8) track.successfulRenderers.add(renderer);
+                    if (track.anchorRenderer == null) track.anchorRenderer = renderer;
+                    track.observed = true;
+                    if (renderer.equals(track.anchorRenderer)) {
+                        track.basePosition = clampPosition(track, packet.position);
+                        track.anchorNanos = now;
+                        track.state = track.desiredPaused ? PlayerState.PAUSED : PlayerState.PLAYING;
+                    }
+                    changed = true;
+                }
+                case PAUSED -> {
+                    if (!isAnchor(track, renderer)) return;
+                    track.observed = true;
+                    track.desiredPaused = true;
+                    track.basePosition = clampPosition(track, packet.position);
+                    track.state = PlayerState.PAUSED;
+                    changed = true;
+                }
+                case RESUMED -> {
+                    if (!isAnchor(track, renderer)) return;
+                    track.observed = true;
+                    track.desiredPaused = false;
+                    track.basePosition = clampPosition(track, packet.position);
+                    track.anchorNanos = now;
+                    track.state = PlayerState.PLAYING;
+                    changed = true;
+                }
+                case SEEKED -> {
+                    if (!isAnchor(track, renderer)) return;
+                    track.observed = true;
+                    track.basePosition = clampPosition(track, packet.position);
+                    track.anchorNanos = now;
+                    track.state = track.desiredPaused ? PlayerState.PAUSED : PlayerState.PLAYING;
+                    changed = true;
+                }
+                case ENDED -> {
+                    if (!isAnchor(track, renderer) || finiteTracks.peekFirst() != track) return;
+                    track.observed = true;
+                    track.basePosition = track.duration > 0.0 ? track.duration : packet.position;
+                    track.state = PlayerState.ENDED;
+                    finiteTracks.removeFirst();
+                    terminalTrack = finiteTracks.isEmpty() ? track : null;
+                    changed = true;
+                }
+                case ERROR -> {
+                    boolean anotherSucceeded = track.successfulRenderers.stream()
+                        .anyMatch(id -> !id.equals(renderer));
+                    if (anotherSucceeded || (track.anchorRenderer != null
+                            && !track.anchorRenderer.equals(renderer) && track.observed)) return;
+                    track.basePosition = clampPosition(track, packet.position);
+                    track.state = PlayerState.ERROR;
+                    track.error = packet.error.isBlank() ? "client playback error" : packet.error;
+                    if (finiteTracks.peekFirst() == track && finiteTracks.size() == 1) {
+                        terminalTrack = track;
+                    }
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            Map<String, Object> status = audioStatus();
+            for (IComputerAccess computer : attachedComputers) {
+                computer.queueEvent("hqspeaker_audio_state", status);
+            }
+        }
+    }
+
+    private boolean canAcceptPlaybackStatus(ServerPlayer player) {
+        if (player.level() != world) return false;
+        float[] worldPos = computeWorldPos("playerStatus");
+        double dx = player.getX() - worldPos[0];
+        double dy = player.getY() - worldPos[1];
+        double dz = player.getZ() - worldPos[2];
+        return dx * dx + dy * dy + dz * dz <= SPEAKER_RADIUS * SPEAKER_RADIUS;
+    }
+
+    private static boolean isAnchor(FiniteServerTrack track, UUID renderer) {
+        if (track.anchorRenderer == null) track.anchorRenderer = renderer;
+        return renderer.equals(track.anchorRenderer);
+    }
+
+    private static double clampPosition(FiniteServerTrack track, double position) {
+        if (!Double.isFinite(position)) return 0.0;
+        return track.duration > 0.0
+            ? Math.max(0.0, Math.min(track.duration, position)) : Math.max(0.0, position);
+    }
+
+    private void promoteLocked(FiniteServerTrack track) {
+        while (!finiteTracks.isEmpty() && finiteTracks.peekFirst() != track) {
+            finiteTracks.removeFirst();
+        }
+        terminalTrack = null;
+    }
+
+    private FiniteServerTrack findFiniteTrackLocked(long generation) {
+        for (FiniteServerTrack track : finiteTracks) {
+            if (track.generation == generation) return track;
+        }
+        return null;
+    }
+
+    private Map<String, Object> finiteStatus(FiniteServerTrack track) {
+        Map<String, Object> status = new HashMap<>();
+        status.put("generation", track.generation);
+        status.put("state", track.state.name().toLowerCase(Locale.ROOT));
+        status.put("kind", "finite");
+        status.put("format", switch (track.format) {
+            case OGG_VORBIS -> "ogg";
+            case MP3 -> "mp3";
+            default -> "audio";
+        });
+        status.put("position", track.position(System.nanoTime()));
+        if (track.duration > 0.0) status.put("duration", track.duration);
+        status.put("volume", (double) track.volume);
+        status.put("looping", track.looping);
+        status.put("observed", track.observed);
+        status.put("canPause", track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
+        status.put("canSeek", track.duration > 0.0
+            && track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
+        status.put("canLoop", track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
+        status.put("queueSize", finiteTracks.size());
+        if (!track.error.isBlank()) status.put("error", track.error);
+        return status;
+    }
+
+    private void clearFiniteState(boolean invalidateGeneration) {
+        synchronized (playerLock) {
+            finiteTracks.clear();
+            terminalTrack = null;
+            if (invalidateGeneration) generationCounter++;
+        }
     }
 
 
@@ -565,6 +901,51 @@ public final void setLoopingAll(IComputerAccess computer, boolean loop) {
 }
 
 @LuaFunction
+public final Map<String, Object> audioStatusAll(IComputerAccess computer) throws LuaException {
+    return leaderFor(computer).audioStatus();
+}
+
+@LuaFunction
+public final boolean audioPauseAll(IComputerAccess computer) {
+    boolean ok = false;
+    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioPause());
+    return ok;
+}
+
+@LuaFunction
+public final boolean audioResumeAll(IComputerAccess computer) {
+    boolean ok = false;
+    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioResume());
+    return ok;
+}
+
+@LuaFunction
+public final boolean audioSeekAll(IComputerAccess computer, double seconds) throws LuaException {
+    boolean ok = false;
+    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSeek(seconds));
+    return ok;
+}
+
+@LuaFunction
+public final boolean audioSetVolumeAll(IComputerAccess computer, double volume) throws LuaException {
+    boolean ok = false;
+    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetVolume(volume));
+    return ok;
+}
+
+@LuaFunction
+public final boolean audioSetLoopingAll(IComputerAccess computer, boolean loop) {
+    boolean ok = false;
+    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetLooping(loop));
+    return ok;
+}
+
+@LuaFunction
+public final void audioStopAll(IComputerAccess computer) {
+    for (HQSpeakerPeripheral p : membersFor(computer)) p.audioStop();
+}
+
+@LuaFunction
 public final boolean speakStreamAll(IComputerAccess computer, String url, java.util.Optional<Double> volume) throws LuaException {
     boolean ok = false;
     java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
@@ -659,6 +1040,14 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
     byIndexFor(computer, index).speakStop();
 }
 
+@LuaFunction public final Map<String, Object> audioStatusAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioStatus(); }
+@LuaFunction public final boolean audioPauseAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioPause(); }
+@LuaFunction public final boolean audioResumeAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioResume(); }
+@LuaFunction public final boolean audioSeekAt(IComputerAccess computer, int index, double seconds) throws LuaException { return byIndexFor(computer, index).audioSeek(seconds); }
+@LuaFunction public final boolean audioSetVolumeAt(IComputerAccess computer, int index, double volume) throws LuaException { return byIndexFor(computer, index).audioSetVolume(volume); }
+@LuaFunction public final boolean audioSetLoopingAt(IComputerAccess computer, int index, boolean loop) throws LuaException { return byIndexFor(computer, index).audioSetLooping(loop); }
+@LuaFunction public final void audioStopAt(IComputerAccess computer, int index) throws LuaException { byIndexFor(computer, index).audioStop(); }
+
     
     private byte[] audioTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName, int min, int max, int shiftBits) throws LuaException {
         if (len <= 0) throw new LuaException(fnName + ": table is empty");
@@ -740,11 +1129,41 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         if (syncGroupId == null) syncGroupSize = 0;
         else syncGroupSize = Math.max(1, Math.min(SPEAKER_MAX_SYNC_GROUP, syncGroupSize));
         if (speakerQueue.size() >= SPEAKER_MAX_QUEUE) return false;
+        if (isFiniteFormat(fmt)) {
+            synchronized (playerLock) {
+                if (finiteTracks.size() >= SPEAKER_MAX_QUEUE) return false;
+            }
+        }
         
         byte[] safe = java.util.Arrays.copyOf(data, data.length);
-        boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume, startTick, syncGroupId, syncGroupSize));
+        long generation = 0L;
+        FiniteServerTrack finite = null;
+        if (isFiniteFormat(fmt)) {
+            synchronized (playerLock) {
+                generation = ++generationCounter;
+                finite = new FiniteServerTrack(generation, fmt, volume, looping);
+            }
+        }
+        boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume,
+            startTick, syncGroupId, syncGroupSize, generation));
+        if (offered && finite != null) {
+            synchronized (playerLock) {
+                if (finiteTracks.size() == 1
+                        && finiteTracks.peekFirst().state == PlayerState.ERROR) {
+                    finiteTracks.clear();
+                }
+                finiteTracks.addLast(finite);
+                terminalTrack = null;
+            }
+        }
         if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return offered;
+    }
+
+    private static boolean isFiniteFormat(HQSpeakerAudioPacket.AudioFormat format) {
+        return format == HQSpeakerAudioPacket.AudioFormat.OGG_VORBIS
+            || format == HQSpeakerAudioPacket.AudioFormat.MP3
+            || format == HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE;
     }
 
     private static float clampVol(double v) {
@@ -787,6 +1206,14 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
             if (dx*dx + dy*dy + dz*dz <= SPEAKER_RADIUS*SPEAKER_RADIUS)
                 HQSpeakerNetwork.sendToPlayer(pkt, player);
         }
+    }
+
+    private void sendControl(FiniteServerTrack track, HQSpeakerControlPacket.Action action,
+                             double value) {
+        if (!(world instanceof ServerLevel level) || track == null) return;
+        float[] worldPos = computeWorldPos("playerControl");
+        sendToNearby(level, new HQSpeakerControlPacket(speakerSource,
+            track.generation, action, value), worldPos[0], worldPos[1], worldPos[2]);
     }
 
     private void broadcastStopPacket() {

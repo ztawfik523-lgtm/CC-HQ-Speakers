@@ -11,6 +11,7 @@ This fork uses a lighter version of the useful HighAudio docs structure.
 | What are the known problems? | `KNOWN-ISSUES.md` |
 | How do we test? | `TESTING.md` |
 | How do we run the M0 runtime baseline? | `M0-SMOKE-TEST.md` |
+| How do we validate the M1 player? | `M1-RUNTIME-TEST.md` |
 | Where did facts/dependencies come from? | `SOURCES.md` |
 | What HighAudio work transfers? | `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md` |
 | What SPR work already exists? | `research/SPR-INTEGRATION-BASELINE.md` |

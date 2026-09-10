@@ -53,6 +53,9 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     public final long        startTick;         
     public final UUID        syncGroupId;       
     public final int         syncGroupSize;     
+    public final long        generation;
+    public final boolean     finiteLooping;
+    public final boolean     finitePaused;
 
     
     public HQSpeakerAudioPacket(UUID source, AudioFormat format,
@@ -123,6 +126,37 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
                                  long startTick,
                                  UUID syncGroupId,
                                  int syncGroupSize) {
+        this(source, format, volume, x, y, z, blockX, blockY, blockZ, data,
+            streamUrl, startTick, syncGroupId, syncGroupSize, 0L, false, false);
+    }
+
+    public HQSpeakerAudioPacket(UUID source, AudioFormat format,
+                                 float volume,
+                                 float x, float y, float z,
+                                 int blockX, int blockY, int blockZ,
+                                 byte[] data,
+                                 long startTick,
+                                 UUID syncGroupId,
+                                 int syncGroupSize,
+                                 long generation,
+                                 boolean finiteLooping,
+                                 boolean finitePaused) {
+        this(source, format, volume, x, y, z, blockX, blockY, blockZ, data,
+            null, startTick, syncGroupId, syncGroupSize, generation, finiteLooping, finitePaused);
+    }
+
+    private HQSpeakerAudioPacket(UUID source, AudioFormat format,
+                                 float volume,
+                                 float x, float y, float z,
+                                 int blockX, int blockY, int blockZ,
+                                 byte[] data,
+                                 String streamUrl,
+                                 long startTick,
+                                 UUID syncGroupId,
+                                 int syncGroupSize,
+                                 long generation,
+                                 boolean finiteLooping,
+                                 boolean finitePaused) {
         this.source = source;
         this.format = format != null ? format : AudioFormat.AUDIO_FILE;
         this.volume = Float.isFinite(volume) ? Math.max(0.0f, Math.min(3.0f, volume)) : 1.0f;
@@ -134,6 +168,9 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         this.startTick = Math.max(0L, startTick);
         this.syncGroupId = syncGroupId;
         this.syncGroupSize = syncGroupId == null ? 0 : Math.max(1, Math.min(MAX_SYNC_GROUP, syncGroupSize));
+        this.generation = Math.max(0L, generation);
+        this.finiteLooping = finiteLooping;
+        this.finitePaused = finitePaused;
     }
 
     public boolean isStreamingFormat() {
@@ -158,6 +195,9 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
             buf.writeUUID(pkt.syncGroupId);
             buf.writeVarInt(pkt.syncGroupSize);
         }
+        buf.writeVarLong(pkt.generation);
+        buf.writeBoolean(pkt.finiteLooping);
+        buf.writeBoolean(pkt.finitePaused);
 
         if (pkt.isStreamingFormat()) {
             
@@ -188,13 +228,18 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         long        startTick = buf.readVarLong();
         UUID        syncGroupId = buf.readBoolean() ? buf.readUUID() : null;
         int         syncGroupSize = syncGroupId != null ? buf.readVarInt() : 0;
+        long        generation = buf.readVarLong();
+        boolean     finiteLooping = buf.readBoolean();
+        boolean     finitePaused = buf.readBoolean();
 
         boolean isStreaming = buf.readBoolean();
 
         
         if (isStreaming != (format == AudioFormat.MP3_STREAM || format == AudioFormat.HLS_STREAM || format == AudioFormat.TS_STREAM)) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected mismatched streaming flag for " + format);
-            return new HQSpeakerAudioPacket(source, AudioFormat.AUDIO_FILE, volume, x, y, z, blockX, blockY, blockZ, new byte[0], startTick, null, 0);
+            return new HQSpeakerAudioPacket(source, AudioFormat.AUDIO_FILE, volume, x, y, z,
+                blockX, blockY, blockZ, new byte[0], startTick, null, 0,
+                generation, finiteLooping, finitePaused);
         }
 
         if (isStreaming) {
@@ -204,14 +249,18 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
             int len = buf.readVarInt();
             if (len < 0 || len > MAX_BYTES) {
                 HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected oversized payload (" + len + " bytes)");
-                return new HQSpeakerAudioPacket(source, format, volume, x, y, z, blockX, blockY, blockZ, new byte[0], startTick, syncGroupId, syncGroupSize);
+                return new HQSpeakerAudioPacket(source, format, volume, x, y, z,
+                    blockX, blockY, blockZ, new byte[0], startTick, syncGroupId,
+                    syncGroupSize, generation, finiteLooping, finitePaused);
             }
 
             byte[] data = new byte[len];
             if (len > 0) {
                 buf.readBytes(data);
             }
-            return new HQSpeakerAudioPacket(source, format, volume, x, y, z, blockX, blockY, blockZ, data, startTick, syncGroupId, syncGroupSize);
+            return new HQSpeakerAudioPacket(source, format, volume, x, y, z,
+                blockX, blockY, blockZ, data, startTick, syncGroupId,
+                syncGroupSize, generation, finiteLooping, finitePaused);
         }
     }
 

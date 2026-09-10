@@ -121,6 +121,30 @@ or resource-reload behavior. Stop, WAV, generic finite playback, and looping
 were inconclusive because a long MP3 remained active. These are not recorded as
 runtime-verified successes.
 
+## M1 player-core source facts
+
+### FACT-M1-001 - finite generations and retained PCM
+Finite media packets carry a per-speaker generation. Each client logical track
+retains fully decoded signed-16-bit mono PCM and its exact sample rate. Renderer
+cursors are frame-aligned views over those retained bytes.
+
+### FACT-M1-002 - real channel pause and category-aware volume
+The M1 client accesses the active `ChannelHandle` through client-only Mixin
+accessors. Pause/resume call `Channel.pause()` / `Channel.unpause()`. Live volume
+updates the sound value and calls `SoundManager.updateSourceVolume` with the
+unchanged BLOCKS slider value, preserving Minecraft category and master scaling.
+
+### FACT-M1-003 - finite status protocol
+Client status is transition-driven and generation-validated. The server rejects
+unknown generations, wrong-world or out-of-range senders, non-finite/out-of-range
+timing values, and oversized errors. No renderer confirmation leaves
+`observed=false` and does not start the position clock.
+
+### FACT-M1-004 - seek and loop
+Seek creates a fresh renderer cursor at a clamped retained-PCM frame and stops
+the prior Minecraft sound so queued old buffers are discarded. Loop rewinds the
+cursor without retransmission or decode and does not use SoundInstance looping.
+
 ## HighAudio transferable facts
 
 ### FACT-MC-001

@@ -121,6 +121,38 @@ Exact names and whether playback IDs are required should be decided after auditi
 
 Preserve old methods as compatibility wrappers where practical.
 
+## M1 finite player implementation
+
+Each finite packet has a monotonically increasing per-speaker generation. The
+client decodes that logical item on `HQSpeaker-Decoder` into retained signed
+16-bit mono PCM with its exact sample rate. Renderer streams use independent,
+frame-aligned cursors over the same retained bytes, so backward seek and
+seek-specific renderer replacement do not decode or copy the complete track.
+
+Finite logical items are queued in order. Each item gets a renderer boundary;
+this makes sample-rate changes unambiguous and gives each generation a truthful
+audible start/end boundary. Raw PCM continues through the inherited feed stream,
+and MP3/HLS/TS URLs continue through the inherited streaming backends.
+
+The server owns semantic state (`loading`, `playing`, `paused`, `ended`, or
+`error`). A bounded, generation-aware client status packet reports READY,
+STARTED, PAUSED, RESUMED, SEEKED, ENDED, and ERROR transitions. The first
+successful renderer anchors the server playback clock; other successful
+renderers are confirmations, and one non-anchor failure cannot fail the track.
+With no renderer confirmation, `observed` remains false and position does not
+advance.
+
+Pause/resume reaches the exact Minecraft `ChannelHandle` for the active
+`HQSpeakerSound` through two client-only Mixin accessors and calls
+`Channel.pause()` / `Channel.unpause()`. Live volume mutates the sound's logical
+volume and refreshes the unchanged BLOCKS category slider through
+`SoundManager.updateSourceVolume`, preserving both BLOCKS and MASTER scaling.
+
+Seek stops only the current finite renderer, creates a new renderer cursor over
+the retained PCM at the clamped target frame, and restores the prior
+playing/paused intent. Looping rewinds the renderer cursor in memory and never
+uses Minecraft `SoundInstance.looping`.
+
 ## Large-media direction
 
 Do not just raise `8 MiB`.

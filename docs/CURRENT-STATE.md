@@ -157,6 +157,30 @@ long MP3 to remain active. These are recorded coverage gaps, not runtime passes.
 4. productized SPR integration;
 5. compatibility with existing CC:HQ Lua methods where practical.
 
+## M1 player-core candidate
+
+The M1 branch now implements finite-track generations, retained decoded mono
+PCM, real EOF, renderer-confirmed state, pause/resume, live volume, cursor-based
+looping, decoded duration, a monotonic playback timeline, and seek by
+renderer re-prime. The precise Lua surface is:
+
+- `audioStatus()`
+- `audioPause()` / `audioResume()`
+- `audioSeek(seconds)`
+- `audioSetVolume(volume)`
+- `audioSetLooping(loop)`
+- `audioStop()`
+
+`speakVolume` remains the default volume setter. `setLooping` now updates both
+the default finite setting and the active finite track. Raw `playAudio` and
+`speakPCM` remain feed APIs; live streams retain their inherited semantics.
+
+Clean builds and five cursor/seek/loop unit tests pass on NeoForge 21.1.247 and
+21.1.248. A 21.1.247 dedicated development server loaded CC:T 1.120.0, loaded
+HQ Speakers, registered all five payloads, and reached the `Done` marker without
+client-class leakage. Real-client acceptance is still pending the single
+consolidated procedure in `M1-RUNTIME-TEST.md`.
+
 ## SPR status
 
 SPR work is not starting from zero.

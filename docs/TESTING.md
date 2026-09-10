@@ -42,3 +42,12 @@ Record exact commit, JAR SHA-256, exact stack, scenarios, pass/fail, logs, and w
 The single M0 client run is recorded in `M0-SMOKE-TEST.md`. Its helper now
 stops finite playback between cases and gives numbered stream choices so a
 future targeted rerun does not queue tests behind a long track.
+
+The M1 player candidate has one consolidated client procedure and Lua helper in
+`M1-RUNTIME-TEST.md` and `scripts/m1_player_test.lua`. Run it only after both
+exact NeoForge builds, unit tests, packaging checks, and dedicated-server
+classloading are green.
+
+Current M1 automated result: clean `build` passed on NeoForge 21.1.247 and
+21.1.248; five `FiniteAudioTrackTest` cases passed; and the 21.1.247 dedicated
+development server reached `Done` after registering five payloads.

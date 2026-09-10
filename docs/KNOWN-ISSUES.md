@@ -26,6 +26,9 @@ Desired result:
 - loop can be changed predictably;
 - stop/replay/EOF state remains correct.
 
+M1 candidate status: implemented with retained-PCM cursor rewind and
+generation-aware live control; real-client acceptance remains pending.
+
 ## KI-003 — `speakIsPlaying` is not truthful finite playback state
 
 Current implementation reports server queue/stream state, not client finite renderer state.
@@ -33,11 +36,17 @@ Current implementation reports server queue/stream state, not client finite rend
 Desired result:
 - a player program can query useful status such as loading/buffering/playing/paused/stopped/ended/error.
 
+M1 candidate status: `audioStatus()` now exposes semantic state plus renderer
+observation, and finite `speakIsPlaying()` follows loading/playing/paused state.
+
 ## KI-004 — no coherent pause/resume/seek/position/duration control
 
 Desired result:
 - a real player-oriented API;
 - old CC:HQ methods retained as compatibility wrappers where practical.
+
+M1 candidate status: implemented for finite media. Raw PCM and live streams do
+not claim finite duration/seek/loop semantics.
 
 ## KI-005 — finite decode materializes complete PCM
 
