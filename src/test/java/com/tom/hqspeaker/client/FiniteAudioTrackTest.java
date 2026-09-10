@@ -34,6 +34,16 @@ class FiniteAudioTrackTest {
     }
 
     @Test
+    void seekExactlyToDurationIsAtEnd() {
+        FiniteAudioTrack track = new FiniteAudioTrack(
+            new byte[]{0, 1, 2, 3, 4, 5, 6, 7}, 4, false);
+
+        assertEquals(track.durationSeconds(), track.seek(track.durationSeconds()));
+        assertTrue(track.isAtEnd());
+        assertNull(track.read(2));
+    }
+
+    @Test
     void loopingRewindsWithoutReplacingPcm() {
         FiniteAudioTrack track = new FiniteAudioTrack(new byte[]{10, 11, 12, 13}, 2, true);
 
@@ -42,6 +52,21 @@ class FiniteAudioTrackTest {
         track.setLooping(false);
         assertArrayEquals(new byte[]{12, 13}, bytes(track.read(8)));
         assertNull(track.read(2));
+    }
+
+    @Test
+    void disablingLoopPreservesCurrentCursor() {
+        FiniteAudioTrack track = new FiniteAudioTrack(
+            new byte[]{0, 1, 2, 3, 4, 5, 6, 7}, 4, true);
+
+        assertArrayEquals(new byte[]{0, 1, 2, 3, 4, 5, 6, 7, 0, 1}, bytes(track.read(10)));
+        assertEquals(0.25, track.cursorSeconds());
+
+        track.setLooping(false);
+
+        assertEquals(0.25, track.cursorSeconds());
+        assertArrayEquals(new byte[]{2, 3, 4, 5, 6, 7}, bytes(track.read(16)));
+        assertTrue(track.isAtEnd());
     }
 
     @Test

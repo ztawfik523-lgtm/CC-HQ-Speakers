@@ -1,46 +1,97 @@
 # Sources and provenance
 
-## Fork lineage
-- Original: `tiktop101/CC-HQ-Speakers`
-- NeoForge port: `jvrcruzGAMES/CC-HQ-Speakers`
-- This fork: `ztawfik523-lgtm/CC-HQ-Speakers`
-- inherited baseline commit: `d1a592351c866f9a28ceef00b59e591ee773f3d5`
+## Exact target dependencies
 
-## Platform
-- CC:T exact target: `cc-tweaked/CC-Tweaked` tag `v1.21.1-1.120.0`
-- Upstream dependency instructions: `https://github.com/cc-tweaked/CC-Tweaked#using`
-- Upstream release: `https://github.com/cc-tweaked/CC-Tweaked/releases/tag/v1.21.1-1.120.0`
-- Published Maven module: `https://maven.squiddev.cc/cc/tweaked/cc-tweaked-1.21.1-forge/1.120.0/`
-- Resolved coordinate: `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
-- NeoForge targets: 21.1.247 and 21.1.248
-- Minecraft audio classes of interest: `SoundEngine`, `SoundManager`, `AudioStream`, `Channel`, `Library`
+- Minecraft 1.21.1
+- Java 21
+- NeoForge 21.1.247 baseline
+- NeoForge 21.1.248 compatibility
+- CC:Tweaked 1.120.0
 
-M1 channel control was checked against the locally resolved Minecraft 1.21.1
-mapped classes. The relevant exact members are `SoundManager.soundEngine`,
-`SoundEngine.instanceToChannel`, `ChannelAccess.ChannelHandle.execute`,
-`Channel.pause`, `Channel.unpause`, and `SoundManager.updateSourceVolume`.
-No external-version audio API was used as evidence for these hooks.
+CC:T Maven artifact used by this fork:
 
-## Codec/runtime
-- LWJGL/STBVorbis: inherited OGG path and HighAudio incremental-decode research
-- mp3spi / JLayer / Tritonus: inherited MP3/JavaSound path
+`cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
 
-Local Gradle resolution selected the module's Java 21 runtime variant and
-downloaded `cc-tweaked-1.21.1-forge-1.120.0.jar` (SHA-1 path component
-`d992be398f5d28df278aa790b71dbf29f60ca5b4`). Both exact NeoForge development
-servers discovered it as mod id `computercraft`, version `1.120.0`.
+## CC:T speaker contract
 
-## SPR
-- upstream: `henkelmax/sound-physics-remastered`
-- target: Minecraft 1.21.1 / SPR 1.5.1
-- project work: `ztawfik523-lgtm/cchq-soundphysics-compat`
+Exact target release:
 
-## HighAudio
-- `ztawfik523-lgtm/cctweakedhighaudio`
-Reuse exact-stack facts, testing discipline, STB/OpenAL findings and provenance discipline.
-Do not automatically reuse its custom upload/content/session/transport architecture.
+- tag: `v1.21.1-1.120.0`
+- release commit: `98f3a71`
 
-## License rule
-If code is copied or materially adapted, record source file/path, exact source commit/tag and license, and preserve required notices.
+Upstream source:
 
-The inherited repository has a top-level MPL-2.0 license while mod metadata says LGPL-3.0; resolve deliberately before release.
+`cc-tweaked/CC-Tweaked`
+
+`projects/common/src/main/java/dan200/computercraft/shared/peripheral/speaker/SpeakerPeripheral.java`
+
+Official docs:
+
+`https://tweaked.cc/peripheral/speaker.html`
+
+Use the exact target source when implementation behavior matters. Current docs are useful for API semantics, but source wins for version-specific internals.
+
+## Fork provenance
+
+Repository:
+
+`ztawfik523-lgtm/CC-HQ-Speakers`
+
+Lineage:
+
+`tiktop101/CC-HQ-Speakers -> jvrcruzGAMES/CC-HQ-Speakers -> ztawfik523-lgtm/CC-HQ-Speakers`
+
+Untouched fork baseline:
+
+`d1a592351c866f9a28ceef00b59e591ee773f3d5`
+
+M1 reviewed reference:
+
+`fba84a33a94d451af09b983bcb04416c97ff64cf`
+
+## Codec dependencies
+
+Build currently packages:
+
+- `com.googlecode.soundlibs:mp3spi:1.9.5.4`
+- `com.googlecode.soundlibs:jlayer:1.0.1.4`
+- `com.googlecode.soundlibs:tritonus-share:0.3.7.4`
+
+OGG finite decode uses LWJGL STBVorbis from the Minecraft/LWJGL stack.
+
+Do not claim AAC/MP4 support merely from file extensions; require an exact decoder/runtime proof.
+
+## HighAudio research
+
+See:
+
+`research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md`
+
+Use only transferable facts such as sound-thread behavior, PCM alignment, STB experiments, and source reservation evidence.
+
+## Sound Physics Remastered
+
+Existing compat repository:
+
+`ztawfik523-lgtm/cchq-soundphysics-compat`
+
+Frozen V7.1 acoustic baseline:
+
+`ffcf5f6e05d85b69f1f1dff8cfae1b082b71604d`
+
+Approved V7.1 JAR SHA-256:
+
+`30d457c2a52672f893b1076938e2fdea3f41759173dfd843ff652bd490692101`
+
+## Evidence policy
+
+Order:
+
+1. exact runtime;
+2. exact current source;
+3. `VERIFIED-FACTS.md`;
+4. current-state/contract docs;
+5. architecture/roadmap;
+6. historical notes.
+
+Keep facts and recommendations separate.

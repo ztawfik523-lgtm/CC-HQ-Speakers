@@ -1,200 +1,229 @@
 # Verified facts
 
-Facts only. Recommendations belong in architecture/roadmap.
+Facts only. Recommendations and unresolved choices belong elsewhere.
 
 ## Repository/platform
 
-### FACT-FORK-001
-This project is `ztawfik523-lgtm/CC-HQ-Speakers`, forked from `jvrcruzGAMES/CC-HQ-Speakers`, with original lineage from `tiktop101/CC-HQ-Speakers`.
+### FACT-REPO-001
 
-### FACT-FORK-002
-The untouched fork baseline commit is:
+Repository:
+
+`ztawfik523-lgtm/CC-HQ-Speakers`
+
+Untouched fork baseline:
 
 `d1a592351c866f9a28ceef00b59e591ee773f3d5`
 
+Reviewed M1 reference:
+
+`fba84a33a94d451af09b983bcb04416c97ff64cf`
+
 ### FACT-PLATFORM-001
-The inherited port uses Minecraft 1.21.1, Java 21, NeoForge 21.1.211, and CC:T 1.113.1.
 
-### FACT-PLATFORM-002
-This fork targets Minecraft 1.21.1, Java 21, CC:T 1.120.0, NeoForge 21.1.247 baseline, and NeoForge 21.1.248 compatibility.
+Target stack:
 
-### FACT-PLATFORM-003 — resolved CC:T artifact
-The published and Gradle-resolved runtime artifact for CC:T 1.120.0 on the
-Minecraft 1.21.1 NeoForge stack is:
+- Minecraft 1.21.1
+- Java 21
+- CC:Tweaked 1.120.0
+- NeoForge 21.1.247 baseline
+- NeoForge 21.1.248 compatibility
+
+Build dependency:
 
 `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
 
-The upstream project retains the `forge` artifact name for its NeoForge build;
-there is no separate `-neoforge` Maven coordinate for this target.
+### FACT-PLATFORM-002
 
-### FACT-PLATFORM-004 — exact NeoForge matrix
-The build defaults to NeoForge `21.1.247`. The `neoForgeVersion` Gradle property
-selects another exact compatible target, including `21.1.248`.
+At reviewed M1 HEAD, GitHub Actions completed successfully for both NeoForge 21.1.247 and 21.1.248. The workflow runs `clean build` on Java 21 and verifies mod metadata, mixin config, jarjar metadata, mp3spi, JLayer, and Tritonus artifacts.
 
-Clean `build` runs succeeded on both exact versions with Java 21. Dedicated
-development-server runs on both versions loaded CC:T 1.120.0 and HQ Speakers,
-registered all three payloads, and reached the Minecraft `Done` marker.
+### FACT-PLATFORM-003
 
-### FACT-PLATFORM-005 — NeoForge 21.1.247 client baseline
-On 2026-09-09, a client run loaded Minecraft 1.21.1 on Java 21.0.7 with
-NeoForge 21.1.247, CC:T 1.120.0, and CC:HQ Speakers 1.1.4. The HQ speaker mixin
-applied and ComputerCraft generated wrappers for the inherited HQ Lua methods.
-This was the exact target stack in a small test instance, not evidence for the
-entire ATM10 mod set.
+The network registrar at reviewed M1 HEAD registers five payload types:
 
-## Inherited CC:HQ behavior/source
+- audio
+- stop
+- finite/player control
+- ICY metadata
+- finite/player status
 
-### FACT-CCHQ-001 — finite encoded limit
-`HQSpeakerPeripheral.SPEAKER_MAX_AUDIO` is `8 * 1024 * 1024`.
+## CC:T 1.120.0 base speaker contract
 
-### FACT-CCHQ-002 — network finite limit
-`HQSpeakerAudioPacket.MAX_BYTES` is also `8 * 1024 * 1024`.
+Source basis: official CC:Tweaked 1.120.0 for Minecraft 1.21.1, release tag `v1.21.1-1.120.0` (release commit `98f3a71`), plus official speaker documentation.
 
-Finite media packets carry the encoded content in a `byte[]`.
+### FACT-CCT-001
 
-### FACT-CCHQ-003 — current looping state is not transported
-`HQSpeakerPeripheral` has a server-side `looping` boolean and `setLooping(boolean)` updates it.
+The normal peripheral type is `speaker`.
 
-`HQSpeakerAudioPacket` contains no looping field.
+### FACT-CCT-002
 
-`HQSpeakerClientHandler.HQSpeakerSound` explicitly sets its Minecraft `looping` field to `false`.
+`playNote(instrument [, volume [, pitch]])` accepts optional volume/pitch, resolves a real note-block instrument, validates the instrument, and is subject to the configured per-tick note limit.
 
-### FACT-CCHQ-004 — current finite playing query is not client renderer truth
-`HQSpeakerPeripheral.speakIsPlaying()` returns:
+### FACT-CCT-003
 
-`!speakerQueue.isEmpty() || streamActive.get()`
+`playSound(name [, volume [, pitch]])` resolves a Minecraft/modded sound identifier, accepts optional volume/pitch, and returns false when a sound/audio conflict prevents playback.
 
-It does not query `HQSpeakerClientHandler` or Minecraft's client-side active sound state.
+### FACT-CCT-004
 
-### FACT-CCHQ-005 — finite decode worker exists
-`HQAudioStream` uses a single-thread executor whose thread is named `HQSpeaker-Decoder`.
+`playAudio(audio [, volume])` accepts signed 8-bit samples, maximum 128*1024 samples per call, at 48 kHz. It buffers one pending call at a time and returns false when it cannot accept another buffer.
 
-### FACT-CCHQ-006 — finite decode is whole-file
-The inherited OGG path uses `STBVorbis.stb_vorbis_decode_memory`.
+If volume is omitted, the documented behavior is to reuse the previous `playAudio` volume.
 
-The generic JavaSound path converts via `AudioInputStream` and reads the decoded result using `readAllBytes()`.
+### FACT-CCT-005
 
-### FACT-CCHQ-007 — decoded finite limit
-`HQAudioStream.MAX_DECODED_PCM_BYTES` is `64 * 1024 * 1024`.
+`speaker_audio_empty` is used as backpressure notification after the internal audio buffer is pulled/freed so another `playAudio` call can be accepted.
 
-### FACT-CCHQ-008 — stream waiting can return silence
-`HQAudioStream.read()` can return a direct silence buffer while finite decode/prebuffer data is not yet available.
+### FACT-CCT-006
 
-### FACT-CCHQ-009 — client renderer state exists
-`HQSpeakerClientHandler` tracks client `SpeakerState` objects containing an `HQAudioStream`, `HQSpeakerSound`, last packet, streaming state, start tick, and sync-group state.
+`stop()` is a standard speaker method. It stops/clears the speaker's current playAudio/latest playSound state.
 
+## Current HQ replacement facts
 
-### FACT-CCHQ-010 — CC:T artifact coupling
-The inherited NeoForge build depends on the Forge-suffixed CC:Tweaked artifact:
+### FACT-HQ-001
 
-`cc.tweaked:cc-tweaked-1.21.1-forge:1.113.1`
+`ComputerCraftSpeakerBlockEntityMixin` replaces the normal CC:T speaker peripheral with `HQSpeakerPeripheral`.
 
-M0 confirmed that the 1.120.0 artifact retains the same Forge-suffixed module
-name. See FACT-PLATFORM-003.
+`HQSpeakerPeripheral.getType()` returns `speaker`.
 
-### FACT-CCHQ-011 — distinct PCM conventions
-The inherited Lua API exposes both `playAudio(IArguments)` and
-`speakPCM(IArguments)`.
+### FACT-HQ-002
 
-- `playAudio` accepts CC:T-style signed 8-bit samples (`-128..127`) and converts
-  them to the internal signed 16-bit little-endian path.
-- `speakPCM` accepts signed 16-bit samples (`-32768..32767`).
+Current `playNote` ignores its `instrument` argument and synthesizes a sine wave into the HQ PCM queue.
 
-The group/all/index variants preserve the same distinction.
+Its Java method takes primitive volume and pitch arguments rather than optional arguments.
 
-### FACT-CCHQ-012 — baseline cleanup coverage
-Server peripheral detach/block cleanup clears queues/stream flags and broadcasts
-a stop packet. Client stop closes the Minecraft sound and audio source. The
-baseline source has no explicit client disconnect or resource-reload cleanup
-hook; those cases remain runtime smoke-test observations.
+### FACT-HQ-003
 
-### FACT-CCHQ-013 — M0 audible client observations
-The M0 NeoForge 21.1.247 client run audibly exercised signed 8-bit
-`playAudio`, signed 16-bit `speakPCM`, volume changes, and a 2,871,486-byte
-finite MP3. Both PCM calls returned true; the tester reported the signed 16-bit
-tone sounded cleaner than the signed 8-bit tone. Finite MP3 playback sounded
-normal. World disconnect and integrated-server shutdown completed without an
-HQ exception in the supplied logs.
+Current `playSound` ignores `soundName` and delegates to a generated harp/sine-note path.
 
-The same run did not establish audible OGG, URL streaming, multi-speaker/sync,
-or resource-reload behavior. Stop, WAV, generic finite playback, and looping
-were inconclusive because a long MP3 remained active. These are not recorded as
-runtime-verified successes.
+### FACT-HQ-004
 
-## M1 player-core source facts
+Current HQ source exposes `speakStop()` and `audioStop()`, but no standard Lua `stop()` method in `HQSpeakerPeripheral`.
 
-### FACT-M1-001 - finite generations and retained PCM
-Finite media packets carry a per-speaker generation. Each client logical track
-retains fully decoded signed-16-bit mono PCM and its exact sample rate. Renderer
-cursors are frame-aligned views over those retained bytes.
+### FACT-HQ-005
 
-### FACT-M1-002 - real channel pause and category-aware volume
-The M1 client accesses the active `ChannelHandle` through client-only Mixin
-accessors. Pause/resume call `Channel.pause()` / `Channel.unpause()`. Live volume
-updates the sound value and calls `SoundManager.updateSourceVolume` with the
-unchanged BLOCKS slider value, preserving Minecraft category and master scaling.
+`playAudio` preserves signed 8-bit input conversion; `speakPCM` accepts signed 16-bit input. Both become `PCM_S16LE`.
 
-### FACT-M1-003 - finite status protocol
-Client status is transition-driven and generation-validated. The server rejects
-unknown generations, wrong-world or out-of-range senders, non-finite/out-of-range
-timing values, and oversized errors. No renderer confirmation leaves
-`observed=false` and does not start the position clock.
+### FACT-HQ-006
 
-### FACT-M1-004 - seek and loop
-Seek creates a fresh renderer cursor at a clamped retained-PCM frame and stops
-the prior Minecraft sound so queued old buffers are discarded. Loop rewinds the
-cursor without retransmission or decode and does not use SoundInstance looping.
+Current raw/HQ server queue is a bounded queue of 16 `SpeakerChunk`s. `speakerTick()` polls one chunk per server tick.
 
-## HighAudio transferable facts
+`speaker_audio_empty` is currently scheduled whenever that queue is below `SPEAKER_READY_MARK`, not when an actual client raw buffer has been consumed.
 
-### FACT-MC-001
-On the exact HighAudio target stack, `AudioStream.read()` was observed running on the `Sound engine` thread.
+### FACT-HQ-007
 
-### FACT-MC-002
-In the tested 48 kHz/16-bit/mono HighAudio path, Minecraft requested 96,000-byte reads.
+Finite encoded media is capped at 8 MiB in both peripheral and audio packet code and is transported as a whole encoded `byte[]`.
 
-### FACT-MC-003
-HighAudio source/runtime investigation found one non-null read result mapping to one SoundBuffer/OpenAL upload/queue operation in the inspected path.
+### FACT-HQ-008
 
-### FACT-MC-004
-Vanilla Minecraft streaming reservation measured eight streams on the tested baseline runtime.
+`HQAudioStream` uses a single-thread `HQSpeaker-Decoder` executor and whole-file finite decode.
 
-### FACT-MC-005
-A total-preserving reservation rebalance was real-client proven to provide 16 Minecraft-owned streaming channels on that tested runtime.
+OGG uses `STBVorbis.stb_vorbis_decode_memory`; JavaSound-supported finite media uses `readAllBytes()` after conversion.
 
-Do not apply the reservation change during bootstrap unless CC:HQ demonstrates the same need.
+Decoded finite PCM has a 64 MiB post-decode validation cap.
 
-## Codec facts from HighAudio
+## M1 finite facts
 
-### FACT-CODEC-001
-The tested LWJGL/STBVorbis path supported open-memory decode, info, total samples, incremental interleaved-short decode, seek, error reporting, and close.
+### FACT-M1-001
 
-### FACT-CODEC-002
-Repeated 257-frame incremental reads reconstructed the tested OGG files.
+Finite packets carry:
 
-### FACT-CODEC-003
-The isolated STB experiment observed native heap corruption when direct encoded input was not kept sufficiently reachable. Strong retention through native close plus explicit reachability fencing eliminated the observed corruption across recorded stress repetitions.
+- generation
+- finite looping state
+- finite paused state
 
-This is project evidence, not a universal JVM theorem.
+### FACT-M1-002
 
-## SPR
+`FiniteAudioTrack` retains complete mono signed-16-bit PCM, exact sample rate, and frame-aligned cursor state. Renderer forks share retained PCM with independent cursors.
 
-### FACT-SPR-001
-Frozen approved V7.1 acoustic baseline:
+### FACT-M1-003
 
-`ffcf5f6e05d85b69f1f1dff8cfae1b082b71604d`
+Finite controls include PAUSE, RESUME, SEEK, SET_VOLUME, and SET_LOOP.
 
-### FACT-SPR-002
-Approved V7.1 runtime JAR SHA-256:
+Finite client status transitions include READY, STARTED, PAUSED, RESUMED, SEEKED, ENDED, and ERROR.
 
-`30d457c2a52672f893b1076938e2fdea3f41759173dfd843ff652bd490692101`
+### FACT-M1-004
 
-### FACT-SPR-003
-Later compat hardening includes bounded decoder work, decoded-cache limits, stale session/source-generation checks, OpenAL cleanup hardening, and pause/resume/stopAll/emergencyShutdown integration.
+Finite pause/resume reaches the actual Minecraft `Channel` through client-only accessors of `SoundManager.soundEngine` and `SoundEngine.instanceToChannel`.
+
+### FACT-M1-005
+
+Finite loop uses retained cursor rewind and does not use Minecraft `SoundInstance.looping`.
+
+### FACT-M1-006
+
+Finite client state currently uses one renderer boundary per logical finite item.
+
+### FACT-M1-007
+
+Server finite state currently uses the first successful renderer as `anchorRenderer`. PAUSED/RESUMED/SEEKED/ENDED are anchor-gated.
+
+### FACT-M1-008
+
+Server `promoteLocked(track)` removes all finite tracks before a STARTED track.
+
+## Stream facts
+
+### FACT-STREAM-001
+
+`StreamingAudioSource` has MP3_STREAM, HLS_STREAM, and TS_STREAM paths and a bounded PCM queue.
+
+### FACT-STREAM-002
+
+Stream volume is currently applied inside `StreamingAudioSource.queuePCM()` by scaling PCM samples. The Minecraft `HQSpeakerSound` also uses the packet volume.
+
+### FACT-STREAM-003
+
+Live HLS parsing records `EXT-X-MEDIA-SEQUENCE`, but `StreamingAudioSource.streamHLS()` advances using a persistent `currentSegmentIndex` across refreshed playlists.
+
+### FACT-STREAM-004
+
+Direct TS calls `TSDemuxer.demux(InputStream)` and receives a complete `List<AudioFrame>` before iterating and queueing decoded output.
+
+### FACT-STREAM-005
+
+`decodeAudioFrame` returns the compressed `frame.data` unchanged when JavaSound reports `UnsupportedAudioFileException`.
+
+## Multi-speaker facts
+
+### FACT-SYNC-001
+
+All/group calls may assign a shared future start tick, sync group UUID, and expected group size.
+
+### FACT-SYNC-002
+
+Audio packet delivery is per physical speaker to players within the speaker radius. The expected sync group size is derived from the full server-side member set, not a per-player received subset.
+
+### FACT-SYNC-003
+
+`SharedStreamingGroup` waits for `taps.size() >= expectedTaps` before starting its shared decoder.
+
+## Lifecycle facts
+
+### FACT-LIFE-001
+
+`HQSpeakerPeripheralProvider` cache keys contain dimension resource location and block position. Cached values contain `HQSpeakerPeripheral`, which stores the concrete `Level`.
+
+A `forget(Level, BlockPos)` method exists in the provider.
+
+### FACT-LIFE-002
+
+At reviewed M1 source, no call site to `HQSpeakerPeripheralProvider.forget()` is present in the tracked Java tree.
+
+## Test facts
+
+### FACT-TEST-001
+
+Before P0, the only Java test class was `FiniteAudioTrackTest` with five tests.
+
+### FACT-TEST-002
+
+The M1 Lua helper immediately seeks after disabling loop, so it cannot observe the source-proven loop-disable position clock bug before that seek overwrites the base position.
+
+The helper stops finite playback before exercising raw PCM, so it does not cover finite-to-raw mode interaction.
 
 ## License
 
 ### FACT-LICENSE-001
-GitHub identifies the repository-level license as MPL-2.0, while inherited mod metadata declares LGPL-3.0.
 
-Resolve deliberately before release; do not silently relicense inherited source.
+Top-level repository LICENSE is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0.
+
+Do not silently relicense; resolve provenance before public release.

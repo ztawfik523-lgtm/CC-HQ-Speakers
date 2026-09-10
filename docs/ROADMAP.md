@@ -1,124 +1,142 @@
 # Roadmap
 
-This roadmap is player-visible and deliberately short.
+## Product rule
 
-## M0 — exact ATM10 baseline
+Build a better **programmable CC speaker peripheral**.
 
-Goal:
-Make the inherited NeoForge port clean and reproducible on the exact target stack without redesigning playback.
+Do not build application roles into Java. Lua programs should be able to build music players, alarms, radios, soundboards, PA systems, speech systems, notifications, or other audio applications using the same capabilities.
 
-Work:
-- CC:T 1.120.0
-- NeoForge 21.1.247 baseline
-- NeoForge 21.1.248 compatibility
-- repository cleanup
-- CI/build validation
-- source-grounded baseline documentation
-- one consolidated runtime smoke test of representative inherited features
-
-User result:
-> Existing CC:HQ functionality works on the actual pack stack.
-
-Automated status: exact dependency/build, packaging, CI, and dedicated-server
-startup gates are complete. Final M0 acceptance awaits one consolidated ATM10
-client smoke test.
-
-## M1 — real player controls and truthful state
+## P0 — implementation readiness
 
 Goal:
-Turn the current command-style audio API into something suitable for a real ComputerCraft player.
+
+Make the repository reliable enough that implementation can proceed without re-auditing the whole project for every change.
 
 Work:
-- define truthful playback states
-- real looping/repeat
-- pause
-- resume
-- stop/replay lifecycle
-- live volume
-- duration where knowable
-- position
-- seek where truthfully supported
-- useful error/end state
-- retain old `speak*` methods as compatibility wrappers where practical
 
-Known source problems this milestone must fix:
-- inherited `setLooping` is not transported to the client;
-- inherited client sound explicitly has looping disabled;
-- inherited `speakIsPlaying()` is not actual finite renderer state.
+- rewrite stale docs around exact current source;
+- define the CC:T 1.120.0 speaker compatibility contract;
+- enumerate the four material architecture choices with concrete tradeoffs;
+- add regression/unit/runtime test scaffolding beyond `FiniteAudioTrack`;
+- keep `fba84a3` as the immutable reviewed M1 reference.
 
+Exit criteria:
 
-Scope note:
-Player controls such as pause/resume/seek/position/duration target finite media
-first. Live-stream semantics are a separate later decision. Do not silently
-treat finite-file controls as if they have the same meaning for live HLS/TS/MP3
-streams.
+- `CURRENT-STATE`, `VERIFIED-FACTS`, `KNOWN-ISSUES`, `ARCHITECTURE`, `ROADMAP`, `AGENTS` agree;
+- `CC-T-COMPATIBILITY-CONTRACT.md` is authoritative for standard speaker behavior;
+- user has chosen the unresolved items in `P0-DESIGN-DECISIONS.md`;
+- `P0-TEST-MATRIX.md` maps blockers to tests;
+- P0 test additions compile/pass where they test currently valid behavior.
 
 User result:
-> A Lua program can build a proper audio player.
 
-Implementation status: the M1 candidate is complete in source and automated
-validation. It retains decoded finite PCM, adds generation-aware renderer
-status and controls, and implements pause/resume, looping, duration, position,
-live volume, seek, natural completion, and group/all/at delegation. Final M1
-acceptance awaits the single client session in `M1-RUNTIME-TEST.md`.
+> Future patches can be scoped, implemented, and regression-tested without repeatedly rediscovering the peripheral contract.
+
+## M1A — speaker compatibility and lifecycle stabilization
+
+Goal:
+
+Make the physical HQ speaker trustworthy as a CC peripheral before adding more features.
+
+Work:
+
+- restore standard `playNote`, `playSound`, `playAudio`, `stop`;
+- implement truthful `speaker_audio_empty` backpressure;
+- implement the chosen heterogeneous raw/finite submission policy;
+- implement chosen stop/control recipient ownership;
+- give raw feed a bounded idle/lifecycle policy;
+- fix provider cache/world lifecycle;
+- make status truthful by source type.
+
+User result:
+
+> Existing CC speaker programs keep working, and HQ additions no longer corrupt the basic speaker lifecycle.
+
+## M1B — finite control correctness
+
+Goal:
+
+Finish the already-good finite M1 foundation.
+
+Work:
+
+- loop-disable clock rebase;
+- exact-duration seek -> clean end;
+- anchor failover/authority;
+- queue-head generation gating;
+- no-renderer policy;
+- chosen bounded decoder/cancellation strategy;
+- additional state-machine/network tests;
+- final one-session Minecraft acceptance.
+
+User result:
+
+> Finite media pause/resume/seek/loop/duration/state are reliable enough for arbitrary Lua applications.
+
+## M1C — live/open-ended source stabilization
+
+Goal:
+
+Make streams follow the same capability-first philosophy without pretending they are finite files.
+
+Work:
+
+- single volume application;
+- truthful stream start/failure/stop state;
+- pause -> suspend/stop;
+- resume -> reconnect to current live point;
+- HLS media-sequence progression;
+- incremental direct TS demux/playback;
+- clean unsupported-codec failure;
+- stream queue/session cleanup;
+- chosen partial-group sync behavior.
+
+User result:
+
+> Lua can build reliable live-radio/stream applications with clear open-ended semantics.
 
 ## M2 — larger finite media
 
 Goal:
-Remove the practical 8 MiB finite-media wall without replacing it with unbounded memory use.
 
-Phase 1 investigation must quantify:
-- Lua/file input constraints;
-- one-shot packet limitations;
-- encoded copies;
-- 64 MiB decoded PCM ceiling;
-- network limits;
-- concurrent playback memory.
+Remove the practical 8 MiB wall without creating unbounded memory use.
 
-Then choose between meaningful implementation options:
+Decision after measurement:
 
-A. chunked encoded transfer + existing whole-file decode
-Faster/smaller change, but decoded-memory scaling remains.
+A. chunked encoded transfer + retained whole decode
 
-B. chunked encoded transfer + incremental OGG/MP3 decode
-Better long-media scaling, but more lifecycle/backpressure complexity.
+or
 
-Do not choose A/B silently if both remain reasonable.
+B. chunked transport + incremental finite decode
 
-User result:
-> Normal long songs are usable without tiny arbitrary limits.
+Tradeoffs remain material; do not choose silently.
 
-## M3 — SPR productization
+Measure and bound:
+
+- Lua/server input copies;
+- network chunks;
+- queued decode work;
+- decoder/native temporary memory;
+- retained decoded PCM;
+- simultaneous playback.
+
+## M3 — Sound Physics Remastered productization
 
 Goal:
-Bring the already-developed compatibility work into the real product.
 
-Work:
-- preserve frozen V7.1 acoustics;
-- connect real player pause/resume/seek/stop lifecycle;
-- retain decode/cache/OpenAL hardening;
-- optional behavior when SPR is absent;
-- resolve companion-JAR vs integrated-module packaging;
-- clean experimental release/config naming with migration care;
-- one consolidated acoustic/lifecycle regression.
+Integrate existing `cchq-soundphysics-compat` work with the stabilized lifecycle.
 
-User result:
-> HQ playback works properly with Sound Physics Remastered.
+Preserve frozen V7.1 acoustics and existing hardening. Decide companion-JAR vs integrated optional module explicitly.
 
-## M4 — quality of life
+## M4 — programmable-audio QoL
 
-Potential work:
-- queue
-- next / previous
-- metadata polish
-- stream reconnect/error reporting
-- multi-speaker player controls
-- sync improvements
-- moving-speaker polish
+Potential capability additions:
 
-User result:
-> CC:HQ behaves like a polished music/audio system.
+- richer queue inspection/control;
+- events for readiness/end/error;
+- metadata improvements;
+- better multi-speaker control;
+- sync/moving-speaker polish;
+- optional playback-instance/handle API if real concurrency requirements justify it.
 
-## Rule
-
-No large refactor without a concrete player-visible reason.
+These remain primitives for Lua, not a built-in end-user player.

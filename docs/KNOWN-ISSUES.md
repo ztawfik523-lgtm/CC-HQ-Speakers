@@ -1,114 +1,154 @@
 # Known issues / product gaps
 
-## KI-001 — finite media is capped at 8 MiB twice
+Severity here is project priority, not a claim of exploitability.
 
-Source:
-- `HQSpeakerPeripheral.SPEAKER_MAX_AUDIO = 8 MiB`
-- `HQSpeakerAudioPacket.MAX_BYTES = 8 MiB`
+## P0 blockers
 
-The current finite path sends one complete encoded file in one packet.
+### KI-001 — standard CC:T speaker contract is not preserved
 
-Desired result:
-- ordinary and long tracks are practical;
-- encoded transfer and decoded memory remain bounded.
+Current replacement still reports type `speaker`, but:
 
-This requires more than blindly increasing a constant.
+- `playNote` ignores the requested instrument and requires arguments CC:T makes optional;
+- `playSound` ignores the requested sound identifier;
+- standard `stop()` is missing;
+- `playAudio` default-volume/backpressure behavior differs from CC:T.
 
-## KI-002 — `setLooping` is not end-to-end looping
+Desired result: HQ extends the normal speaker without breaking ordinary CC speaker programs.
 
-Source audit:
-- setter changes only a server-side boolean;
-- packet has no looping state;
-- client `HQSpeakerSound` sets `looping = false`.
+### KI-002 — `speaker_audio_empty` is not real raw backpressure
 
-Desired result:
-- finite playback actually repeats reliably;
-- loop can be changed predictably;
-- stop/replay/EOF state remains correct.
+Current server tick marks ready whenever the packet queue has fewer than four entries and can emit `speaker_audio_empty` repeatedly while idle.
 
-M1 candidate status: implemented with retained-PCM cursor rewind and
-generation-aware live control; real-client acceptance remains pending.
+The server packet queue is not the client's actual audible PCM capacity.
 
-## KI-003 — `speakIsPlaying` is not truthful finite playback state
+Desired result: `playAudio` acceptance and `speaker_audio_empty` form a truthful producer/backpressure contract.
 
-Current implementation reports server queue/stream state, not client finite renderer state.
+### KI-003 — finite -> raw client/server desynchronization
 
-Desired result:
-- a player program can query useful status such as loading/buffering/playing/paused/stopped/ended/error.
+Client raw-mode entry resets finite client playback, while server raw enqueue does not clear corresponding finite semantic tracks.
 
-M1 candidate status: `audioStatus()` now exposes semantic state plus renderer
-observation, and finite `speakIsPlaying()` follows loading/playing/paused state.
+Desired result: chosen heterogeneous-submission semantics are applied coherently on both sides.
 
-## KI-004 — no coherent pause/resume/seek/position/duration control
+### KI-004 — old listeners can miss stop/control packets
 
-Desired result:
-- a real player-oriented API;
-- old CC:HQ methods retained as compatibility wrappers where practical.
+Playback recipients are selected by current radius when each packet is sent. A client can receive playback, move away, then miss a later stop/control.
 
-M1 candidate status: implemented for finite media. Raw PCM and live streams do
-not claim finite duration/seek/loop semantics.
+Desired result: every client which can own stale playback can receive invalidation/control.
 
-## KI-005 — finite decode materializes complete PCM
+## High priority
 
-Current OGG uses full-memory `stb_vorbis_decode_memory`; JavaSound uses `readAllBytes()`.
+### KI-005 — raw renderer can remain alive after data drains
 
-Decoded finite PCM has a 64 MiB cap.
+Raw `HQAudioStream` can continue returning waiting/silence rather than terminal EOF, keeping a Minecraft streaming sound/source alive after a short feed has ended.
 
-Desired result:
-- long compressed media does not require whole-track decoded PCM where that becomes impractical.
+Desired result: intentional raw idle/grace semantics with bounded resource ownership.
 
-## KI-006 — wait/underrun/EOF semantics need audit
+### KI-006 — loop disable breaks wrapped logical position
 
-`HQAudioStream.read()` can synthesize silence while data is unavailable.
+Looping position is modulo duration. Disabling loop does not first rebase to the current wrapped position.
 
-Desired result:
-- buffering is not confused with EOF;
-- EOF is not confused with failure;
-- repeat does not get stuck in permanent silence;
-- player status reflects the real condition.
+Desired result: disabling loop preserves the current audible-cycle position.
 
-Related prior research:
-See `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md`. The broader CC:HQ lineage
-already exposed this same silence/wait-vs-completion ambiguity as a serious
-lifecycle defect class, so future work should reuse that evidence rather than
-treating it as a brand-new problem.
+### KI-007 — finite anchor has no failover
 
-## KI-007 — no productized SPR support
+First successful renderer becomes the server anchor. Later PAUSED/RESUMED/SEEKED/ENDED reports from another renderer are rejected even if the anchor disappears.
 
-Existing `cchq-soundphysics-compat` work already solves much of the acoustic problem.
+### KI-008 — later STARTED generation can skip earlier server state
 
-Needed:
-- productize, do not re-research;
-- connect new player lifecycle;
-- preserve V7.1 acoustics;
-- retain hardening.
+`promoteLocked` removes finite tracks before the reporting generation. Different clients may have received different generations.
 
-## KI-008 — repository hygiene
+Desired result: canonical queue order cannot be advanced by a client which missed an earlier item.
 
-Inherited tracked/generated/local directories include:
-- `.gradle/`
-- `.idea/`
-- `build/`
+### KI-009 — no-renderer finite playback can remain loading indefinitely
 
-Add a proper `.gitignore` and untrack them in bootstrap.
+Finite media is one-shot delivered and encoded bytes are not retained server-side for late resend.
 
-## KI-009 — target dependency versions (M0 resolved)
+Desired result: explicit no-observer policy (timeout/error, resend/session retention, or another deliberate behavior).
 
-Inherited:
-- NeoForge 21.1.211
-- CC:T 1.113.1
+### KI-010 — seek exactly to duration has an empty-renderer edge
 
-Target:
-- NeoForge 21.1.247 / 21.1.248
-- CC:T 1.120.0
+A non-looping seek to duration positions the retained cursor at EOF, but current client logic can still try to prime a renderer.
 
-Both exact builds and dedicated-server startup checks pass. The NeoForge
-21.1.247 client smoke run also passed mod loading, API registration, PCM8,
-PCM16, volume, finite MP3 playback, and clean shutdown. Its remaining skipped
-or inconclusive cases are recorded in `M0-SMOKE-TEST.md`.
+Desired result: clean `ended` transition without requiring an empty Minecraft stream to start.
 
-## KI-010 — license metadata mismatch
+### KI-011 — finite decoder work queue is unbounded
 
-Top-level repository license is MPL-2.0 while mod metadata says LGPL-3.0.
+The decoder executor is single-threaded with an unbounded task queue. Lifecycle tokens reject stale results but do not cancel/remove queued stale jobs.
 
-Investigate provenance and preserve obligations before release.
+### KI-012 — decoded PCM cap is checked after whole allocation
+
+OGG native decode and JavaSound `readAllBytes()` can materialize the complete decoded result before the 64 MiB validation.
+
+Desired result: resource bounds apply before/until allocation, not only afterward.
+
+### KI-013 — stream volume is applied twice
+
+`StreamingAudioSource.queuePCM()` scales decoded PCM by stream volume and `HQSpeakerSound` applies packet volume again.
+
+Desired result: one logical gain stage plus normal Minecraft category/master scaling.
+
+### KI-014 — HLS live window progression can stall
+
+`EXT-X-MEDIA-SEQUENCE` is parsed but not used to identify newly appeared segments. A persistent list index can reach the old playlist size and then skip all same-sized refreshed windows.
+
+### KI-015 — direct TS path is not incrementally streaming
+
+Direct `streamTS()` collects the demuxer's full `List<AudioFrame>` before queueing playback. Endless TS input therefore need not produce output and can grow memory.
+
+### KI-016 — unsupported TS audio may be treated as PCM
+
+`decodeAudioFrame` returns compressed frame bytes unchanged on `UnsupportedAudioFileException`.
+
+Desired result: unsupported codecs fail clearly; compressed bytes are never mislabeled as PCM.
+
+### KI-017 — stream server state is intent, not renderer/network truth
+
+`speakIsPlaying`/`audioStatus` use server `streamActive`, which is not cleared by arbitrary client network/decode failure.
+
+Live pause/reconnect-resume is also not implemented.
+
+### KI-018 — partial multi-speaker sync can wait forever
+
+Expected group size is global while packet delivery is range-local. A client may receive only a subset but wait for the full count.
+
+Shared streaming groups have the same expected-tap problem.
+
+### KI-019 — shared stream session can leak if it never starts
+
+`forceClose()` removes the session only inside a successful `running.compareAndSet(true, false)`. A session which never reached expected taps can have `running=false` and remain in the static map.
+
+### KI-020 — provider cache can retain stale world state
+
+Provider cache key is dimension+block position while the value stores a concrete `Level`. `forget()` exists but has no current call site.
+
+## Medium / cleanup
+
+### KI-021 — advertised finite formats exceed bundled decoder evidence
+
+`speakSupportedFiles()` advertises MP4/M4A/AAC. The repo bundles MP3SPI/JLayer/Tritonus and relies on JavaSound for generic formats; no dedicated AAC/MP4 decoder is bundled.
+
+Do not advertise a format as supported without exact runtime/decoder evidence.
+
+### KI-022 — separate HQ block/group architecture appears unused or duplicated
+
+The repo registers `hqspeaker:hq_speaker` and contains `HQSpeakerGroupPeripheral`, while the actual product path replaces normal CC speakers and duplicates All/At methods on `HQSpeakerPeripheral`.
+
+Prove these paths are intentionally supported or remove/quarantine them later.
+
+### KI-023 — finite encoded media is capped at 8 MiB
+
+The limit exists in both peripheral and packet code and whole encoded content is sent in one packet.
+
+Do not fix by blindly raising constants.
+
+### KI-024 — documentation/testing was stale
+
+Prior docs mixed inherited pre-M1 facts with current M1 facts and described the project as an audio-player mod.
+
+P0 rewrites the documentation around the programmable-peripheral model and adds a compatibility/test matrix.
+
+### KI-025 — license metadata mismatch
+
+Repository LICENSE is MPL-2.0 while NeoForge metadata declares LGPL-3.0.
+
+Resolve provenance before public release.
