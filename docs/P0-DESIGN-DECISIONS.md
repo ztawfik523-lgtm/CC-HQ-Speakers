@@ -6,6 +6,17 @@ They are intentionally **not decided in this document**. The user should choose 
 
 Routine implementation details should not be escalated.
 
+## Scope boundaries already fixed by compatibility/source evidence
+
+These are **not** part of the choices below:
+
+- standard `playNote` must regain CC:T note-block-instrument behavior and its normal independent note semantics;
+- standard `playSound` must regain real registered-sound playback and at minimum preserve CC:T's existing conflict/backpressure rules with standard `playAudio`;
+- the current D1 decision is specifically about the source-proven HQ raw/feed ↔ finite collision bug;
+- inherited live-stream start currently calls `speakStop()` and is exclusive. Stream arbitration can be revisited deliberately in M1C, together with live pause/reconnect and truthful stream state, rather than being silently folded into D1.
+
+When D1 is implemented, `playSound` interaction with active HQ-only finite playback must be documented consistently with the chosen one-speaker busy/arbitration model; standard calls used on their own must remain CC:T-compatible.
+
 ---
 
 ## D1 — heterogeneous raw + finite submissions on one physical speaker
@@ -39,7 +50,7 @@ Pros:
 
 Cons:
 
-- CC:T `playAudio` still needs its own single-buffer backpressure contract;
+- CC:T `playAudio` still needs its own single-pending-buffer backpressure contract;
 - raw/finite lifecycle must coexist without pretending raw chunks are seekable finite tracks;
 - queue/state implementation is more complex than replacement.
 
