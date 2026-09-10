@@ -58,6 +58,8 @@ The normal peripheral type is `speaker`.
 
 `playNote(instrument [, volume [, pitch]])` accepts optional volume/pitch, resolves a real note-block instrument, validates the instrument, and is subject to the configured per-tick note limit.
 
+The official documentation says omitted pitch defaults to `12`, while the exact `v1.21.1-1.120.0` source uses `pitchA.orElse(1.0)`. This is an upstream source/documentation discrepancy and is not silently reconciled here.
+
 ### FACT-CCT-003
 
 `playSound(name [, volume [, pitch]])` resolves a Minecraft/modded sound identifier, accepts optional volume/pitch, and returns false when a sound/audio conflict prevents playback.

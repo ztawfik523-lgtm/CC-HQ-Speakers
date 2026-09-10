@@ -53,12 +53,26 @@ Required semantics:
 
 - `instrument` identifies a real Minecraft note-block instrument;
 - volume is optional and defaults to `1.0`;
-- pitch is optional and defaults to `12` semitones;
+- pitch is optional;
 - invalid instrument throws a Lua error;
 - volume is clamped/validated as CC:T does;
 - pitch must be finite;
 - note playback is subject to CC:T's configured per-tick note limit;
 - return value indicates whether the note was accepted.
+
+### Exact 1.120.0 pitch-default discrepancy
+
+The official speaker documentation says omitted pitch defaults to `12` semitones.
+
+The exact Minecraft 1.21.1 / CC:T 1.120.0 source tag instead calls:
+
+`pitchA.orElse(1.0)`
+
+before converting semitones with `(pitch - 12) / 12`.
+
+Those sources therefore disagree. Do not silently rewrite this discrepancy as a settled fact.
+
+For drop-in compatibility work, the exact 1.120.0 runtime/source behavior is the version-specific reference unless the project explicitly decides to correct the upstream bug/documentation mismatch. The P0 runtime contract test currently checks that the optional argument may be omitted, not which audible default pitch is chosen.
 
 Current HQ status: **FAIL**
 
