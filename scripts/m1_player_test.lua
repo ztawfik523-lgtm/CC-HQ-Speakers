@@ -62,23 +62,30 @@ finiteCase("MP3", "speakMp3", mp3)
 
 assert(speaker.audioSetLooping(true), "loop enable failed")
 local loopStatus = speaker.audioStatus()
-assert(loopStatus.duration <= 8, "use an MP3 no longer than 8 seconds for the loop test")
-assert(speaker.audioSeek(math.max(0, loopStatus.duration - 0.5)), "loop seek failed")
-local wraps, previous = 0, speaker.audioStatus().position
-local loopDeadline = os.epoch("utc") + math.ceil(loopStatus.duration * 4 + 5) * 1000
-while wraps < 3 and os.epoch("utc") < loopDeadline do
-  sleep(0.05)
-  local current = speaker.audioStatus()
-  assert(current.state == "playing", "loop stopped before three cycles")
-  if current.position + 0.2 < previous then
-    wraps = wraps + 1
-    print("loop wrap", wraps)
+local seekNearEnd = math.max(0, loopStatus.duration - 0.75)
+for cycle = 1, 3 do
+  assert(speaker.audioSeek(seekNearEnd), "loop seek failed")
+  local deadline = os.epoch("utc") + 5000
+  local previous = 0
+  local sawNearEnd = false
+  local wrapped = false
+  while os.epoch("utc") < deadline do
+    sleep(0.05)
+    local current = speaker.audioStatus()
+    assert(current.state == "playing", "loop stopped before cycle " .. cycle)
+    if current.position >= math.max(0, seekNearEnd - 0.25) then sawNearEnd = true end
+    if sawNearEnd and current.position + 0.2 < previous then
+      wrapped = true
+      break
+    end
+    previous = current.position
   end
-  previous = current.position
+  assert(wrapped, "did not observe loop wrap " .. cycle)
+  print("loop wrap", cycle)
 end
-assert(wraps >= 3, "did not observe three loop cycles")
 assert(speaker.audioSetLooping(false), "loop disable failed")
-waitFor("ended", math.ceil(loopStatus.duration + 8))
+assert(speaker.audioSeek(seekNearEnd), "post-loop seek failed")
+waitFor("ended", 8)
 assert(speaker.speakIsPlaying() == false, "speakIsPlaying stayed true after natural end")
 status("loop and natural end passed")
 

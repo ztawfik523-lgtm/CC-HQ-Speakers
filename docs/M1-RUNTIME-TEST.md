@@ -1,13 +1,21 @@
 # M1 consolidated runtime test
 
 Run one Minecraft 1.21.1 client with Java 21, CC:T 1.120.0, NeoForge 21.1.247,
-and the final M1 candidate JAR. Use three short finite files copied onto the
-computer as `m1.mp3`, `m1.ogg`, and `m1.wav`. The MP3 must be no longer than
-eight seconds so three complete loop cycles stay quick. Give two files
-different sample rates if practical.
+and the final M1 candidate JAR. Generate three deterministic nominal eight-second
+fixtures from the repository root with:
 
-Copy `scripts/m1_player_test.lua` to the ComputerCraft computer, attach one HQ
-speaker, and run:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/generate_m1_test_audio.ps1
+```
+
+This writes `m1.mp3` (44.1 kHz), `m1.ogg` (48 kHz), and `m1.wav` (32 kHz) to
+`build/m1-test-audio`. It requires FFmpeg; the generator prints the exact
+Windows installation command if FFmpeg is missing. MP3 frame padding can make
+its decoded duration differ from exactly 8.000 seconds by a few milliseconds;
+the player and test correctly use the decoded duration.
+
+Copy the three generated files and `scripts/m1_player_test.lua` to the
+ComputerCraft computer, attach one HQ speaker, and run:
 
 ```text
 m1_player_test m1.mp3 m1.ogg m1.wav
