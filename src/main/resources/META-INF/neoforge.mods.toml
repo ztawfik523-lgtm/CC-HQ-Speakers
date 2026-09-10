@@ -32,6 +32,6 @@ side="BOTH"
 [[dependencies.hqspeaker]]
 modId="computercraft"
 type="required"
-versionRange="[1.113.1,)"
+versionRange="[1.120.0,1.121)"
 ordering="AFTER"
 side="BOTH"

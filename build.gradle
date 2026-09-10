@@ -21,7 +21,7 @@ repositories {
 }
 
 neoForge {
-    version = '21.1.211'
+    version = providers.gradleProperty('neoForgeVersion').getOrElse('21.1.247')
 
     runs {
         client {
@@ -44,7 +44,7 @@ neoForge {
 }
 
 dependencies {
-    implementation 'cc.tweaked:cc-tweaked-1.21.1-forge:1.113.1'
+    implementation 'cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0'
 
     // OGG uses Minecraft/LWJGL STBVorbis; MP3/WAV use JavaSound/mp3spi.
     jarJar 'com.googlecode.soundlibs:mp3spi:[1.9.5.4,1.9.6)'
