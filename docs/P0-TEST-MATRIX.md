@@ -6,7 +6,7 @@ The repo should not require a full Minecraft launch to rediscover every basic li
 
 Use three layers:
 
-1. pure/unit tests for deterministic codec/parser/cursor/protocol logic;
+1. pure/unit tests for deterministic codec/parser/cursor/state logic;
 2. state-machine/component tests for server/client lifecycle logic as it becomes extractable;
 3. one consolidated Minecraft/Lua acceptance pass for behavior which depends on real CC:T/Minecraft sound plumbing.
 
@@ -40,22 +40,13 @@ Covers:
 
 This preserves the parser facts needed when stream progression is fixed. It does not claim current `StreamingAudioSource.streamHLS()` advances sliding windows correctly.
 
-`HQSpeakerStatusPacketTest`
+### Why packet tests are not in the ordinary unit source set
 
-Covers:
+An initial P0 pass added direct unit tests for `HQSpeakerAudioPacket` and `HQSpeakerStatusPacket`. The normal Gradle `test` source set cannot compile those classes because Minecraft's generated `CustomPacketPayload` classes are not on its test compile classpath, even though production `compileJava` has the NeoForge/Minecraft classpath.
 
-- sensible finite timing validation;
-- rejection of NaN/negative/impossible timing;
-- error-string cap;
-- non-negative generation normalization.
+P0 deliberately does **not** distort the test configuration just to instantiate packet classes. Protocol validation should instead be tested after the pure validation/state rules are extracted from Minecraft-bound packet classes, or in a proper NeoForge component/game-test setup when such a harness is justified.
 
-`HQSpeakerAudioPacketTest`
-
-Covers:
-
-- finite generation/loop/pause metadata retention;
-- volume clamping;
-- stream-format classification.
+The first CI failure which exposed this limitation is part of the P0 evidence, not a production-code failure.
 
 ### Lua/runtime contract tests
 
@@ -99,6 +90,7 @@ At reviewed M1 HEAD this is expected to expose known finite lifecycle defects.
 | no-renderer policy | server timeout/session test after policy chosen |
 | exact-duration seek | client finite control test + Lua runtime |
 | decoder backlog | executor saturation/cancellation test after D3 |
+| packet/status validation | extracted pure validation test or NeoForge component test |
 | stream double volume | unit test of gain ownership after refactor |
 | HLS sliding window | playlist-sequence progression unit test |
 | direct TS incremental output | demux/producer test with bounded synthetic stream |
@@ -112,7 +104,7 @@ At reviewed M1 HEAD this is expected to expose known finite lifecycle defects.
 
 ## CI expectations
 
-P0 Java tests must run in the existing `.247` and `.248` Gradle matrix because `clean build` executes tests.
+P0 pure Java tests must run in the existing `.247` and `.248` Gradle matrix because `clean build` executes tests.
 
 Do not add intentionally failing Java tests for known current bugs to main CI.
 

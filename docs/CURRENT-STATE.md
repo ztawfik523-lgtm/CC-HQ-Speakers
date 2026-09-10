@@ -55,6 +55,8 @@ The workflow uses Java 21 and verifies the packaged mod contains:
 
 This proves build/package compatibility, not client playback correctness.
 
+During P0, an initial test-only commit failed `compileTestJava` because direct tests of Minecraft-bound packet classes could not resolve `CustomPacketPayload` from the ordinary unit-test source set. Production `compileJava` completed first. Those packet-constructor tests were removed in favor of keeping the pure unit suite independent from Minecraft-generated classes; protocol rules remain scheduled for extracted/component tests.
+
 ## M1 finite-media implementation
 
 Current M1 finite media has:
@@ -84,13 +86,13 @@ Known mismatches include:
 
 - `playNote` ignores the selected instrument and synthesizes a sine wave;
 - its Java signature makes volume/pitch required rather than optional;
-- `playSound` ignores the requested sound name and calls the generated note path;
+- `playSound` ignores the requested sound name;
 - standard `stop()` is absent;
 - `playAudio` does not preserve CC:T's single-pending-buffer/backpressure behavior;
 - omitted `playAudio` volume uses HQ default volume instead of previous `playAudio` volume;
 - `speaker_audio_empty` is driven by the server dispatch queue and can fire repeatedly while idle.
 
-See `CC-T-COMPATIBILITY-CONTRACT.md`.
+The exact CC:T 1.120.0 source and its public docs disagree on the omitted `playNote` pitch default. That discrepancy is recorded explicitly in `CC-T-COMPATIBILITY-CONTRACT.md` rather than silently reconciled.
 
 ## Major source-proven blockers
 
@@ -143,16 +145,17 @@ Expected group size is global while packet delivery is range-local. A client rec
 
 ## Test state
 
-CI currently executes only small pure-Java tests. Before P0, all tests were focused on `FiniteAudioTrack`.
+Before P0, the Java test suite consisted only of `FiniteAudioTrackTest`.
 
-P0 adds:
+P0 prep adds:
 
-- HLS parser tests;
-- network status/packet validation tests;
-- additional finite cursor edge tests;
+- finite cursor/end/loop-disable edge coverage;
+- pure HLS parser tests;
 - a runtime CC:T compatibility acceptance script;
 - a finite lifecycle regression script;
 - an explicit test matrix mapping every blocker to an automated or runtime proof.
+
+Direct packet-constructor tests were attempted and then deliberately removed after CI proved the ordinary unit-test source set lacks Minecraft's generated packet classes. Packet/status validation remains a future extracted/component test target.
 
 Many source-proven defects are intentionally not "tested green" yet. Tests should encode the desired contract before those fixes land.
 
