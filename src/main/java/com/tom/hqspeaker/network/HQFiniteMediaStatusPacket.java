@@ -10,11 +10,12 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.UUID;
 
+/** Client finite telemetry. READY requests a fresh server snapshot; ERROR is diagnostic only. */
 public record HQFiniteMediaStatusPacket(
     UUID source, long generation, Transition transition,
     double position, double duration, String error
 ) implements CustomPacketPayload {
-    public enum Transition { READY, STARTED, PAUSED, RESUMED, SEEKED, ENDED, ERROR }
+    public enum Transition { READY, ERROR }
     private static final int MAX_ERROR = 256;
 
     public static final Type<HQFiniteMediaStatusPacket> TYPE =
