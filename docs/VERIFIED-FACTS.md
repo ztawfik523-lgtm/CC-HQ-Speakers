@@ -196,9 +196,9 @@ The composite checks both:
 
 The current duration allowance is `135872` samples: one maximum legal `131072`-sample call plus `4800` samples/100 ms of headroom.
 
-For a valid `speakPCM` call rejected for capacity, the composite remembers that computer's requested sample count. It emits `hqspeaker_audio_empty` only once both the packet queue and the duration allowance can fit that requested count again.
+For a valid-sized `speakPCM` call rejected for capacity, the composite remembers that computer's requested sample count. It emits `hqspeaker_audio_empty` only once both the packet queue and the duration allowance can fit that requested count again.
 
-Malformed, empty, and over-limit RAW tables still go through validation and throw rather than becoming ordinary capacity waiters.
+Empty and over-limit table lengths go through inherited validation and throw. Individual sample values are validated by the inherited converter only once a call reaches conversion, so a valid-sized call can be rejected for capacity before value-level validation runs.
 
 ### FACT-M1A-008
 
@@ -334,7 +334,7 @@ Current pure Java tests include:
 
 ### FACT-TEST-003
 
-`scripts/m1a_output_contract.lua` is the M1A single-speaker runtime contract for HQ RAW ownership/backpressure/stop/replacement and native-method recovery.
+`scripts/m1a_output_contract.lua` is the M1A single-speaker runtime contract for HQ RAW ownership, packet-capacity and duration-capacity backpressure, stop/replacement, and native-method recovery.
 
 Neither script should be reported as a runtime pass until it has actually been run successfully in Minecraft on the target stack.
 
