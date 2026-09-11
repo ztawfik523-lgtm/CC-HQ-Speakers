@@ -59,6 +59,10 @@ function hqspeaker.prepareFile(speaker, path)
         pcall(fs.delete, stagedPath)
         error(assetOrError, 2)
     end
+
+    -- The server normally consumes the staging file. Retry from the mounted filesystem too so a successful asset
+    -- is never discarded merely because the first cleanup attempt failed.
+    pcall(fs.delete, stagedPath)
     return assetOrError
 end
 
