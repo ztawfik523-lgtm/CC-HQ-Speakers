@@ -7,6 +7,8 @@
 | What does the M1A output/ownership slice guarantee? | `M1A-OUTPUT-OWNERSHIP.md` |
 | How does the reusable server media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
 | How do CC-local files become prepared reusable assets? | `M1C-LOCAL-IMPORT.md` |
+| How are finite files identified and timed on the server? | `M1D-MEDIA-ANALYSIS.md` |
+| What storage safety settings can the server owner configure? | `SERVER-CONFIG.md` |
 | What architecture decisions replaced the old P0 D1-D4 options? | `P0-DESIGN-DECISIONS.md` |
 | What did the cleanup/redesign preparation milestone do? | `M0.5-CLEANUP.md` |
 | What is tested now and what must be added? | `P0-TEST-MATRIX.md` |
