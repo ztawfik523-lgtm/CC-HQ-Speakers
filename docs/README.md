@@ -4,8 +4,9 @@
 |---|---|
 | What exists now? | `CURRENT-STATE.md` |
 | What is the exact CC:T compatibility contract? | `CC-T-COMPATIBILITY-CONTRACT.md` |
-| What does the active M1A output/ownership slice guarantee? | `M1A-OUTPUT-OWNERSHIP.md` |
-| How does the new reusable server media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
+| What does the M1A output/ownership slice guarantee? | `M1A-OUTPUT-OWNERSHIP.md` |
+| How does the reusable server media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
+| How do CC-local files become prepared reusable assets? | `M1C-LOCAL-IMPORT.md` |
 | What architecture decisions replaced the old P0 D1-D4 options? | `P0-DESIGN-DECISIONS.md` |
 | What did the cleanup/redesign preparation milestone do? | `M0.5-CLEANUP.md` |
 | What is tested now and what must be added? | `P0-TEST-MATRIX.md` |
