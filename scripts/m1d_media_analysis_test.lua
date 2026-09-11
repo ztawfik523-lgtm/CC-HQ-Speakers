@@ -23,8 +23,25 @@ local disguised = ".hqspeaker-m1d-" .. suffix .. ".definitely-not-the-real-exten
 local invalid = ".hqspeaker-m1d-invalid-" .. suffix .. ".mp3"
 
 local function cleanup()
+    pcall(speaker.audioStop)
     pcall(fs.delete, disguised)
     pcall(fs.delete, invalid)
+end
+
+local function waitForObserved(assetId, timeoutMs)
+    local deadline = os.epoch("utc") + timeoutMs
+    while os.epoch("utc") < deadline do
+        local status = speaker.audioStatus()
+        assert(status.assetId == assetId, "playback status lost the asset ID while waiting for renderer")
+        if status.state == "error" then
+            error("client renderer failed: " .. tostring(status.error or "unknown playback error"), 0)
+        end
+        if status.observed == true then return status end
+        sleep(0.05)
+    end
+    local status = speaker.audioStatus()
+    error(("client renderer was not observed within %.1fs (state=%s, transferred=%s/%s)")
+        :format(timeoutMs / 1000, tostring(status.state), tostring(status.transferredBytes), tostring(status.totalBytes)), 0)
 end
 
 local ok, err = xpcall(function()
@@ -39,6 +56,7 @@ local ok, err = xpcall(function()
     assert(type(info.sampleRate) == "number" and info.sampleRate > 0, "sample rate was not analyzed")
     assert(type(info.channels) == "number" and info.channels >= 1 and info.channels <= 8,
         "channel count was not analyzed")
+    assert(type(info.bitsPerSample) == "number" and info.bitsPerSample >= 0, "bitsPerSample was not analyzed")
     assert(type(info.sizeBytes) == "number" and info.sizeBytes == fs.getSize(path), "encoded size mismatch")
 
     print(("Detected %s: %.3fs, %d Hz, %d channel(s)")
@@ -52,6 +70,11 @@ local ok, err = xpcall(function()
     assert(math.abs(status.duration - info.duration) < 0.001, "playback duration disagrees with prepared metadata")
     assert(status.sampleRate == info.sampleRate, "playback sample rate disagrees with prepared metadata")
     assert(status.channels == info.channels, "playback channel count disagrees with prepared metadata")
+
+    -- A small accepted fixture must actually be accepted by the client decoder too, not merely by server analysis.
+    local observed = waitForObserved(asset, 15000)
+    assert(observed.observed == true, "client renderer never became observed")
+    print("Client renderer observed; decoder accepted the prepared asset")
 
     -- Releasing preparation must not kill the playback's separate reference.
     assert(hq.releasePrepared(speaker, asset), "prepared reference did not release")
