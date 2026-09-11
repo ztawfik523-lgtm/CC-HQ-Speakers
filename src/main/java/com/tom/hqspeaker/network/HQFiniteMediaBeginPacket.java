@@ -18,7 +18,6 @@ public record HQFiniteMediaBeginPacket(
 ) implements CustomPacketPayload {
     public enum MediaFormat { MP3, OGG, AUDIO_FILE }
 
-    public static final long MAX_MEDIA_BYTES = 512L * 1024L * 1024L;
     public static final Type<HQFiniteMediaBeginPacket> TYPE =
         new Type<>(ResourceLocation.fromNamespaceAndPath(HQSpeakerMod.MOD_ID, "finite_begin"));
 
@@ -47,9 +46,10 @@ public record HQFiniteMediaBeginPacket(
         };
 
     public boolean sensible() {
+        // File-size policy belongs to the server config/store. This prototype transport only validates wire sanity.
         return source != null && mediaId != null && generation > 0L && format != null
             && Float.isFinite(volume) && Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z)
-            && totalBytes > 0L && totalBytes <= MAX_MEDIA_BYTES;
+            && totalBytes > 0L;
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
