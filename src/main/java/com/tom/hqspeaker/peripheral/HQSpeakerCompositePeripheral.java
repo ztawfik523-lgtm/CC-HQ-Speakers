@@ -375,7 +375,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static int contiguousRawSamples(IArguments args) throws LuaException {
         Map<?, ?> table = args.getTable(0);
         int length = 0;
-        while (length < HQ_RAW_MAX_SAMPLES
+        while (length <= HQ_RAW_MAX_SAMPLES
                 && (table.containsKey((long) (length + 1)) || table.containsKey((double) (length + 1)))) {
             length++;
         }
