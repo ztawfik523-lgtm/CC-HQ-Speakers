@@ -23,6 +23,13 @@ function hqspeaker.playFile(speaker, path, options)
     local volume = options.volume
     if volume ~= nil and type(volume) ~= "number" then error("volume must be a number", 2) end
 
+    local size = fs.getSize(path)
+    local maxSize = speaker.audioMaxStagedBytes()
+    if size <= 0 then error("file is empty: " .. path, 2) end
+    if size > maxSize then
+        error(("file is too large (%d bytes; maximum %d bytes)"):format(size, maxSize), 2)
+    end
+
     local mount = speaker.audioMountPath()
     local ext = path:match("(%.[%w_%-]+)$") or ".media"
     local token = tostring(os.epoch("utc")) .. "-" .. tostring(math.random(0, 0x7fffffff))
