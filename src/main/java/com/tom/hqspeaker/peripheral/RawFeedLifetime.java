@@ -5,6 +5,9 @@ package com.tom.hqspeaker.peripheral;
  *
  * This deliberately knows nothing about Minecraft, networking, or renderers. The composite owns those concerns and
  * tells this state object whether the inherited outbound queue still contains RAW packets.
+ *
+ * Methods are synchronized because accepted samples may arrive from a ComputerCraft computer thread while lifecycle
+ * ticking happens on the server thread.
  */
 final class RawFeedLifetime {
     static final int SAMPLE_RATE = 48_000;
@@ -13,7 +16,7 @@ final class RawFeedLifetime {
     private long drainTicks;
     private int idleTicks;
 
-    void acceptedSamples(int samples) {
+    synchronized void acceptedSamples(int samples) {
         if (samples <= 0) throw new IllegalArgumentException("samples must be positive");
         long ticks = Math.max(1L, (samples * 20L + SAMPLE_RATE - 1L) / SAMPLE_RATE);
         drainTicks += ticks;
@@ -26,7 +29,7 @@ final class RawFeedLifetime {
      * @param queueHasData Whether the inherited server RAW packet queue still contains unsent data.
      * @return true once the feed has drained and the idle grace elapsed, meaning the caller should close the source.
      */
-    boolean tick(boolean queueHasData) {
+    synchronized boolean tick(boolean queueHasData) {
         if (drainTicks > 0L) drainTicks--;
         if (queueHasData || drainTicks > 0L) {
             idleTicks = 0;
@@ -35,19 +38,19 @@ final class RawFeedLifetime {
         return ++idleTicks >= GRACE_TICKS;
     }
 
-    boolean active(boolean queueHasData) {
+    synchronized boolean active(boolean queueHasData) {
         return queueHasData || drainTicks > 0L || idleTicks < GRACE_TICKS;
     }
 
-    long drainTicks() {
+    synchronized long drainTicks() {
         return drainTicks;
     }
 
-    int idleTicks() {
+    synchronized int idleTicks() {
         return idleTicks;
     }
 
-    void clear() {
+    synchronized void clear() {
         drainTicks = 0L;
         idleTicks = 0;
     }
