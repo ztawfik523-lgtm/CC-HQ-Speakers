@@ -18,9 +18,13 @@ M1A local-file prototype reference:
 
 `69e34a5346f6ce47580f49ed867c9951bfd338bc`
 
-Current cleanup/redesign preparation branch:
+Completed M0.5 preparation reference:
 
-`codex/m0.5-cleanup-prep`
+`ad38412a2173f849a0fc8e867030da8a78965c9c`
+
+Current M1A implementation branch:
+
+`codex/m1a-compat-output`
 
 Target stack:
 
@@ -42,7 +46,7 @@ Technical source categories remain:
 - finite files with a truthful timeline;
 - live/open-ended network streams later.
 
-## What the M1A prototype proved
+## What the frozen local-file prototype proved
 
 The frozen `69e34a5` prototype established that the following are viable on the target stack:
 
@@ -54,7 +58,52 @@ The frozen `69e34a5` prototype established that the following are viable on the 
 - a bundled `hqspeaker.lua` ROM helper can expose a simple `hq.playFile(speaker, path)` interface;
 - pure tests cover finite clock and staged path behavior.
 
-The prototype built successfully on NeoForge 21.1.247 and 21.1.248 before M0.5 started.
+The prototype is evidence and implementation material, not the target finite architecture.
+
+## M0.5 result
+
+M0.5 completed the cleanup/redesign preparation layer before M1A:
+
+- prototype branch preserved unchanged;
+- deterministic composite cleanup on speaker removal, server Level unload, and server shutdown;
+- repository guidance rewritten around accepted architecture rather than obsolete P0 choices;
+- packaged JAR verification now checks the bundled `hqspeaker.lua` ROM module;
+- exact M0.5 HEAD built successfully on NeoForge 21.1.247 and 21.1.248.
+
+See `docs/M0.5-CLEANUP.md`.
+
+## M1A current source state
+
+M1A is the compatibility/output-ownership milestone. It does not yet implement the new reusable finite-media asset system.
+
+Current source behavior on `codex/m1a-compat-output`:
+
+- standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain delegated to CC:T 1.120.0's real `SpeakerPeripheral`;
+- synthetic inherited HQ `speaker_audio_empty` events are suppressed;
+- the normal single physical speaker has one explicit HQ continuous owner: RAW, legacy finite, staged finite prototype, or stream intent;
+- a new incompatible HQ start replaces the prior HQ source; Java does not create a playlist;
+- repeated `speakPCM` calls continue the current RAW feed;
+- native notes remain independent;
+- native `playSound` / `playAudio` return `false` while HQ continuous output owns the speaker rather than overlapping it;
+- `stop()` ends both native CC sound/audio state and HQ continuous state;
+- `audioStop()` truthfully stops the current HQ source, including RAW/stream intent;
+- `audioStatus()` is routed by current HQ ownership instead of stale terminal state from another subsystem;
+- RAW reports open-ended capabilities instead of fake duration/seek/loop support;
+- `speakMaxSamples()` now reports the real inherited contiguous table ceiling of `131072`;
+- rejected `speakPCM` writers receive the separate `hqspeaker_audio_empty` event when the bounded HQ server queue actually has capacity again;
+- RAW drain lifetime is sample-derived in server ticks and eventually releases the otherwise-silent inherited client source.
+
+Source/CI success is **not** Minecraft runtime proof. The acceptance scripts still need to be run on the target stack before M1A is declared runtime-complete.
+
+See `docs/M1A-OUTPUT-OWNERSHIP.md` and `docs/CC-T-COMPATIBILITY-CONTRACT.md`.
+
+## Multi-speaker boundary during M1A
+
+The inherited `*All` / `*At` helpers directly call old `HQSpeakerPeripheral` instances and bypass the new composite ownership boundary.
+
+M1A deliberately does not retrofit them. They still carry the inherited expected-group-count/sync architecture and are scheduled for replacement by M1J's shared asset/timeline + per-physical-speaker renderer design.
+
+Do not infer single-speaker M1A ownership guarantees for those helpers yet.
 
 ## Prototype concepts scheduled for replacement
 
@@ -69,11 +118,11 @@ Do **not** treat these as the target architecture:
 - delete-on-initial-transfer behavior;
 - expected-group-size/expected-tap synchronization.
 
-M0.5 deliberately does not polish these concepts because the accepted redesign removes them.
+M1A does not polish these concepts because the accepted finite redesign removes them.
 
 ## Accepted finite-media direction
 
-The target model is:
+The target model after M1A is:
 
 ```text
 ComputerCraft file
@@ -100,47 +149,22 @@ Important consequences:
 
 See `docs/ROADMAP.md` for implementation order.
 
-## Standard CC:T compatibility
+## Known work after M1A
 
-The composite peripheral currently delegates standard methods to CC:T's actual speaker implementation:
+The following remain intentionally outside the current compatibility/output slice:
 
-- `playNote`
-- `playSound`
-- `playAudio`
-- `stop`
-
-The legacy HQ synthetic `speaker_audio_empty` event is filtered at the composite boundary so native `speaker_audio_empty` remains CC:T's backpressure event.
-
-Known follow-up work remains around the interaction between standard CC sources and HQ continuous playback, but standard behavior itself should continue to be delegated rather than reimplemented.
-
-## M0.5 work
-
-M0.5 is cleanup/preparation, not the finite-engine redesign itself.
-
-Current goals:
-
-- freeze the prototype reference and work on a separate redesign branch;
-- deterministic provider cache cleanup on server Level unload and server shutdown;
-- stop relying on a weak-key cache whose values strongly reference the same Level;
-- update agent/design/roadmap guidance so obsolete P0 choices are not revived;
-- verify the bundled ComputerCraft Lua module in packaged JARs;
-- preserve current unit tests and dual-NeoForge CI;
-- avoid repairing prototype recipient/renderer-timeout/client-authority concepts which are scheduled for deletion.
-
-## Known work intentionally deferred past M0.5
-
-The following remain real issues but are not prerequisites for the cleanup milestone:
-
-- migrate legacy finite byte APIs onto the new future asset engine;
-- replace the 8 MiB whole-byte finite path for local-file use;
+- reusable server media asset manager;
+- replace the 8 MiB local-file architecture with asset/range transfer;
 - server media metadata/duration analysis;
-- client-pulled range transfer;
-- reusable client asset cache;
+- client-pulled range transfer and reusable client cache;
+- server-authoritative finite clock/EOF;
 - efficient asynchronous MP3 seek/indexing;
 - dynamic range-based renderer lifecycle;
-- multispeaker asset/timeline sharing;
-- HQ raw feed backpressure/lifecycle cleanup;
+- multispeaker asset/timeline sharing and `*All` / `*At` replacement;
+- migrate legacy finite byte APIs onto the new finite engine;
+- richer RAW pause behavior if later justified;
 - stream double-volume/HLS/TS/live-state problems;
+- sound-category normalization;
 - SPR integration;
 - dead custom HQ block decision;
 - MPL/LGPL metadata mismatch resolution before public release.
@@ -154,6 +178,11 @@ Pure Java tests currently cover:
 - `FinitePlaybackClock` behavior;
 - `FiniteMediaPath` validation.
 
-Runtime scripts include standard CC:T speaker-contract acceptance and the M1A staged finite prototype test. Do not run the staged prototype test as final architecture acceptance after the asset redesign begins; it remains useful only as historical/prototype evidence until rewritten.
+Runtime scripts relevant to the current milestone:
+
+- `scripts/p0_cc_speaker_contract.lua` — standard CC:T compatibility;
+- `scripts/m1a_output_contract.lua [optional-small-mp3]` — HQ ownership, RAW backpressure/event, replacement, stop, and idle release.
+
+The staged prototype runtime script remains useful as historical/prototype evidence but is not final architecture acceptance.
 
 CI must continue to build NeoForge 21.1.247 and 21.1.248 with Java 21 and verify required packaged resources, including the bundled `data/computercraft/lua/rom/modules/main/hqspeaker.lua` module.
