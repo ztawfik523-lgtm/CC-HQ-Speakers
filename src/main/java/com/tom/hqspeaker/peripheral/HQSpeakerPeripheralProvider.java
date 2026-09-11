@@ -32,8 +32,9 @@ public class HQSpeakerPeripheralProvider {
             if (current != null && current.usesVanilla(vanilla)) return current;
             if (current != null) current.cleanup();
             HQSpeakerPeripheral legacy = new HQSpeakerPeripheral(key, world);
-            HQFiniteMediaServer finite = new HQFiniteMediaServer(world, key);
-            return new HQSpeakerCompositePeripheral(legacy, vanilla, finite);
+            HQMediaStaging staging = new HQMediaStaging(world);
+            HQFiniteMediaServer finite = new HQFiniteMediaServer(world, key, staging);
+            return new HQSpeakerCompositePeripheral(legacy, vanilla, finite, staging);
         });
     }
 
