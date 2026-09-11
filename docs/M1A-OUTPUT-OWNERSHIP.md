@@ -41,6 +41,8 @@ An explicit HQ start also requests native CC:T continuous audio/sound to stop. C
 
 While an HQ continuous source is active, standard `playSound` and `playAudio` return `false` rather than overlapping it. Once HQ ownership ends, the native methods operate normally again.
 
+ComputerCraft may call one peripheral from more than one computer thread. M1A makes ownership-changing calls on the same speaker run one at a time, so two computers cannot interleave `stop old -> start new -> record owner` and leave the speaker in a half-replaced state.
+
 ## Stop semantics
 
 - standard `stop()` stops both the native CC:T sound/audio state and the current HQ continuous source;
@@ -50,9 +52,24 @@ While an HQ continuous source is active, standard `playSound` and `playAudio` re
 
 ## HQ RAW backpressure
 
-The inherited single-speaker server queue is bounded at 16 entries.
+The inherited single-speaker server packet queue is bounded at 16 entries, but packet slots alone are not enough to pace audio: one legal `speakPCM` call may contain `131072` samples, about 2.73 seconds at 48 kHz.
 
-`speakPCM()` keeps its boolean acceptance contract. If it returns `false`, that calling computer becomes a waiter. Once the actual server queue again has capacity, M1A emits:
+M1A therefore also tracks the amount of accepted RAW audio which has not yet had time to play. At 48 kHz and 20 server ticks/s, the allowance drains by `2400` samples per server tick.
+
+The current admission limit is:
+
+```text
+131072 max-call samples + 4800 samples (100 ms headroom) = 135872 samples
+```
+
+The 100 ms headroom lets a following maximum-sized chunk be accepted and sent before the previous one reaches its end, instead of guaranteeing a one-server-tick gap.
+
+`speakPCM()` keeps its boolean acceptance contract. It returns `false` when either:
+
+- the inherited 16-entry server packet queue cannot accept another packet; or
+- accepting that exact RAW chunk would exceed the duration-based `135872`-sample allowance.
+
+For a valid rejected call, M1A remembers how many samples that computer was trying to submit. Once **both** the packet queue and the duration allowance can fit that requested chunk, M1A emits:
 
 ```text
 hqspeaker_audio_empty
@@ -68,16 +85,18 @@ while not speaker.speakPCM(samples) do
 end
 ```
 
-M1A also corrects `speakMaxSamples()` at the composite boundary to the real contiguous table limit of `131072` samples.
+This is producer/server admission control, not a per-listener playback acknowledgement. The client RAW stream is separately bounded and may still discard stale PCM under pathological client/network conditions instead of allowing unlimited delay. That matches RAW/feed semantics: staying current is preferable to building an ever-growing backlog.
+
+M1A also corrects `speakMaxSamples()` at the composite boundary to the real contiguous table limit of `131072` samples. Oversized, empty, or malformed input still goes through validation and throws rather than being disguised as ordinary backpressure.
 
 ## RAW renderer lifetime
 
 The inherited client RAW stream otherwise remains alive and produces silence indefinitely after input stops.
 
-M1A tracks accepted RAW sample duration in server ticks. After:
+M1A tracks accepted RAW samples in server ticks. After:
 
 1. the inherited server queue is empty;
-2. the accepted sample duration has elapsed; and
+2. all accepted outstanding samples have drained at `2400` samples per server tick; and
 3. a short 20-tick idle grace passes,
 
 it sends the inherited HQ stop and releases RAW ownership.
@@ -109,6 +128,7 @@ This is intentional. M1J replaces the old expected-count/group-transfer architec
 
 Also deferred:
 
+- dynamic leave-range/re-enter-range renderer ownership; a player outside the old 32-block send radius can still miss a legacy HQ stop until M1I replaces this model;
 - asset/playback separation and large-file range transfer (M1B+);
 - migration of old finite byte APIs onto the new finite engine;
 - truthful live-stream lifecycle/reconnect behavior;
