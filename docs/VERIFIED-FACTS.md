@@ -38,6 +38,8 @@ The exact M1B head `40091ee32f412c1208e9016fca288b8d4f902dfa` completed the Java
 
 The exact M1C + server-storage-config base `33bcc6e04a2734500b7b15b84bee884562539216` also completed both target-version jobs successfully after a pure-HLS-test dependency was corrected and the old prototype packet's hard-coded 512 MiB policy check was removed.
 
+The exact pre-hardening M1D documentation tip `7ea8a70527db6b0037af8d2af6415d3c887f50ff` completed both target-version jobs successfully. The hardened M1D code/test head `f08f690048c592be1f266a8b2915942c3238c0d3` also completed both target-version jobs successfully after decoder-parity, bounded-index, and immutable-asset-analysis fixes.
+
 A green CI build is build/test/package evidence, not Minecraft runtime proof.
 
 ### FACT-PLATFORM-003
@@ -245,9 +247,9 @@ The current analyzed prepared/local finite set is:
 
 - MP3 / MPEG Layer III;
 - OGG Vorbis;
-- WAV;
-- uncompressed AIFF/AIF;
-- AU/SND.
+- WAV forms accepted by the M1D JavaSound-parity checks;
+- uncompressed AIFF/AIF within the JavaSound reader's supported shape;
+- AU/SND encodings supported by the JavaSound reader.
 
 OGG using another codec such as Opus and compressed AIFC are explicitly rejected by M1D.
 
@@ -255,25 +257,29 @@ OGG using another codec such as Opus and compressed AIFC are explicitly rejected
 
 `MediaMetadata` records actual format, positive duration, sample rate, channel count, bits-per-sample where meaningful, and coarse encoded-file seek hints.
 
-`MediaAsset` holds this server-derived metadata after staged analysis and before its UUID is returned to Lua.
+MP3/OGG seek metadata is bounded to at most 4096 points per asset. The index self-thins by retaining every other point and doubling its interval when necessary.
 
 ### FACT-M1D-004
 
-MP3 analysis skips an ID3v2 prefix, scans for MPEG Layer III frame sync, walks frame headers, derives duration from encoded frame sample counts, and records coarse byte offsets. It supports MPEG-1/2/2.5 Layer III timing and rejects a stream which changes sample rate or channel layout mid-stream.
+MP3 analysis skips an ID3v2 prefix, scans for MPEG Layer III frame sync, walks frame headers, derives duration from encoded frame sample counts, and records bounded coarse byte offsets. It supports MPEG-1/2/2.5 Layer III timing and rejects a stream which changes sample rate or channel layout mid-stream.
 
 M1D MP3 duration is encoded-frame duration; encoder-delay/padding correction is not yet implemented.
 
 ### FACT-M1D-005
 
-OGG Vorbis analysis verifies the Vorbis identification packet, reads sample rate/channels, walks Ogg pages to the final granule position for duration, records coarse page offsets, and rejects chained Vorbis logical streams.
+OGG Vorbis analysis requires a complete 30-byte Vorbis identification header and validates version, channels, sample rate, block-size exponents, and framing bit. It walks Ogg pages to the final granule position for duration, records bounded coarse page offsets, and rejects chained Vorbis logical streams.
 
 ### FACT-M1D-006
 
-WAV analysis reads RIFF/WAVE `fmt ` and `data` chunks. AIFF analysis reads `COMM` and `SSND` including 80-bit extended sample rate. AU analysis reads the `.snd` header and encoded data-size/rate/channel facts.
+WAV analysis follows the first `data` chunk after `fmt `, validates block alignment against sample width/channel count, limits IEEE floating PCM to 32/64-bit, and derives duration from complete frames.
+
+AIFF analysis reads `COMM`/`SSND`, limits samples to 1–32 bits, rejects non-zero SSND offsets to match the current JavaSound reader behavior, and verifies the declared frame count fits available sound bytes.
+
+AU analysis accepts the JavaSound reader's current mu-law/A-law, signed linear PCM, float, and double encodings and derives duration from complete frames.
 
 ### FACT-M1D-007
 
-Prepared files are analyzed before publication. Invalid or unsupported bytes therefore do not get a usable prepared asset UUID merely because their filename has a supported extension.
+The supported prepared-file path first imports exact staging bytes into an immutable server asset, then analyzes that committed copy. The asset UUID is returned to Lua only after metadata attaches successfully. If analysis fails, the temporary asset reference is released instead of returning a usable asset.
 
 ### FACT-M1D-008
 
@@ -284,6 +290,10 @@ The composite exposes `audioPreparedInfo(assetId)` and the bundled Lua module ex
 The exposed `speakSupportedFiles()` list is narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`. MP2, MP4, M4A, and AAC are no longer advertised by the composite without exact finite-decoder evidence.
 
 ### FACT-M1D-010
+
+The analyzer converts numeric/container overflows into checked analysis failures and bounds repeated zero-read/no-progress behavior instead of spinning indefinitely.
+
+### FACT-M1D-011
 
 The transitional finite sender still uses fixed recipients and client STARTED/ENDED-style authority. M1D changes file truth/duration source, not the transport/state architecture scheduled for M1E/M1F.
 
@@ -331,7 +341,7 @@ Speaker/prepared ownership is cleaned before shared media-store close on `Server
 
 Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, and `FiniteMediaAnalyzerTest`.
 
-`FiniteMediaAnalyzerTest` uses synthetic valid container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3 and also covers ID3v2 handling and invalid/non-Vorbis rejection.
+`FiniteMediaAnalyzerTest` uses synthetic container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3. It covers ID3v2 handling, non-Vorbis/truncated OGG rejection, WAV first-data/block-alignment/float-width behavior, AIFF width/offset/truncation behavior, bounded seek metadata, JavaSound conversion parity for accepted PCM fixtures, and channel reset after success/failure.
 
 ### FACT-TEST-002
 
