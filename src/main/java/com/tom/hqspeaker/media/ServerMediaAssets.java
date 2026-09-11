@@ -20,7 +20,7 @@ public final class ServerMediaAssets {
 
     /** Matches the already-established large local-file ceiling from the staged-file prototype. */
     public static final long DEFAULT_MAX_ASSET_BYTES = 512L * MIB;
-    /** Allows several large prepared assets while retaining a bounded server-side safety ceiling. */
+    /** Interim value only; the final total-store policy remains an explicit project choice. */
     public static final long DEFAULT_MAX_TOTAL_BYTES = 2048L * MIB;
 
     private static final Map<MinecraftServer, ServerMediaAssets> SERVERS = new IdentityHashMap<>();
@@ -44,11 +44,14 @@ public final class ServerMediaAssets {
         return created;
     }
 
-    /** Close and forget the asset store for one stopped server. */
+    /** Close and forget the asset store for one stopped server. A failed close remains reachable for retry. */
     public static synchronized void closeServer(MinecraftServer server) throws IOException {
         if (server == null) return;
-        ServerMediaAssets assets = SERVERS.remove(server);
-        if (assets != null) assets.store.close();
+        ServerMediaAssets assets = SERVERS.get(server);
+        if (assets == null) return;
+
+        assets.store.close();
+        SERVERS.remove(server, assets);
     }
 
     public MediaAssetStore store() {
