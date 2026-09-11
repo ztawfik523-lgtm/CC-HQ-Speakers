@@ -48,6 +48,7 @@ public class HQSpeakerMod {
     public void onServerTick(ServerTickEvent.Post event) {
         com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
         com.tom.hqspeaker.peripheral.HQFiniteMediaServer.tickAll();
+        com.tom.hqspeaker.peripheral.HQSpeakerCompositePeripheral.tickAll();
     }
 
     /** Explicitly evict Level-keyed speaker composites before their server Level can become stale. */
