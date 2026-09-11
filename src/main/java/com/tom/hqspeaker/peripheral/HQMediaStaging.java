@@ -7,8 +7,10 @@ import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
+import com.tom.hqspeaker.media.MediaStorageLimits;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import dan200.computercraft.api.ComputerCraftAPI;
+import dan200.computercraft.api.filesystem.MountConstants;
 import dan200.computercraft.api.filesystem.WritableMount;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.peripheral.IComputerAccess;
@@ -51,7 +53,8 @@ public final class HQMediaStaging {
             throw new IllegalArgumentException("media staging requires a server level");
         }
         server = serverLevel.getServer();
-        maxStagedBytes = HQSpeakerServerConfig.maxAssetBytes();
+        maxStagedBytes = MediaStorageLimits.writableMountCapacity(
+            HQSpeakerServerConfig.maxAssetBytes(), MountConstants.MINIMUM_FILE_SIZE);
         mount = ComputerCraftAPI.createSaveDirMount(
             server,
             "hqspeaker/staging/" + stagingId,
