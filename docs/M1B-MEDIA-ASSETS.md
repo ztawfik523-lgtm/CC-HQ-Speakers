@@ -78,7 +78,7 @@ Therefore a newly-created store prunes UUID-named `.part` and `.media` files lef
 
 A root-level file lock prevents two live `MediaAssetStore` instances from sharing the same directory. This is important because startup orphan pruning would otherwise let a second store delete files still owned by the first.
 
-Normal `close()` removes completed assets and releases the root lock. An import racing with shutdown observes the closed store and cleans its own unpublished file; an actual process crash is handled by next-start orphan pruning.
+Normal `close()` removes completed assets. If no import is active it also releases the root lock immediately. If an import is still active, shutdown marks the store closed but deliberately keeps the root lock until that import observes the closed store and removes its unpublished `.part`/`.media` file. Only then can a new store acquire the directory. A hard process crash is handled by next-start orphan pruning.
 
 ## Read path
 
@@ -100,12 +100,14 @@ It does not decode media and does not expose playback semantics.
 - retain/release and final-reference file deletion;
 - per-asset quota rejection;
 - total quota rejection and quota reuse after release;
+- concurrent reservation preventing quota overcommit;
 - short-source rollback;
 - long-source rollback;
 - reservation cleanup after failed imports;
 - startup pruning of managed crash leftovers while preserving unrelated files;
 - rejection of a second live store on the same directory;
-- shutdown cleanup;
+- shutdown during an active import while keeping the root locked until cleanup finishes;
+- normal shutdown cleanup;
 - empty-input rejection.
 
 The project CI still runs the complete Java build/test/package matrix on NeoForge 21.1.247 and 21.1.248.
