@@ -26,12 +26,7 @@ Target stack:
 
 CC:HQ Speakers upgrades the normal CC:T speaker into a programmable audio peripheral. Lua owns application policy such as playlists, alarms, notifications, speech, ambience, and sequencing. Java exposes truthful source capabilities.
 
-Source categories remain:
-
-- standard CC:T speaker behavior;
-- HQ raw/feed PCM;
-- finite encoded media with a server-owned timeline;
-- live/open-ended network streams later.
+Source categories remain standard CC:T speaker behavior, HQ raw/feed PCM, finite encoded media with a server-owned timeline, and live/open-ended network streams later.
 
 ## Final finite direction
 
@@ -55,21 +50,9 @@ Not final product requirements:
 
 One physical speaker renders one **mono positional** source. Mono stays mono; stereo is downmixed; >2 channels are rejected.
 
-Finite data is streamed progressively from the authoritative server asset into bounded temporary client RAM. The final design has no persistent client song cache, `.part` library, LRU database, sparse cache file, or cross-restart download resume.
+Finite data is streamed progressively from the authoritative server asset into bounded temporary client RAM in the final engine. There is no final persistent client song cache, `.part` library, LRU database, sparse cache file, or cross-restart download resume.
 
-This still preserves the features that matter:
-
-- large files;
-- audible start before full transfer;
-- duration/position;
-- pause/resume;
-- seek while streaming;
-- loop;
-- volume;
-- natural EOF;
-- late listeners joining current time;
-- leave/re-enter recovery;
-- bounded memory.
+The target preserves large files, progressive audible start, duration/position, pause/resume, seek while streaming, loop, volume, natural EOF, late join, leave/re-enter recovery, and bounded memory.
 
 ## M1A retained behavior
 
@@ -86,9 +69,7 @@ M1A Minecraft acceptance remains pending until its runtime contract is actually 
 
 ## M1B/M1C server asset foundation
 
-`MediaAssetStore` provides server-side UUID media identity, exact disk-backed import, quotas, retain/release lifetime, final-reference deletion, and seekable reads.
-
-This is **server storage**, not a client cache.
+`MediaAssetStore` provides server-side UUID media identity, exact disk-backed import, quotas, retain/release lifetime, final-reference deletion, and seekable reads. This is **server storage**, not a client cache.
 
 The local-file path is:
 
@@ -100,70 +81,91 @@ ComputerCraft file
     -> separate playback reference
 ```
 
-Current server-owned storage defaults:
-
-- `mediaStorage.maxAssetMiB = 512`;
-- `mediaStorage.maxTotalMiB = 2048`;
-- `0` removes that HQ-specific quota;
-- ComputerCraft filesystem capacity is not changed.
-
-The unlimited staging path already clamps around CC:T's internal `MINIMUM_FILE_SIZE` accounting so `Long.MAX_VALUE` does not overflow.
+Current server-owned storage defaults are 512 MiB per asset and 2048 MiB total; `0` removes the corresponding HQ-specific quota. ComputerCraft filesystem capacity is not changed. The unlimited staging path already clamps around CC:T's internal `MINIMUM_FILE_SIZE` accounting so `Long.MAX_VALUE` does not overflow.
 
 ## M1D — frozen historical media analysis
 
 M1D is frozen at `4a2cd5de96228fc091226c7e72fb669b82be258c`. Final GitHub Actions run `34635484316` passed both target NeoForge versions.
 
-M1D moved format/duration truth onto the server and analyzes the exact immutable committed asset with one 64 KiB window.
+M1D moved format/duration truth onto the server and analyzes the exact immutable committed asset with one 64 KiB window. Historical M1D analysis includes MP3, OGG Vorbis, WAV, uncompressed AIFF, and AU. That is historical code truth, **not the final format promise**.
 
-Historical M1D analysis includes:
-
-- MP3;
-- OGG Vorbis;
-- WAV;
-- uncompressed AIFF;
-- AU.
-
-That is historical code truth, **not the final format promise**.
-
-Useful M1D facts retained by the new design:
-
-- MP3 duration from scanned Layer III frames;
-- MP3 seek points are real scanned frame offsets;
-- server-known duration/sample-rate/channels/size;
-- bounded seek metadata;
-- immutable committed-byte analysis before Lua receives the asset UUID.
+Useful M1D facts retained by the new design include scanned MP3 duration, real MP3 frame-offset seek points, server-known duration/sample-rate/channels/size, bounded seek metadata, and immutable committed-byte analysis before Lua receives the asset UUID.
 
 MP3 duration is still encoded-frame duration; gapless delay/padding correction is optional later accuracy work.
 
-## Current transitional finite code
+## M1E — server-authoritative finite playback
 
-No M1E runtime code has landed yet. The branch still begins from the frozen M1D implementation plus documentation cleanup.
+**Source implementation has landed on the active branch. Minecraft runtime acceptance remains pending.**
 
-`HQFiniteMediaServer` still currently has prototype behavior:
+The server-side finite model is no longer renderer-authoritative:
 
-- fixed recipients captured at play start;
-- server-pushed whole-file begin/chunk/end transfer;
-- server state `LOADING` tied to renderer readiness;
-- `successfulRenderers` / `observed` authority;
-- 15-second no-renderer error;
-- client STARTED/PAUSED/RESUMED/SEEKED/ENDED can rewrite canonical clock/state;
-- file reads happen from the server tick.
+- semantic states are `PLAYING`, `PAUSED`, `ENDED`, `ERROR`;
+- there is no server `LOADING` state for client buffering;
+- a successful finite play starts the canonical clock immediately at position 0;
+- the clock advances even with zero listeners;
+- `successfulRenderers`, canonical `observed`, and the 15-second no-renderer failure were removed;
+- natural non-looping EOF is determined from the known server duration/clock;
+- looping uses wrapped server position;
+- non-looping `seek(duration)` ends immediately;
+- status/control paths finalize elapsed EOF before returning/applying state;
+- canonical EOF closes the temporary old transfer before releasing the playback asset reference.
 
-`HQFiniteMediaClient` still currently:
+Protocol v4 adds `HQFiniteMediaStatePacket`. The packet responsibilities are deliberately split:
 
-- creates `hqspeaker-cache` files on client disk;
-- writes the complete `.part` file on the Minecraft client thread;
-- waits for the whole encoded file;
-- renames it to `.media`;
-- opens `FileFiniteAudioStream` only after full transfer;
-- starts from 0 after transfer;
-- maintains a second client semantic clock and reports renderer state back to the server.
+```text
+BEGIN/setup (temporary old bridge)
+- source/media/generation
+- format + total encoded bytes
+- speaker world/block position
+- initial volume/loop/pause setup
 
-All of those finite-transfer/state behaviors are transitional and scheduled for replacement.
+STATE (authoritative mutable truth)
+- source/media/generation
+- playing/paused/ended/error
+- canonical position + duration
+- volume + loop
+- server error detail if any
+```
+
+Client -> server finite telemetry has been narrowed to only:
+
+- `READY` — asks for a fresh authoritative state after the temporary complete-file bridge becomes decoder-ready;
+- `ERROR` — diagnostic only.
+
+The old renderer `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` status transitions are removed from protocol v4 and can no longer rewrite the server clock.
+
+The temporary M1E client still downloads the complete encoded asset to `hqspeaker-cache` because transport replacement is M1F. However it no longer starts at `0` merely because transfer completed. It opens the old file decoder, reports READY, receives a fresh STATE packet, then starts/seeks at the server's **current** canonical position. Pause/seek/loop/volume changes that happened while downloading are therefore resolved by server truth instead of stale client state.
+
+The client still has a local `FinitePlaybackClock`, but it is now only a projection used for renderer/resource-reload behavior; it is not canonical authority.
+
+## What is still transitional after M1E
+
+The following are intentionally still old architecture and are the M1F/M1G boundary:
+
+- recipients are captured once at finite play start;
+- the server blindly pushes the whole encoded file;
+- server file reads happen during the server tick;
+- the client writes `.part/.media` files on the client thread;
+- the decoder still requires a complete local encoded file;
+- no new listener can dynamically join after play start.
+
+These are not regressions or hidden final requirements. They are the next replacement slices.
+
+## M1E testing/evidence state
+
+Pure Java coverage now includes deterministic `FinitePlaybackClock.reachedEnd()` behavior for non-looping and looping tracks in addition to the earlier pause/resume/loop/seek tests.
+
+New runtime contract:
+
+- `scripts/m1e_server_authority_test.lua <small-mp3-or-wav>`
+
+It checks immediate server `PLAYING`, position advancement independent of renderer readiness, pause freeze, resume progression, non-looping exact-duration END, and looping exact-duration wrap.
+
+This script has **not** yet been executed successfully in Minecraft, so M1E is not a Minecraft runtime PASS.
+
+The old `m1d_media_analysis_test.lua` includes renderer-`observed` assumptions from frozen M1D and should be treated as frozen-M1D runtime evidence, not as the active M1E semantic contract.
 
 ## Streaming evidence/constraints already established
-
-The new direction has been checked against the actual target implementation constraints:
 
 - temporary absence of encoded bytes is **not EOF**;
 - the exact shipped JLayer family can decode progressively when its input waits for missing bytes instead of reporting EOF;
@@ -173,66 +175,32 @@ The new direction has been checked against the actual target implementation cons
 - no persistent client cache is required for seek or late join because the server can serve fresh ranges;
 - FLAC remains a target, not a proven implementation fact.
 
-## Active M1E target
+## Next: M1F demand-driven finite transport
 
-M1E now includes both semantic authority and the state packet needed to make the temporary bridge correct.
+M1F is the next implementation milestone:
 
-Required work:
+- client-requested encoded byte ranges;
+- server-selected stream/seek anchors;
+- generation/asset/range/relevance validation;
+- bounded outstanding work/rate controls;
+- off-thread server asset reads with safe retained lifetime;
+- stale async work discarded after replacement/leave;
+- bounded temporary client encoded RAM;
+- no final client disk song files/cache.
 
-- server states become `PLAYING`, `PAUSED`, `ENDED`, `ERROR`;
-- successful finite play starts canonical time immediately;
-- playback advances with zero listeners;
-- client renderer reports stop controlling server truth;
-- remove no-renderer timeout/anchor authority;
-- server clock/duration determines EOF;
-- exact-end seek semantics are server-owned;
-- before canonical EOF releases the playback asset, close/cancel the temporary transfer still using it;
-- add a server -> client finite state snapshot containing semantic state, current position, generation, asset/format/size/duration, loop, volume, and position information;
-- use the snapshot for control changes and the temporary READY bridge;
-- a client that finishes the old whole-file transfer late must begin near the **current** server position, not at 0.
+After M1F:
 
-## Current roadmap after M1E
-
-- **M1F:** client-requested encoded ranges, stream/seek anchors, off-thread server IO, bounded request limits, no client disk cache.
-- **M1G:** progressive MP3 + common WAV, bounded encoded/PCM RAM, mono output, and active-branch format narrowing.
-- **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin, stale-generation hardening.
-- **M1I:** optional/gated native FLAC extension. MP3/WAV completion does not wait for it.
-- **M1J:** functional multispeaker shared clocks and one positional renderer per block.
-- **M1K:** active-session transfer/decode fan-out optimization.
+- **M1G:** progressive MP3 + common WAV, bounded encoded/PCM RAM, mono output, active-branch format narrowing;
+- **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin, stale-generation hardening;
+- **M1I:** optional/gated native FLAC extension;
+- **M1J:** functional multispeaker shared clocks and one positional renderer per block;
+- **M1K:** active-session transfer/decode fan-out optimization;
 - **M1L+:** legacy finite migration, RAW finalization, OpenAL cleanup, lifecycle/performance hardening, package verification, and consolidated runtime acceptance.
 
-After M1:
-
-- **M2:** Sound Physics Remastered integration;
-- **M3:** live/open-ended network streams;
-- **M4:** release cleanup.
+After M1: M2 SPR, M3 live/open-ended network streams, M4 release cleanup.
 
 See `ROADMAP.md` and `M1E-FINITE-STREAMING-DESIGN.md` for the exact implementation contract.
 
-## Testing state
-
-Pure Java coverage currently includes the existing finite clock/path tests, M1A RAW tests, M1B asset-store tests, M1D analyzer tests, and storage-limit tests.
-
-Frozen M1D tests for OGG/AIFF/AU remain historical evidence until M1G deliberately narrows the active format surface.
-
-Runtime contracts from completed work remain:
-
-- `scripts/p0_cc_speaker_contract.lua`;
-- `scripts/m1a_output_contract.lua`;
-- `scripts/m1c_local_import_test.lua`;
-- `scripts/m1d_media_analysis_test.lua`.
-
-None should be reported as a Minecraft runtime PASS until actually executed successfully on the target stack.
-
 ## Other retained issues
 
-Later work still includes:
-
-- inherited `*All` / `*At` bypasses;
-- legacy finite byte APIs;
-- stream/HLS/TS defects;
-- sound-category/gain cleanup;
-- F3+T/resource lifecycle;
-- SPR integration;
-- separate custom HQ block decision;
-- repository license/metadata mismatch.
+Later work still includes inherited `*All` / `*At` bypasses, legacy finite byte APIs, stream/HLS/TS defects, sound-category/gain cleanup, F3+T/resource lifecycle, SPR integration, the separate custom HQ block decision, and the repository license/metadata mismatch.
