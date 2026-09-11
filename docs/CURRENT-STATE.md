@@ -22,9 +22,13 @@ Completed M0.5 preparation reference:
 
 `ad38412a2173f849a0fc8e867030da8a78965c9c`
 
-Current M1A implementation branch:
+M1A compatibility/output branch:
 
 `codex/m1a-compat-output`
+
+Current M1B media-asset branch:
+
+`codex/m1b-media-assets`
 
 Target stack:
 
@@ -72,11 +76,11 @@ M0.5 completed the cleanup/redesign preparation layer before M1A:
 
 See `docs/M0.5-CLEANUP.md`.
 
-## M1A current source state
+## M1A source state
 
-M1A is the compatibility/output-ownership milestone. It does not yet implement the new reusable finite-media asset system.
+M1A is the compatibility/output-ownership milestone. It does not itself implement the reusable finite-media asset system.
 
-Current source behavior on `codex/m1a-compat-output`:
+Current inherited M1A behavior on the M1B branch:
 
 - standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain delegated to CC:T 1.120.0's real `SpeakerPeripheral`;
 - synthetic inherited HQ `speaker_audio_empty` events are suppressed;
@@ -99,15 +103,34 @@ Current source behavior on `codex/m1a-compat-output`:
 
 `hqspeaker_audio_empty` is producer/server admission control, not a promise that every listener has physically played previous samples. The client RAW queue remains bounded and may discard stale PCM under pathological network/client conditions rather than allowing unlimited delay.
 
-Source/CI success is **not** Minecraft runtime proof. The acceptance scripts still need to be run on the target stack before M1A is declared runtime-complete.
+Source/CI success is **not** Minecraft runtime proof. The M1A acceptance scripts still need to be run on the target stack before M1A is declared runtime-complete.
 
 See `docs/M1A-OUTPUT-OWNERSHIP.md` and `docs/CC-T-COMPATIBILITY-CONTRACT.md`.
 
-## Multi-speaker boundary during M1A
+## M1B media-asset storage foundation
+
+`codex/m1b-media-assets` now adds a speaker-independent encoded-media storage primitive:
+
+- `MediaAsset` gives each encoded asset its own UUID, byte size, and diagnostic source name;
+- `MediaAssetStore` owns UUID-named disk files rather than tying file identity to a speaker UUID;
+- exact-size imports write to `.part`, force the file, and atomically rename to `.media` before publication;
+- imports reserve total quota before copying and roll reservations/files back on short, long, quota, or IO failures;
+- per-asset and total-byte limits are supplied by the caller; M1B does not silently choose permanent storage-policy numbers;
+- successful imports start with one owner reference; `retain`/`release` allow future prepared owners/playbacks to share the same encoded asset;
+- the final release deletes the encoded file and frees committed-byte accounting;
+- startup removes UUID-named managed `.part`/`.media` files left by an earlier process because current asset references are process-local;
+- a root-level file lock prevents a second live store from pruning files owned by the first;
+- `openRead` exposes a seekable encoded-file channel for later media analysis and range transfer without decoding the whole asset.
+
+This foundation is intentionally not wired into the old staged finite prototype. CC mount import/play/release APIs are M1C, media analysis is M1D, server-authoritative playback is M1E, and client-pulled range transfer is M1F.
+
+See `docs/M1B-MEDIA-ASSETS.md`.
+
+## Multi-speaker boundary during M1A/M1B
 
 The inherited `*All` / `*At` helpers directly call old `HQSpeakerPeripheral` instances and bypass the new composite ownership boundary.
 
-M1A deliberately does not retrofit them. They still carry the inherited expected-group-count/sync architecture and are scheduled for replacement by M1J's shared asset/timeline + per-physical-speaker renderer design.
+The current milestones deliberately do not retrofit them. They still carry the inherited expected-group-count/sync architecture and are scheduled for replacement by M1J's shared asset/timeline + per-physical-speaker renderer design.
 
 Do not infer single-speaker M1A ownership guarantees for those helpers yet.
 
@@ -124,11 +147,11 @@ Do **not** treat these as the target architecture:
 - delete-on-initial-transfer behavior;
 - expected-group-size/expected-tap synchronization.
 
-M1A does not polish these concepts because the accepted finite redesign removes them.
+The accepted finite redesign removes these concepts rather than polishing them.
 
 ## Accepted finite-media direction
 
-The target model after M1A is:
+The target model is:
 
 ```text
 ComputerCraft file
@@ -155,11 +178,12 @@ Important consequences:
 
 See `docs/ROADMAP.md` for implementation order.
 
-## Known work after M1A
+## Known work after the M1B storage foundation
 
-The following remain intentionally outside the current compatibility/output slice:
+The following remain outside the completed storage primitive:
 
-- reusable server media asset manager;
+- server-lifetime integration which chooses the actual asset-store directory and quota policy;
+- CC writable-mount import plus lower-level prepare/play/release capabilities;
 - replace the 8 MiB local-file architecture with asset/range transfer;
 - server media metadata/duration analysis;
 - client-pulled range transfer and reusable client cache;
@@ -183,13 +207,14 @@ Pure Java tests currently cover:
 - HLS playlist parsing;
 - `FinitePlaybackClock` behavior;
 - `FiniteMediaPath` validation;
-- RAW outstanding-sample accounting, capacity checks, server-tick drain, idle grace, and invalid-capacity arguments.
+- RAW outstanding-sample accounting, capacity checks, server-tick drain, idle grace, and invalid-capacity arguments;
+- M1B exact-size media import/readback, reference lifetime, final-release deletion, per-asset/total quotas, failed-import reservation cleanup, crash-orphan pruning, root locking, shutdown cleanup, and empty-input rejection.
 
-Runtime scripts relevant to the current milestone:
+Runtime scripts relevant to M1A remain:
 
 - `scripts/p0_cc_speaker_contract.lua` — standard CC:T compatibility;
 - `scripts/m1a_output_contract.lua [optional-small-mp3]` — HQ ownership, RAW packet and duration backpressure/events, replacement, stop, and idle release.
 
-The staged prototype runtime script remains useful as historical/prototype evidence but is not final architecture acceptance.
+The staged prototype runtime script remains useful as historical/prototype evidence but is not final architecture acceptance. M1B's storage primitive is pure Java and has no separate Minecraft runtime surface yet.
 
 CI must continue to build NeoForge 21.1.247 and 21.1.248 with Java 21 and verify required packaged resources, including the bundled `data/computercraft/lua/rom/modules/main/hqspeaker.lua` module.
