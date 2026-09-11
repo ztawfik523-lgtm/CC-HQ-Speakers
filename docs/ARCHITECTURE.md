@@ -19,13 +19,11 @@ Do not model application roles such as music/effect/notification. Model technica
        backpressure/stop      seek/duration/loop    reconnect/stop/meta
 ```
 
-Whether the Lua program uses any of those as music, an alarm, speech, a soundboard, etc. is outside the Java architecture.
+Lua owns playlists, priorities, sequencing, alarms, notifications, music-player behavior, and other application policy.
 
 ## CC:T base contract
 
-The Mixin replaces `SpeakerBlockEntity.peripheral()` with `HQSpeakerPeripheral`, and that peripheral still reports type `speaker`.
-
-Therefore the standard CC:T speaker surface is foundational:
+The normal `computercraft:speaker` remains the product surface. Standard CC:T behavior is foundational:
 
 - `playNote`
 - `playSound`
@@ -33,164 +31,199 @@ Therefore the standard CC:T speaker surface is foundational:
 - `stop`
 - `speaker_audio_empty`
 
+The current composite peripheral delegates these standard calls to CC:T's original `SpeakerPeripheral`. Keep that approach unless exact target-stack evidence requires otherwise.
+
 See `CC-T-COMPATIBILITY-CONTRACT.md`.
 
-HQ behavior should extend this device rather than redefine those methods into unrelated behavior.
+## HQ continuous-output policy
 
-## Server/client split
+Java does not maintain a playlist.
 
-Lua executes server-side. Minecraft sound rendering happens client-side.
+For HQ continuous sources, a new incompatible playback replaces the previous HQ continuous playback. Repeated chunks belonging to one raw feed remain one feed. Standard CC:T calls retain their own CC:T semantics rather than being rewritten to match HQ replacement policy.
 
-The server may own **semantic intent/state**, but it cannot truthfully claim that a client rendered something unless a client reports it.
+## Finite target model
 
-For finite media, M1 uses transition reports and an `observed` concept. Keep that separation.
-
-Do not invent renderer truth when:
-
-- no client was in range;
-- a client failed to decode;
-- a client missed a packet;
-- a renderer was never started.
-
-## Current raw/feed path
+Finite media is split into three concepts:
 
 ```text
-Lua playAudio / speakPCM
-    -> HQSpeakerPeripheral
-    -> server SpeakerChunk queue
-    -> one PCM packet
-    -> HQSpeakerClientHandler RAW mode
-    -> HQAudioStream PCM queue
-    -> HQSpeakerSound
-    -> Minecraft SoundEngine
+MEDIA ASSET
+    -> PLAYBACK STATE
+        -> PHYSICAL SPEAKER RENDERER
 ```
 
-Current defects:
+A media asset contains the encoded file and finite facts such as size, format, duration, and optional seek metadata. It is reusable and not conceptually owned by one physical speaker.
 
-- the server queue is packet-dispatch state, not true audible backpressure;
-- `speaker_audio_empty` is not tied to real raw capacity;
-- RAW mode can remain alive by returning silence;
-- raw arrival can reset finite client state without matching server semantic changes.
+A playback references an asset and owns generation, state, position, pause/resume, seek, loop, volume, and sync-clock membership.
 
-The correct mixed raw/finite submission policy is an explicit P0 decision.
+A physical renderer is client-local and exists only while that speaker is relevant to the listener.
 
-## Current finite path
+## Server-authoritative playback
+
+The server owns finite semantic truth:
+
+- playing/paused/ended/error state;
+- position and duration;
+- seek target;
+- looping;
+- volume;
+- generation;
+- sync-clock state.
+
+Clients may report transfer/decoder/renderer failures, but a client renderer does not become the canonical clock or EOF authority.
+
+A finite playback continues logically even when no player is nearby. A client which becomes relevant later receives the current generation/state and joins at the current position.
+
+This replaces the M1A prototype's renderer-observation timeout, successful-renderer authority, and STARTED-driven canonical clock.
+
+## Local ComputerCraft file import
+
+The writable ComputerCraft mount is an **import/staging mechanism**.
 
 ```text
-Lua speakMp3/speakOgg/speakWav/speakAudio
-    -> server queue + FiniteServerTrack generation
-    -> whole encoded packet (<= 8 MiB)
-    -> client finite queue
-    -> HQSpeaker-Decoder
-    -> retained mono signed-16-bit PCM + exact sample rate
-    -> FiniteAudioTrack renderer fork
-    -> HQSpeakerSound
-    -> Minecraft SoundEngine
+CC filesystem
+    -> fs.copy to HQ writable mount
+    -> server validates/prepares reusable media asset
+    -> playback references that asset
 ```
 
-Finite controls:
+The helper API may expose a simple `hq.playFile(speaker, path)` while lower-level prepare/play/release capabilities allow Lua to preload without Java becoming a playlist manager.
 
-- pause/resume uses actual `ChannelHandle`;
-- seek stops/re-primes the finite renderer at a retained PCM cursor;
-- loop rewinds retained PCM;
-- duration is frames/sampleRate;
-- logical position is clock-based after STARTED confirmation.
+## Large finite transfer
 
-Current renderer boundary policy: one renderer per logical finite item.
-
-This is acceptable as the current implementation. Reusing channels across compatible consecutive items is an optional future optimization, not a P0 requirement.
-
-## Current streaming path
+Encoded finite files are transferred reliably, but in bounded client-requested ranges.
 
 ```text
-Lua speakStream/speakHLS/speakTS
-    -> URL packet
-    -> HQSpeakerClientHandler STREAM mode
-    -> HQAudioStream
-    -> StreamingAudioSource or SharedStreamingGroup
-    -> PCM queue
-    -> HQSpeakerSound
+client needs asset X
+    -> request bounded range
+    -> server returns several <= 256 KiB chunks
+    -> client writes them to disk
+    -> client requests next range
 ```
 
-The live path is open-ended and must not be forced into finite duration/seek semantics.
+The next range request provides natural pacing/acknowledgement. There is no need for a permanent historical listener/recipient list or an unbounded server push queue.
 
-Intended eventual pause/resume semantics:
+Do not intentionally drop encoded MP3/OGG ranges and pretend the asset is complete. Stale **decoded PCM** may later be dropped at individual renderer taps to preserve real-time synchronization.
+
+Server/client disk and codec work must run on bounded worker resources, not the Minecraft server tick or client render thread.
+
+## Client asset cache
+
+The client keeps reusable encoded assets on disk:
+
+- partial `.part` state;
+- validated completed asset;
+- reuse across leaving/re-entering range;
+- reuse by multiple speakers referencing the same asset;
+- bounded cache/LRU cleanup;
+- orphan partial cleanup after crashes.
+
+Stopping one renderer does not delete a reusable encoded asset.
+
+## Incremental finite decoding
+
+Large-file memory use must not scale with decoded track duration.
+
+Target:
 
 ```text
-pause  -> stop/suspend current live source
-resume -> reconnect/restart and play the source's current live point
+encoded asset on disk
+    -> incremental decoder
+    -> bounded PCM production
+    -> one or more renderer taps
 ```
 
-Current code does not yet implement that behavior.
+OGG uses file-backed STB Vorbis reads/seeks. MP3 uses incremental decoding with seek work off the render thread and may gain a coarse frame index. WAV/AIFF/AU/other proven JavaSound formats use bounded conversion and format-appropriate seek behavior.
 
-## Finite state model
+Natural EOF must be distinct from close/cancel/resource reload.
 
-Finite semantic states currently include:
+## Dynamic range rendering
 
-- loading
-- playing
-- paused
-- ended
-- error
+Do not retain everyone who once heard a speaker.
 
-Generation IDs reject stale finite control/status.
+The server sends small current-state snapshots to currently relevant/tracking clients. A client which leaves range destroys or parks its local positional renderer. The server playback continues. If the client returns while playback is still active, it joins the current position; if playback stopped while away, it stays silent.
 
-Important remaining issues:
+Dimension change, chunk unload, speaker removal, and VS2 movement belong to renderer relevance/lifecycle, not historical recipient ownership.
 
-- anchor renderer has no failover;
-- generation promotion can skip an earlier active item;
-- no observed renderer can leave loading indefinitely;
-- loop disable does not rebase wrapped position;
-- seek exactly to duration needs a clean terminal path.
+## Multispeaker and synchronization
 
-## Decoder threading/resources
+The same encoded asset must not be transferred once per physical speaker.
 
-Finite decode already runs off the Minecraft sound read thread. Preserve that.
+Synchronized playbacks reference a shared sync-clock ID:
 
-Current global single-thread executor has an unbounded task queue. Lifecycle tokens reject stale publication but do not remove stale work.
+```text
+asset X
+  -> playback A --\
+  -> playback B ---- shared sync clock Q
+  -> playback C --/
+```
 
-P0 leaves the bounded-only vs bounded+cancellation implementation family as a user decision.
+There is no expected-global-member/expected-tap barrier. A client renders whichever physical speakers are currently relevant and joins the shared clock at its current frame.
 
-Large-media work must separately bound:
+Where practical, playbacks sharing the same asset and sync clock should decode once and fan bounded PCM to several renderer taps.
 
-- encoded Lua/server copies;
-- packet/chunk transport;
-- queued decoder work;
-- decoder temporary/native allocations;
-- retained decoded PCM;
-- simultaneous speakers/tracks;
-- stream buffers.
+Each audible physical speaker still gets its own positional Minecraft/OpenAL source. This preserves spatial direction, attenuation, wall/occlusion differences, VS2 movement, and future Sound Physics Remastered behavior.
 
-## Multi-speaker/sync
+A speaker can leave the shared clock if Lua later pauses, seeks, stops, or replaces it independently.
 
-The repo exposes All/At helpers and sync-group IDs.
+## Raw/feed path
 
-Current range-local packet delivery conflicts with global expected group size. Fixing partial group behavior is a P0 design choice.
+Standard `playAudio` remains CC:T's signed 8-bit producer-fed audio with native `speaker_audio_empty` semantics.
 
-Do not solve synchronization by introducing music-specific concepts.
+HQ `speakPCM` is also open-ended and must have its own truthful bounded feed/backpressure lifecycle. It does not gain duration or arbitrary seek merely because finite media does.
+
+Do not reuse the legacy synthetic `speaker_audio_empty` heartbeat for HQ raw feed.
+
+## Live streams
+
+Internet MP3/HLS/TS remains a later milestone.
+
+Live sources are open-ended. They do not expose finite duration/seek. Pause/resume, when stabilized, means suspend/stop then reconnect to the current live point.
+
+The finite asset/cache architecture must not depend on live-stream implementation details.
+
+## Prototype/legacy boundaries
+
+The repository currently contains overlapping implementations:
+
+- legacy HQ raw/finite/stream code in `HQSpeakerPeripheral` / `HQAudioStream`;
+- M1A staged finite prototype in `HQFiniteMediaServer` / `HQFiniteMediaClient`;
+- standard CC:T delegation in `HQSpeakerCompositePeripheral`.
+
+The M1A prototype proved writable staging, chunk packets, disk-backed cache, and incremental decoding. Its fixed recipient set, per-speaker media ownership, server push transfer, renderer observation timeout, and client-authoritative state reports are scheduled for replacement. Do not polish those concepts during cleanup.
+
+Legacy byte-taking finite APIs should eventually become compatibility frontends into the same asset/playback engine, after which the whole-file/whole-PCM legacy finite decoder can be removed.
+
+## Lifecycle
+
+Static caches must not retain old integrated-server Levels/worlds.
+
+Required cleanup boundaries:
+
+- peripheral/block removal;
+- server Level unload;
+- server shutdown;
+- computer detach/unmount;
+- future asset/transfer/decoder worker shutdown;
+- client world/disconnect/resource lifecycle.
+
+Weak keys are not sufficient when cached values strongly reference the same Level.
 
 ## VS2
 
-VS2 integration is reflective and optional.
-
-Moving speaker position is transformed server-side for packet/control range and updated client-side for active sound position.
-
-Keep VS2 optional and failure-tolerant.
+VS2 integration remains reflective and optional. Preserve world-space speaker position updates and keep failures isolated.
 
 ## SPR
 
-Sound Physics Remastered integration remains a later productization milestone.
-
-Reuse the frozen V7.1 acoustic work and its lifecycle/resource hardening. Do not retune acoustics casually and do not force SPR as a hard dependency.
+Sound Physics Remastered remains a later productization milestone. Shared asset/PCM optimization must never collapse several physical speakers into one positional OpenAL source. Preserve the frozen V7.1 acoustic work unless explicitly retuning it.
 
 ## Non-goals
 
 Do not add permanent concepts such as:
 
-- music channel
-- effects channel
-- notification channel
-- album/playlist database
-- content-addressed media store
+- music channel;
+- effects channel;
+- notification channel;
+- Java playlist/album database;
+- automatic application-level priority rules.
 
-Lua may build all of those using the peripheral API if desired.
+Lua may build those policies using the peripheral capabilities.
