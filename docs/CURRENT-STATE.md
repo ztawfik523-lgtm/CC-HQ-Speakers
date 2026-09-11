@@ -100,6 +100,8 @@ HQ Speaker has NeoForge `SERVER` safety settings only for disk space allocated b
 - either value may be set to `0` to remove that HQ Speaker-specific quota;
 - changes require a world/server restart.
 
+For `maxAssetMiB = 0`, the server asset-store policy remains effectively unbounded. The ComputerCraft staging adapter clamps its capacity to `Long.MAX_VALUE - MountConstants.MINIMUM_FILE_SIZE` before constructing CC:T's writable mount, avoiding an overflow in CC:T's internal `capacity + MINIMUM_FILE_SIZE` accounting while remaining effectively unbounded in practice.
+
 The old prototype packet's hard-coded 512 MiB policy check has been removed. Transfer packets validate wire sanity; file-size policy belongs to the server config/store.
 
 See `docs/SERVER-CONFIG.md` and `docs/M1C-LOCAL-IMPORT.md`.
@@ -182,7 +184,8 @@ Pure Java coverage now includes:
 - AIFF width/offset/truncation checks;
 - bounded adaptive seek-index behavior on a long synthetic timeline;
 - accepted WAV/AIFF/AU fixtures opening through the same JavaSound conversion shape used by the client;
-- analyzer channel reset after both success and failure.
+- analyzer channel reset after both success and failure;
+- storage-limit adapter coverage for normal and unlimited ComputerCraft staging capacities.
 
 Runtime scripts relevant now:
 
@@ -190,6 +193,8 @@ Runtime scripts relevant now:
 - `scripts/m1a_output_contract.lua`
 - `scripts/m1c_local_import_test.lua`
 - `scripts/m1d_media_analysis_test.lua`
+
+The M1D runtime contract requires a small accepted fixture to produce an observed client renderer, so its eventual in-game pass covers actual client decode acceptance in addition to server metadata analysis.
 
 None should be reported as a runtime PASS until actually executed successfully in Minecraft on the target stack.
 
