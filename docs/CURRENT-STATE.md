@@ -92,9 +92,9 @@ Current source behavior on `codex/m1a-compat-output`:
 - RAW reports open-ended capabilities instead of fake duration/seek/loop support;
 - `speakMaxSamples()` reports the real inherited contiguous table ceiling of `131072`;
 - RAW admission is bounded by both the inherited 16-packet server queue and a duration allowance of `135872` outstanding samples: one maximum `speakPCM` call plus 100 ms of headroom;
-- rejected valid `speakPCM` writers receive the separate `hqspeaker_audio_empty` event only when their requested chunk can fit both the packet queue and the sample-duration allowance;
+- rejected valid-sized `speakPCM` writers receive the separate `hqspeaker_audio_empty` event only when their requested chunk can fit both the packet queue and the sample-duration allowance;
 - the RAW allowance drains by `2400` samples per server tick at 48 kHz/20 TPS, preventing normal producers from feeding multi-second chunks every Minecraft tick and building a huge client backlog;
-- malformed/empty/oversized RAW tables still fail validation instead of being presented as ordinary backpressure;
+- empty and oversized RAW tables still reach inherited validation; individual sample values are validated when a call reaches conversion, so a valid-sized call may hit capacity backpressure before value-level validation;
 - RAW drain lifetime is sample-derived in server ticks and eventually releases the otherwise-silent inherited client source.
 
 `hqspeaker_audio_empty` is producer/server admission control, not a promise that every listener has physically played previous samples. The client RAW queue remains bounded and may discard stale PCM under pathological network/client conditions rather than allowing unlimited delay.
@@ -188,7 +188,7 @@ Pure Java tests currently cover:
 Runtime scripts relevant to the current milestone:
 
 - `scripts/p0_cc_speaker_contract.lua` — standard CC:T compatibility;
-- `scripts/m1a_output_contract.lua [optional-small-mp3]` — HQ ownership, RAW backpressure/event, replacement, stop, and idle release.
+- `scripts/m1a_output_contract.lua [optional-small-mp3]` — HQ ownership, RAW packet and duration backpressure/events, replacement, stop, and idle release.
 
 The staged prototype runtime script remains useful as historical/prototype evidence but is not final architecture acceptance.
 
