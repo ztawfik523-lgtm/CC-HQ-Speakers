@@ -313,6 +313,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             };
         }
 
+        // Stop is a source capability, not a finite-only capability. It truthfully ends whichever HQ continuous
+        // source currently owns the speaker. Standard stop() additionally stops CC:T's native sound/audio state.
+        if ("audioStop".equals(name)) {
+            stopCurrentHQ();
+            return MethodResult.of();
+        }
+
         if (owner == Owner.STAGED_FINITE) {
             return switch (name) {
                 case "audioPause" -> MethodResult.of(finite.pause());
@@ -320,23 +327,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 case "audioSeek" -> MethodResult.of(finite.seek(args.getDouble(0)));
                 case "audioSetVolume" -> MethodResult.of(finite.setVolume(args.getDouble(0)));
                 case "audioSetLooping" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
-                case "audioStop" -> {
-                    finite.stop();
-                    owner = Owner.NONE;
-                    yield MethodResult.of();
-                }
                 default -> MethodResult.of(false);
             };
         }
 
-        if (owner == Owner.LEGACY_FINITE) {
-            MethodResult result = invokeLegacy(name, computer, context, args);
-            if ("audioStop".equals(name)) owner = Owner.NONE;
-            return result;
-        }
+        if (owner == Owner.LEGACY_FINITE) return invokeLegacy(name, computer, context, args);
 
-        // RAW and live streams have no finite duration/seek/loop contract.
-        if ("audioStop".equals(name)) return MethodResult.of();
+        // RAW and live streams have no finite duration/seek/loop contract. Live pause/reconnect is a later milestone.
         return MethodResult.of(false);
     }
 
