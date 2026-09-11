@@ -1,5 +1,6 @@
 package com.tom.hqspeaker;
 
+import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import com.tom.hqspeaker.peripheral.HQSpeakerPeripheralProvider;
@@ -8,7 +9,9 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -25,10 +28,11 @@ public class HQSpeakerMod {
 
     public static final String MOD_ID = "hqspeaker";
 
-    public HQSpeakerMod(IEventBus modEventBus) {
+    public HQSpeakerMod(IEventBus modEventBus, ModContainer modContainer) {
         HQSpeakerRegistry.register(modEventBus);
         modEventBus.addListener(this::setup);
         modEventBus.addListener(HQSpeakerNetwork::register);
+        modContainer.registerConfig(ModConfig.Type.SERVER, HQSpeakerServerConfig.SPEC);
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(this::clientSetup);
