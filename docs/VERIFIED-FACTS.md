@@ -205,7 +205,7 @@ Both are world/server-restart settings. A value of `0` disables that HQ Speaker-
 
 ### FACT-M1C-004
 
-The temporary writable staging mount uses the same configured per-asset limit as the shared prepared-media store, so there is no second hidden staging-size policy.
+The temporary writable staging mount follows the same per-asset policy as the prepared-media store. For the `0`/unlimited policy, HQ Speaker clamps the staging capacity to `Long.MAX_VALUE - MountConstants.MINIMUM_FILE_SIZE` before calling CC:T because `WritableFileMount` internally adds that accounting overhead to the supplied capacity. This avoids signed-long overflow without creating a practical hidden quota.
 
 ### FACT-M1C-005
 
@@ -339,13 +339,15 @@ Speaker/prepared ownership is cleaned before shared media-store close on `Server
 
 ### FACT-TEST-001
 
-Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, and `FiniteMediaAnalyzerTest`.
+Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, `FiniteMediaAnalyzerTest`, and `MediaStorageLimitsTest`.
 
 `FiniteMediaAnalyzerTest` uses synthetic container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3. It covers ID3v2 handling, non-Vorbis/truncated OGG rejection, WAV first-data/block-alignment/float-width behavior, AIFF width/offset/truncation behavior, bounded seek metadata, JavaSound conversion parity for accepted PCM fixtures, and channel reset after success/failure.
 
+`MediaStorageLimitsTest` covers normal staging capacity and the overflow-safe unlimited staging sentinel.
+
 ### FACT-TEST-002
 
-`scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, and `scripts/m1d_media_analysis_test.lua` are runtime contracts. None should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
+`scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, and `scripts/m1d_media_analysis_test.lua` are runtime contracts. The M1D script requires an accepted small fixture to produce an observed client renderer, so its eventual in-game pass includes actual decoder acceptance. None should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
 
 ## License
 
