@@ -61,6 +61,8 @@ public final class MediaAssetStore implements AutoCloseable {
     private long committedBytes;
     private long reservedBytes;
     private boolean closed;
+    private boolean closeCleanupDone;
+    private boolean lockReleased;
 
     public MediaAssetStore(Path root, long maxAssetBytes, long maxTotalBytes) throws IOException {
         this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
@@ -128,6 +130,11 @@ public final class MediaAssetStore implements AutoCloseable {
             cancelReservation(part, sizeBytes);
             try {
                 Files.deleteIfExists(moved ? media : part);
+            } catch (IOException cleanup) {
+                exception.addSuppressed(cleanup);
+            }
+            try {
+                releaseRootLockIfReady();
             } catch (IOException cleanup) {
                 exception.addSuppressed(cleanup);
             }
@@ -304,9 +311,28 @@ public final class MediaAssetStore implements AutoCloseable {
         if (closed) throw new IllegalStateException("media asset store is closed");
     }
 
+    private synchronized void releaseRootLockIfReady() throws IOException {
+        if (!closed || !closeCleanupDone || !activeParts.isEmpty() || lockReleased) return;
+        lockReleased = true;
+        IOException failure = null;
+        try {
+            storeLock.release();
+        } catch (IOException exception) {
+            failure = exception;
+        }
+        try {
+            lockChannel.close();
+        } catch (IOException exception) {
+            if (failure == null) failure = exception;
+            else failure.addSuppressed(exception);
+        }
+        if (failure != null) throw failure;
+    }
+
     /**
-     * Server-shutdown cleanup. Active imports finish their own cleanup after observing {@code closed}; completed files
-     * are removed immediately. Any process-crash leftovers are pruned by the next constructor.
+     * Server-shutdown cleanup. Completed files are removed immediately. If an import is still active, the root lock
+     * remains held until that import observes the closed store and cleans its unpublished file. A hard process crash is
+     * handled by next-start orphan pruning.
      */
     @Override
     public void close() throws IOException {
@@ -328,14 +354,12 @@ public final class MediaAssetStore implements AutoCloseable {
                 else failure.addSuppressed(exception);
             }
         }
-        try {
-            storeLock.release();
-        } catch (IOException exception) {
-            if (failure == null) failure = exception;
-            else failure.addSuppressed(exception);
+
+        synchronized (this) {
+            closeCleanupDone = true;
         }
         try {
-            lockChannel.close();
+            releaseRootLockIfReady();
         } catch (IOException exception) {
             if (failure == null) failure = exception;
             else failure.addSuppressed(exception);
