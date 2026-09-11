@@ -108,6 +108,10 @@ If volume is omitted, native DFPWM state retains the previous `playAudio` volume
 
 Pending note events are stored separately and are not cleared by `SpeakerPeripheral.stop()`.
 
+### FACT-CCT-007
+
+`IDynamicPeripheral.callMethod` may be called from ComputerCraft computer/Lua threads, and a single peripheral may be used by more than one computer. Main-thread Lua functions are wrapped by CC:T into a queued main-thread task/result rather than ordinary dynamic `callMethod` execution.
+
 ## Historical reviewed-M1 HQ facts
 
 These facts describe the reviewed `fba84a3` lineage and explain the defects M1A is replacing. They are not claims about the current composite surface.
@@ -183,25 +187,48 @@ Legacy source still contains the older `SPEAKER_MAX_PCM = 192000` constant, but 
 
 ### FACT-M1A-007
 
-M1A uses a separate `hqspeaker_audio_empty` event for HQ `speakPCM` capacity. A calling computer is added as a waiter only after valid RAW input reaches the boolean enqueue result and that result is false. Once the inherited server queue has room, the composite emits the HQ-specific event to waiting computers.
+M1A uses a separate `hqspeaker_audio_empty` event for HQ `speakPCM` admission.
 
-Malformed, empty, and over-limit RAW tables throw during validation/conversion rather than becoming successful capacity waiters.
+The composite checks both:
+
+- the inherited 16-entry server packet queue; and
+- a duration-based outstanding RAW allowance.
+
+The current duration allowance is `135872` samples: one maximum legal `131072`-sample call plus `4800` samples/100 ms of headroom.
+
+For a valid `speakPCM` call rejected for capacity, the composite remembers that computer's requested sample count. It emits `hqspeaker_audio_empty` only once both the packet queue and the duration allowance can fit that requested count again.
+
+Malformed, empty, and over-limit RAW tables still go through validation and throw rather than becoming ordinary capacity waiters.
 
 ### FACT-M1A-008
 
-`RawFeedLifetime` is a pure Java server-tick state model. Accepted RAW samples add `ceil(samples * 20 / 48000)` drain ticks, with at least one tick for a non-empty accepted chunk. It does not expire while the inherited outbound queue still has data and requires a 20-tick idle grace before requesting source closure.
+`RawFeedLifetime` is a pure Java server-tick state model which tracks exact outstanding accepted RAW samples.
 
-`RawFeedLifetimeTest` covers sample/tick conversion, accumulated duration, queue gating, idle-grace reset, clear, and invalid zero-sample acceptance.
+At 48 kHz and 20 server ticks/s it subtracts `2400` outstanding samples per server tick. Its derived `drainTicks()` is the ceiling of outstanding samples divided by `2400`.
+
+It does not request source closure while the inherited outbound packet queue still has data, and after outstanding samples reach zero it requires a 20-tick idle grace before closure.
+
+`RawFeedLifetimeTest` covers exact outstanding-sample accounting, tiny-chunk accumulation without per-call tick rounding, capacity checks, drain timing, queue gating, idle-grace reset, clear, and invalid capacity/sample arguments.
 
 ### FACT-M1A-009
 
-`audioStatus()` is routed by current composite owner. RAW status is reported as RAW and does not claim finite seek/loop capabilities. `audioStop()` ends whichever HQ continuous owner is current; standard `stop()` additionally requests native CC:T stop.
+The legacy client `HQAudioStream` RAW path has a bounded 64-chunk queue and drops a newly received RAW PCM chunk if that queue is already full.
+
+M1A server-side sample-duration admission is intended to prevent normal producers from sending multi-second accepted chunks every server tick and building an unbounded delay. It is not a per-client acknowledgement protocol; pathological client/network conditions can still cause bounded client-side dropping.
 
 ### FACT-M1A-010
 
-The inherited `*All` / `*At` helpers still call legacy `HQSpeakerPeripheral` instances directly and therefore bypass the new single-speaker composite ownership boundary. Their old expected-group/tap architecture has not been migrated in M1A.
+M1A makes calls which can change the composite's current owner run one at a time on the same physical speaker. This prevents two connected ComputerCraft computers from interleaving `stop previous`, `start requested`, and `set owner` operations.
 
 ### FACT-M1A-011
+
+`audioStatus()` is routed by current composite owner. RAW status is reported as RAW and does not claim finite seek/loop capabilities. `audioStop()` ends whichever HQ continuous owner is current; standard `stop()` additionally requests native CC:T stop.
+
+### FACT-M1A-012
+
+The inherited `*All` / `*At` helpers still call legacy `HQSpeakerPeripheral` instances directly and therefore bypass the new single-speaker composite ownership boundary. Their old expected-group/tap architecture has not been migrated in M1A.
+
+### FACT-M1A-013
 
 The inherited HQ stop packet contains only a source UUID and its current legacy broadcast helper sends it to players within the 32-block HQ radius. Dynamic leave-range/re-enter-range renderer ownership is not yet implemented; that is later M1I work.
 
