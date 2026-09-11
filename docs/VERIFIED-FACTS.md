@@ -2,7 +2,7 @@
 
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
-When behavior changed after the reviewed M1 reference, historical facts are explicitly scoped to that reference instead of being called current.
+When behavior changed after the reviewed M1 reference or a frozen milestone, historical facts are explicitly scoped instead of being called current.
 
 ## Repository/platform
 
@@ -19,6 +19,7 @@ References:
 - completed M1B asset-store foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
 - verified M1C + server-storage-config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
+- M1E final code-bearing head before documentation freeze: `d0e66ab9135359627086c13647d5241ad778643f`;
 - current implementation branch: `codex/m1e-server-authoritative-finite`.
 
 ### FACT-PLATFORM-001
@@ -41,11 +42,11 @@ The exact M1C + server-storage-config base `33bcc6e04a2734500b7b15b84bee88456253
 
 The final frozen M1D head `4a2cd5de96228fc091226c7e72fb669b82be258c` completed GitHub Actions run `34635484316` successfully. The workflow head SHA exactly matches that frozen M1D commit. Both target NeoForge jobs completed successfully with build/tests, package verification, and candidate-JAR upload.
 
-A green CI build is build/test/package evidence, not Minecraft runtime proof.
+The M1E code-bearing head `d0e66ab9135359627086c13647d5241ad778643f` completed GitHub Actions run `34658958488` successfully on both NeoForge 21.1.247 and 21.1.248. This is source/test/package evidence for the M1E implementation, not Minecraft runtime proof.
 
 ### FACT-PLATFORM-003
 
-Current `HQSpeakerNetwork` still registers the existing ten custom payload types. M1D does not replace the prototype begin/chunk/end/status packet family; client-pulled asset ranges are M1F work.
+Current protocol version is `4`. `HQSpeakerNetwork` registers eleven custom payload types, including the M1E server-to-client `HQFiniteMediaStatePacket`. The transitional finite begin/chunk/end/control family still exists; client-pulled asset ranges are M1F work.
 
 ## CC:T 1.120.0 base speaker contract
 
@@ -244,7 +245,7 @@ On server shutdown, speaker/prepared/playback references are cleaned before shar
 
 ### FACT-M1D-002
 
-The current analyzed prepared/local finite set is:
+Frozen M1D's analyzed prepared/local finite set is:
 
 - MP3 / MPEG Layer III;
 - OGG Vorbis;
@@ -252,7 +253,7 @@ The current analyzed prepared/local finite set is:
 - uncompressed AIFF/AIF within the JavaSound reader's supported shape;
 - AU/SND encodings supported by the JavaSound reader.
 
-OGG using another codec such as Opus and compressed AIFC are explicitly rejected by M1D.
+OGG using another codec such as Opus and compressed AIFC are explicitly rejected by M1D. This historical set does not define the final narrowed product scope.
 
 ### FACT-M1D-003
 
@@ -288,7 +289,7 @@ The composite exposes `audioPreparedInfo(assetId)` and the bundled Lua module ex
 
 ### FACT-M1D-009
 
-The exposed `speakSupportedFiles()` list is narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`. MP2, MP4, M4A, and AAC are no longer advertised by the composite without exact finite-decoder evidence.
+Frozen M1D's exposed `speakSupportedFiles()` list is `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`. MP2, MP4, M4A, and AAC were removed from advertisement without exact finite-decoder evidence. Later M1G product-scope narrowing is separate from this historical fact.
 
 ### FACT-M1D-010
 
@@ -296,27 +297,61 @@ The analyzer converts numeric/container overflows into checked analysis failures
 
 ### FACT-M1D-011
 
-The transitional finite sender still uses fixed recipients and client STARTED/ENDED-style authority. M1D changes file truth/duration source, not the transport/state architecture scheduled for M1E/M1F.
+At frozen M1D head, the transitional finite sender used fixed recipients and client STARTED/ENDED-style authority. M1D changed file truth/duration source, not that transport/state architecture. M1E subsequently removed renderer authority; fixed recipients/whole-file transfer remain until M1F.
 
-## Frozen/prototype finite facts
+## M1E server-authority facts
+
+### FACT-M1E-001
+
+Current `HQFiniteMediaServer` semantic states are `PLAYING`, `PAUSED`, `ENDED`, and `ERROR`. There is no server `LOADING` state for client readiness. Session construction sets known duration, starts `FinitePlaybackClock` immediately, and enters `PLAYING`.
+
+### FACT-M1E-002
+
+`successfulRenderers`, canonical `observed`, and the 15-second no-renderer timeout are removed. Playback time/EOF no longer depend on a renderer appearing.
+
+### FACT-M1E-003
+
+`FinitePlaybackClock.reachedEnd(now)` provides deterministic non-looping EOF detection. Server tick/status/control paths can finalize known-duration EOF. Canonical natural EOF finishes the clock, enters ENDED, closes the transitional transfer, then releases the playback asset reference.
+
+### FACT-M1E-004
+
+Non-looping `seek(duration)` immediately enters ENDED. Looping exact-duration seek wraps to 0 through the clock's looping normalization.
+
+### FACT-M1E-005
+
+Protocol v4 adds `HQFiniteMediaStatePacket`. The packet contains source/media/generation, semantic state, canonical position, duration, volume, looping, and optional error detail. Immutable setup such as format, total encoded size, and speaker position remains in the transitional BEGIN packet rather than being duplicated in every STATE packet.
+
+### FACT-M1E-006
+
+Current `HQFiniteMediaStatusPacket.Transition` contains only READY and ERROR. The prototype renderer-authority transitions STARTED, PAUSED, RESUMED, SEEKED, and ENDED are removed. READY requests fresh server state; ERROR is diagnostic and does not become canonical playback failure.
+
+### FACT-M1E-007
+
+The transitional M1E client still receives/writes the complete encoded file before constructing `FileFiniteAudioStream`, but it no longer starts at 0 when transfer ends. It reports READY and waits for a fresh authoritative STATE, then starts/seeks from the current server position or remains paused/destroys itself according to server state.
+
+### FACT-M1E-008
+
+The client's `FinitePlaybackClock` remains as a local renderer projection, not canonical playback authority. Natural local decoder end does not send a canonical ENDED transition to the server.
+
+## Frozen/prototype and transitional transport facts
 
 ### FACT-PROTO-001
 
-The frozen prototype proved writable ComputerCraft staging, 256 KiB chunked client transfer, disk-backed client encoded files, and file-backed incremental decode paths.
+The frozen prototype proved writable ComputerCraft staging, 256 KiB chunked client transfer, disk-backed client encoded files, and file-backed incremental decoded reading.
 
 ### FACT-PROTO-002
 
-The current transitional finite sender still uses fixed recipients and prototype begin/chunk/end packets.
+Current M1E transport still uses fixed recipients and transitional begin/chunk/end/control packets. The server still pushes the whole encoded asset and reads its transfer channel from server tick code. M1F replaces this transport.
 
 ### FACT-PROTO-003
 
-The current transitional finite status path still accepts client STARTED/ENDED/error transitions and therefore is not yet the final server-authoritative finite state model.
+The renderer-authority status behavior was a frozen M1D/prototype fact and is no longer current after M1E. Current client->server finite status is READY/ERROR only.
 
 ## Retained finite/stream/multispeaker facts
 
 ### FACT-FINITE-001
 
-`FiniteAudioTrack` retains complete mono signed-16-bit PCM with frame-aligned cursor state. Legacy finite controls/status transitions remain in source until migration.
+`FiniteAudioTrack` retains complete mono signed-16-bit PCM with frame-aligned cursor state. Legacy finite decode/control code remains until later migration even though the staged/prepared M1E server semantics are now authoritative.
 
 ### FACT-STREAM-001
 
@@ -342,16 +377,22 @@ Speaker/prepared ownership is cleaned before shared media-store close on `Server
 
 Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, `FiniteMediaAnalyzerTest`, and `MediaStorageLimitsTest`.
 
+`FinitePlaybackClockTest` now includes explicit natural-end tests: non-looping reaches known duration, while looping never reports natural EOF. Existing exact-end seek, loop-rebase, and pause/resume cases remain.
+
 `FiniteMediaAnalyzerTest` uses synthetic container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3. It covers ID3v2 handling, non-Vorbis/truncated OGG rejection, WAV first-data/block-alignment/float-width behavior, AIFF width/offset/truncation behavior, bounded seek metadata, JavaSound conversion parity for accepted PCM fixtures, and channel reset after success/failure.
 
 `MediaStorageLimitsTest` covers normal staging capacity and the overflow-safe unlimited staging sentinel.
 
 ### FACT-TEST-002
 
-`scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, and `scripts/m1d_media_analysis_test.lua` are runtime contracts. The M1D script requires an accepted small fixture to produce an observed client renderer, so its eventual in-game pass includes actual decoder acceptance. None should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
+`scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, `scripts/m1d_media_analysis_test.lua`, and `scripts/m1e_server_authority_test.lua` exist as runtime contracts for their respective milestones.
+
+The M1D script includes frozen-M1D renderer-observation expectations. The M1E script instead checks immediate server-authoritative progression, pause/resume, non-looping exact-end EOF, and looping exact-end wrap.
+
+None of these should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
 
 ## License
 
 ### FACT-LICENSE-001
 
-Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. Current M0.5-M1D source changes do not resolve that provenance mismatch.
+Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. Current M0.5-M1E source changes do not resolve that provenance mismatch.
