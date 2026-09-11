@@ -16,6 +16,7 @@ import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
 import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,8 +25,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The physical CC speaker exposed to Lua. Standard speaker calls are delegated to CC:T's original
- * SpeakerPeripheral while HQ-specific calls remain available through the inherited implementation.
+ * The physical CC speaker exposed to Lua.
+ *
+ * Standard speaker calls stay on CC:T's original SpeakerPeripheral. HQ-specific continuous sources have one
+ * explicit owner so old/staged finite state cannot accidentally capture controls belonging to a later source.
  */
 public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final MethodSupplier<PeripheralMethod> METHOD_SUPPLIER = PeripheralMethodSupplier.create(List.of());
@@ -39,12 +42,31 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
 
+    /** The real contiguous sample ceiling enforced by the inherited speakPCM table conversion. */
+    private static final int HQ_RAW_MAX_SAMPLES = 131_072;
+    private static final int HQ_RAW_SAMPLE_RATE = 48_000;
+    private static final long RAW_STOP_GRACE_NANOS = 1_000_000_000L;
+
+    private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
+
+    private enum Owner {
+        NONE,
+        RAW,
+        LEGACY_FINITE,
+        STAGED_FINITE,
+        STREAM
+    }
+
     private final HQSpeakerPeripheral legacy;
     private final SpeakerPeripheral vanilla;
     private final HQFiniteMediaServer finite;
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
     private final Map<IComputerAccess, IComputerAccess> legacyComputerViews = new ConcurrentHashMap<>();
+    private final Set<IComputerAccess> rawCapacityWaiters = ConcurrentHashMap.newKeySet();
+
+    private volatile Owner owner = Owner.NONE;
+    private volatile long rawAudibleUntilNanos;
 
     public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla, HQFiniteMediaServer finite) {
         this.legacy = legacy;
@@ -54,6 +76,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
         names.addAll(STANDARD);
         dynamicNames = names.toArray(String[]::new);
+        ACTIVE.add(this);
     }
 
     @Override public String getType() { return "speaker"; }
@@ -62,16 +85,35 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     boolean usesVanilla(SpeakerPeripheral candidate) { return vanilla == candidate; }
 
+    /** Tick only ownership/lifecycle state. Audio dispatch remains in the existing server implementations. */
+    public static void tickAll() {
+        for (HQSpeakerCompositePeripheral peripheral : ACTIVE) peripheral.tickOwnership();
+    }
+
+    private void tickOwnership() {
+        if (owner != Owner.RAW) return;
+        long now = System.nanoTime();
+        if (legacy.speakIsPlaying() || now < rawAudibleUntilNanos + RAW_STOP_GRACE_NANOS) return;
+
+        // The inherited RAW client stream otherwise returns silence forever. End the source after the last accepted
+        // samples have had time to drain. A later speakPCM call creates a fresh RAW session.
+        legacy.speakStop();
+        rawCapacityWaiters.clear();
+        rawAudibleUntilNanos = 0L;
+        owner = Owner.NONE;
+    }
+
     @Override
     public void attach(IComputerAccess computer) {
         vanilla.attach(computer);
         finite.attach(computer);
-        IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, HQSpeakerCompositePeripheral::filteredLegacyAccess);
+        IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, this::filteredLegacyAccess);
         legacy.attach(filtered);
     }
 
     @Override
     public void detach(IComputerAccess computer) {
+        rawCapacityWaiters.remove(computer);
         finite.detach(computer);
         IComputerAccess filtered = legacyComputerViews.remove(computer);
         if (filtered != null) legacy.detach(filtered);
@@ -79,22 +121,31 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     public void cleanup() {
+        ACTIVE.remove(this);
+        rawCapacityWaiters.clear();
+        owner = Owner.NONE;
+        rawAudibleUntilNanos = 0L;
         finite.cleanup();
         legacy.cleanup();
         legacyComputerViews.clear();
     }
 
     /**
-     * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented
-     * playAudio backpressure contract. Standard events must therefore come exclusively from the native
-     * SpeakerPeripheral; the old synthetic event is swallowed at this boundary.
+     * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented playAudio
+     * contract, so the native event remains exclusively owned by CC:T. For HQ RAW, a legacy heartbeat is translated
+     * into hqspeaker_audio_empty only for a computer which actually observed speakPCM backpressure.
      */
-    private static IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
+    private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
             IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
             (proxy, method, args) -> {
                 if ("queueEvent".equals(method.getName()) && args != null && args.length > 0
-                        && "speaker_audio_empty".equals(args[0])) return null;
+                        && "speaker_audio_empty".equals(args[0])) {
+                    if (rawCapacityWaiters.remove(delegate)) {
+                        delegate.queueEvent("hqspeaker_audio_empty", delegate.getAttachmentName());
+                    }
+                    return null;
+                }
                 try {
                     return method.invoke(delegate, args);
                 } catch (InvocationTargetException e) {
@@ -111,8 +162,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     @LuaFunction(mainThread = true)
     public final boolean audioPlayStaged(IComputerAccess computer, String path,
                                          Optional<Double> volume, Optional<Boolean> consume) throws LuaException {
-        if (legacy.speakIsPlaying() || vanilla.madeSound() || finite.isActive()) return false;
-        return finite.playStaged(computer, path, volume.orElse(1.0), consume.orElse(true));
+        beginReplacingHQ(Owner.STAGED_FINITE);
+        boolean started = finite.playStaged(computer, path, volume.orElse(1.0), consume.orElse(true));
+        if (started) owner = Owner.STAGED_FINITE;
+        return started;
     }
 
     @LuaFunction
@@ -126,29 +179,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         String name = dynamicNames[method];
 
         if (STANDARD.contains(name)) return callStandard(name, context, args);
+        if (FINITE_CONTROLS.contains(name)) return callFiniteControl(name, computer, context, args);
 
-        if (FINITE_CONTROLS.contains(name)) {
-            MethodResult local = callFiniteControl(name, args);
-            if (local != null) return local;
-        }
+        if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
 
         if ("speakStop".equals(name)) {
-            finite.stop();
-            vanilla.stop();
-            return invokeLegacy(name, computer, context, args);
+            stopEverything();
+            return MethodResult.of();
         }
-        if ("speakIsPlaying".equals(name)) {
-            return MethodResult.of(finite.isActive() || legacy.speakIsPlaying() || vanilla.madeSound());
-        }
-        if ("setLooping".equals(name) && finite.isActive()) {
+        if ("speakIsPlaying".equals(name)) return MethodResult.of(isHQContinuousActive());
+
+        if ("setLooping".equals(name) && owner == Owner.STAGED_FINITE) {
             return MethodResult.of(finite.setLooping(args.getBoolean(0)));
         }
 
-        if ((FINITE_START.contains(name) || STREAM_START.contains(name)) && (finite.isActive() || vanilla.madeSound())) {
-            return MethodResult.of(false);
-        }
-        if (RAW_START.contains(name) && finite.isActive()) return MethodResult.of(false);
-        if (FINITE_START.contains(name) && legacy.speakIsPlaying()) return MethodResult.of(false);
+        if (RAW_START.contains(name)) return startRaw(computer, context, name, args);
+        if (FINITE_START.contains(name)) return startLegacyReplacing(Owner.LEGACY_FINITE, computer, context, name, args);
+        if (STREAM_START.contains(name)) return startLegacyReplacing(Owner.STREAM, computer, context, name, args);
 
         return invokeLegacy(name, computer, context, args);
     }
@@ -157,35 +204,170 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return switch (name) {
             case "playNote" -> MethodResult.of(vanilla.playNote(context, args.getString(0), args.optDouble(1), args.optDouble(2)));
             case "playSound" -> {
-                if (finite.isActive() || legacy.speakIsPlaying()) yield MethodResult.of(false);
-                yield MethodResult.of(vanilla.playSound(context, args.getString(0), args.optDouble(1), args.optDouble(2)));
+                if (isHQContinuousActive()) yield MethodResult.of(false);
+                boolean accepted = vanilla.playSound(context, args.getString(0), args.optDouble(1), args.optDouble(2));
+                if (accepted) clearTerminalOwnership();
+                yield MethodResult.of(accepted);
             }
             case "playAudio" -> {
-                if (finite.isActive() || legacy.speakIsPlaying()) yield MethodResult.of(false);
-                yield MethodResult.of(vanilla.playAudio(context, args.getTableUnsafe(0), args.optDouble(1)));
+                if (isHQContinuousActive()) yield MethodResult.of(false);
+                boolean accepted = vanilla.playAudio(context, args.getTableUnsafe(0), args.optDouble(1));
+                if (accepted) clearTerminalOwnership();
+                yield MethodResult.of(accepted);
             }
             case "stop" -> {
-                vanilla.stop();
-                finite.stop();
-                legacy.speakStop();
+                stopEverything();
                 yield MethodResult.of();
             }
             default -> throw new LuaException("No such method " + name);
         };
     }
 
-    private @Nullable MethodResult callFiniteControl(String name, IArguments args) throws LuaException {
-        if (!finite.hasStatus()) return null;
-        return switch (name) {
-            case "audioStatus" -> MethodResult.of(finite.status());
-            case "audioPause" -> MethodResult.of(finite.pause());
-            case "audioResume" -> MethodResult.of(finite.resume());
-            case "audioSeek" -> MethodResult.of(finite.seek(args.getDouble(0)));
-            case "audioSetVolume" -> MethodResult.of(finite.setVolume(args.getDouble(0)));
-            case "audioSetLooping" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
-            case "audioStop" -> { finite.stop(); yield MethodResult.of(); }
-            default -> null;
+    private MethodResult startRaw(IComputerAccess computer, ILuaContext context, String name, IArguments args) throws LuaException {
+        if (owner != Owner.RAW) beginReplacingHQ(Owner.RAW);
+
+        int samples = contiguousRawSamples(args);
+        MethodResult result = invokeLegacy(name, computer, context, args);
+        if (immediateTrue(result)) {
+            owner = Owner.RAW;
+            rawCapacityWaiters.remove(computer);
+            long now = System.nanoTime();
+            long duration = Math.max(1L, Math.round(samples * (1_000_000_000.0 / HQ_RAW_SAMPLE_RATE)));
+            rawAudibleUntilNanos = Math.max(now, rawAudibleUntilNanos) + duration;
+        } else {
+            rawCapacityWaiters.add(computer);
+        }
+        return result;
+    }
+
+    private MethodResult startLegacyReplacing(Owner requested, IComputerAccess computer, ILuaContext context,
+                                              String name, IArguments args) throws LuaException {
+        beginReplacingHQ(requested);
+        MethodResult result = invokeLegacy(name, computer, context, args);
+        if (immediateTrue(result)) owner = requested;
+        return result;
+    }
+
+    private void beginReplacingHQ(Owner requested) {
+        if (requested == Owner.RAW && owner == Owner.RAW) return;
+        stopCurrentHQ();
+        // CC:T stop clears playSound/playAudio but deliberately leaves pending notes alone, so notes retain native
+        // independence while an explicit HQ continuous-source start takes ownership of the main output.
+        vanilla.stop();
+    }
+
+    private void stopCurrentHQ() {
+        switch (owner) {
+            case STAGED_FINITE -> finite.stop();
+            case RAW, LEGACY_FINITE, STREAM -> legacy.speakStop();
+            case NONE -> { }
+        }
+        rawCapacityWaiters.clear();
+        rawAudibleUntilNanos = 0L;
+        owner = Owner.NONE;
+    }
+
+    private void stopEverything() {
+        vanilla.stop();
+        finite.stop();
+        legacy.speakStop();
+        rawCapacityWaiters.clear();
+        rawAudibleUntilNanos = 0L;
+        owner = Owner.NONE;
+    }
+
+    private boolean isHQContinuousActive() {
+        return switch (owner) {
+            case NONE -> false;
+            case RAW -> legacy.speakIsPlaying()
+                || System.nanoTime() < rawAudibleUntilNanos + RAW_STOP_GRACE_NANOS;
+            case LEGACY_FINITE -> legacy.speakIsPlaying();
+            case STAGED_FINITE -> finite.isActive();
+            case STREAM -> legacy.isStreaming();
         };
+    }
+
+    private void clearTerminalOwnership() {
+        if (!isHQContinuousActive()) {
+            owner = Owner.NONE;
+            rawCapacityWaiters.clear();
+            rawAudibleUntilNanos = 0L;
+        }
+    }
+
+    private MethodResult callFiniteControl(String name, IComputerAccess computer, ILuaContext context,
+                                           IArguments args) throws LuaException {
+        if ("audioStatus".equals(name)) {
+            return switch (owner) {
+                case STAGED_FINITE -> MethodResult.of(finite.hasStatus() ? finite.status() : idleStatus());
+                case LEGACY_FINITE, STREAM -> invokeLegacy(name, computer, context, args);
+                case RAW -> MethodResult.of(rawStatus());
+                case NONE -> MethodResult.of(idleStatus());
+            };
+        }
+
+        if (owner == Owner.STAGED_FINITE) {
+            return switch (name) {
+                case "audioPause" -> MethodResult.of(finite.pause());
+                case "audioResume" -> MethodResult.of(finite.resume());
+                case "audioSeek" -> MethodResult.of(finite.seek(args.getDouble(0)));
+                case "audioSetVolume" -> MethodResult.of(finite.setVolume(args.getDouble(0)));
+                case "audioSetLooping" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
+                case "audioStop" -> {
+                    finite.stop();
+                    owner = Owner.NONE;
+                    yield MethodResult.of();
+                }
+                default -> MethodResult.of(false);
+            };
+        }
+
+        if (owner == Owner.LEGACY_FINITE) {
+            MethodResult result = invokeLegacy(name, computer, context, args);
+            if ("audioStop".equals(name)) owner = Owner.NONE;
+            return result;
+        }
+
+        // RAW and live streams have no finite duration/seek/loop contract.
+        if ("audioStop".equals(name)) return MethodResult.of();
+        return MethodResult.of(false);
+    }
+
+    private Map<String, Object> rawStatus() {
+        Map<String, Object> status = new HashMap<>();
+        status.put("state", isHQContinuousActive() ? "playing" : "idle");
+        status.put("kind", "raw");
+        status.put("observed", false);
+        status.put("canPause", false);
+        status.put("canSeek", false);
+        status.put("canLoop", false);
+        return status;
+    }
+
+    private static Map<String, Object> idleStatus() {
+        Map<String, Object> status = new HashMap<>();
+        status.put("state", "idle");
+        status.put("kind", "none");
+        status.put("observed", false);
+        status.put("canPause", false);
+        status.put("canSeek", false);
+        status.put("canLoop", false);
+        return status;
+    }
+
+    private static int contiguousRawSamples(IArguments args) throws LuaException {
+        Map<?, ?> table = args.getTable(0);
+        int length = 0;
+        while (length < HQ_RAW_MAX_SAMPLES
+                && (table.containsKey((long) (length + 1)) || table.containsKey((double) (length + 1)))) {
+            length++;
+        }
+        return length;
+    }
+
+    private static boolean immediateTrue(MethodResult result) {
+        Object[] values = result.getResult();
+        return values != null && values.length > 0 && Boolean.TRUE.equals(values[0]);
     }
 
     private MethodResult invokeLegacy(String name, IComputerAccess computer, ILuaContext context, IArguments args) throws LuaException {
