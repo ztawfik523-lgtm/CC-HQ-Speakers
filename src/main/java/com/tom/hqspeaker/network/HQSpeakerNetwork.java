@@ -9,7 +9,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class HQSpeakerNetwork {
 
-    private static final String PROTOCOL_VERSION = "2";
+    private static final String PROTOCOL_VERSION = "3";
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
@@ -20,7 +20,13 @@ public class HQSpeakerNetwork {
         registrar.playToServer(IcyMetaPacket.TYPE, IcyMetaPacket.STREAM_CODEC, IcyMetaPacket::handle);
         registrar.playToServer(HQSpeakerStatusPacket.TYPE, HQSpeakerStatusPacket.STREAM_CODEC, HQSpeakerStatusPacket::handle);
 
-        HQSpeakerMod.log("Network registered with 5 payloads.");
+        registrar.playToClient(HQFiniteMediaBeginPacket.TYPE, HQFiniteMediaBeginPacket.STREAM_CODEC, HQFiniteMediaBeginPacket::handle);
+        registrar.playToClient(HQFiniteMediaChunkPacket.TYPE, HQFiniteMediaChunkPacket.STREAM_CODEC, HQFiniteMediaChunkPacket::handle);
+        registrar.playToClient(HQFiniteMediaEndPacket.TYPE, HQFiniteMediaEndPacket.STREAM_CODEC, HQFiniteMediaEndPacket::handle);
+        registrar.playToClient(HQFiniteMediaControlPacket.TYPE, HQFiniteMediaControlPacket.STREAM_CODEC, HQFiniteMediaControlPacket::handle);
+        registrar.playToServer(HQFiniteMediaStatusPacket.TYPE, HQFiniteMediaStatusPacket.STREAM_CODEC, HQFiniteMediaStatusPacket::handle);
+
+        HQSpeakerMod.log("Network registered with 10 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {
