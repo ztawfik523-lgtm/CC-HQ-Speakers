@@ -47,4 +47,26 @@ class FinitePlaybackClockTest {
         clock.resume(10L * SECOND);
         assertEquals(5.0, clock.position(12L * SECOND), 1e-6);
     }
+
+    @Test
+    void nonLoopingClockReportsNaturalEndAtDuration() {
+        FinitePlaybackClock clock = new FinitePlaybackClock(false);
+        clock.setDuration(5.0, 0L);
+        clock.start(0L);
+
+        assertFalse(clock.reachedEnd(4L * SECOND));
+        assertTrue(clock.reachedEnd(5L * SECOND));
+        assertTrue(clock.reachedEnd(20L * SECOND));
+    }
+
+    @Test
+    void loopingClockNeverReportsNaturalEnd() {
+        FinitePlaybackClock clock = new FinitePlaybackClock(true);
+        clock.setDuration(5.0, 0L);
+        clock.start(0L);
+
+        assertFalse(clock.reachedEnd(5L * SECOND));
+        assertFalse(clock.reachedEnd(20L * SECOND));
+        assertEquals(0.0, clock.position(20L * SECOND), 1e-6);
+    }
 }
