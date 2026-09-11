@@ -48,7 +48,12 @@ assertBool(
 )
 sleep(0.2)
 
+-- Exact CC:T stop() sets a flag which SpeakerPeripheral.update() consumes on the
+-- next server tick. Do not enqueue the following playAudio buffer in that same
+-- tick or a correct native implementation may accept it and then cancel it when
+-- the pending stop is processed.
 speaker.stop()
+sleep(0.05)
 
 local audio = {}
 for i = 1, 4800 do
