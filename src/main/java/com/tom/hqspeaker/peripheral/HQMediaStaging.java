@@ -100,19 +100,32 @@ public final class HQMediaStaging {
         return maxStagedBytes;
     }
 
-    /** Analyze and import one staged file, returning a reusable asset UUID only when the format is supported. */
+    /** Import and analyze one staged file, returning a reusable asset UUID only when the committed bytes are supported. */
     public String prepareAsset(IComputerAccess computer, String path, boolean consume) throws LuaException {
         int computerId = computer.getID();
         StagedFile staged = openStaged(computer, path);
         MediaAssetStore store = assetStore();
         MediaAsset asset;
+
+        // Commit the exact staged bytes first. Analysis then runs against the immutable store copy, so a ComputerCraft
+        // program modifying the writable staging file cannot race metadata for one version against bytes from another.
         try (SeekableByteChannel channel = staged.channel()) {
-            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(channel);
-            // analyze() returns the channel to byte zero. Import the exact encoded bytes, then attach the already
-            // computed metadata before the UUID can be returned to Lua.
             asset = store.importAsset(staged.path(), staged.sizeBytes(), channel);
+        } catch (IOException | RuntimeException e) {
+            throw new LuaException("cannot prepare staged media: " + safeMessage(e));
+        }
+
+        try (SeekableByteChannel committed = store.openRead(asset.id())) {
+            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(committed);
             asset.attachMetadata(metadata);
         } catch (IOException | RuntimeException e) {
+            try {
+                store.release(asset.id());
+            } catch (IOException cleanupFailure) {
+                e.addSuppressed(cleanupFailure);
+                HQSpeakerMod.warn("could not discard rejected media asset " + asset.id() + ": "
+                    + safeMessage(cleanupFailure));
+            }
             throw new LuaException("cannot prepare staged media: " + safeMessage(e));
         }
 
