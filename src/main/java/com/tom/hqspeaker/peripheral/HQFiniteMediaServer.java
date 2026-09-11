@@ -1,8 +1,9 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
-import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.FinitePlaybackClock;
+import com.tom.hqspeaker.media.MediaAsset;
+import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaChunkPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaControlPacket;
@@ -10,8 +11,6 @@ import com.tom.hqspeaker.network.HQFiniteMediaEndPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import com.tom.hqspeaker.vs2.VS2TransformHelper;
-import dan200.computercraft.api.ComputerCraftAPI;
-import dan200.computercraft.api.filesystem.WritableMount;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.peripheral.IComputerAccess;
 import net.minecraft.core.BlockPos;
@@ -24,7 +23,6 @@ import org.joml.Vector3d;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -34,11 +32,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Server-side owner for the new finite-file path. Files are staged through a CC writable mount,
- * then sent to the clients in bounded chunks. Only one finite playback is active per physical speaker.
+ * Transitional finite playback sender.
+ *
+ * <p>M1C removes staging ownership from this class. It may still play the old direct-staged path for compatibility,
+ * but prepared playback reads a reusable server-wide media asset. Fixed recipients/client renderer authority remain
+ * prototype behavior scheduled for replacement by M1E/M1F.</p>
  */
 public final class HQFiniteMediaServer {
-    public static final long MOUNT_CAPACITY_BYTES = HQFiniteMediaBeginPacket.MAX_MEDIA_BYTES;
     private static final double SPEAKER_RADIUS = 32.0;
     private static final int CHUNKS_PER_TICK = 2;
     private static final long UNOBSERVED_TIMEOUT_NANOS = 15_000_000_000L;
@@ -48,10 +48,8 @@ public final class HQFiniteMediaServer {
 
     private enum State { LOADING, PLAYING, PAUSED, ENDED, ERROR }
 
-    private record Binding(IComputerAccess computer, String location) {}
-
     private static final class Session {
-        final UUID mediaId = UUID.randomUUID();
+        final UUID mediaId;
         final long generation;
         final HQFiniteMediaBeginPacket.MediaFormat format;
         final long totalBytes;
@@ -62,16 +60,20 @@ public final class HQFiniteMediaServer {
         final long createdNanos = System.nanoTime();
         final boolean consume;
         final String stagedPath;
+        final MediaAssetStore assetStore;
+        final UUID retainedAssetId;
         float volume;
         long sentBytes;
         boolean transferComplete;
         boolean observed;
+        boolean assetReferenceHeld;
         State state = State.LOADING;
         String error = "";
 
-        Session(long generation, HQFiniteMediaBeginPacket.MediaFormat format, long totalBytes,
-                SeekableByteChannel channel, Set<UUID> recipients, float volume,
-                boolean looping, boolean consume, String stagedPath) {
+        Session(UUID mediaId, long generation, HQFiniteMediaBeginPacket.MediaFormat format, long totalBytes,
+                SeekableByteChannel channel, Set<UUID> recipients, float volume, boolean looping,
+                boolean consume, String stagedPath, MediaAssetStore assetStore, UUID retainedAssetId) {
+            this.mediaId = mediaId;
             this.generation = generation;
             this.format = format;
             this.totalBytes = totalBytes;
@@ -81,24 +83,26 @@ public final class HQFiniteMediaServer {
             this.clock = new FinitePlaybackClock(looping);
             this.consume = consume;
             this.stagedPath = stagedPath;
+            this.assetStore = assetStore;
+            this.retainedAssetId = retainedAssetId;
+            this.assetReferenceHeld = assetStore != null && retainedAssetId != null;
         }
     }
 
     private final Level level;
     private final BlockPos pos;
     private final UUID source = UUID.randomUUID();
-    private final WritableMount mount;
-    private final Map<Integer, Binding> bindings = new ConcurrentHashMap<>();
+    private final HQMediaStaging staging;
     private final Set<IComputerAccess> attachedComputers = ConcurrentHashMap.newKeySet();
     private long generationCounter;
     private Session session;
     private Map<String, Object> terminalStatus;
 
-    public HQFiniteMediaServer(Level level, BlockPos pos) {
+    public HQFiniteMediaServer(Level level, BlockPos pos, HQMediaStaging staging) {
         this.level = level;
         this.pos = pos.immutable();
-        if (!(level instanceof ServerLevel serverLevel)) throw new IllegalArgumentException("finite media server requires a server level");
-        mount = ComputerCraftAPI.createSaveDirMount(serverLevel.getServer(), "hqspeaker/media/" + source, MOUNT_CAPACITY_BYTES);
+        this.staging = staging;
+        if (!(level instanceof ServerLevel)) throw new IllegalArgumentException("finite media server requires a server level");
         ACTIVE.add(this);
         BY_SOURCE.put(source, this);
     }
@@ -119,60 +123,70 @@ public final class HQFiniteMediaServer {
 
     public void attach(IComputerAccess computer) {
         attachedComputers.add(computer);
-        int id = computer.getID();
-        String desired = "hqspeaker_" + source.toString().substring(0, 8);
-        String location = computer.mountWritable(desired, mount, "hqspeaker");
-        if (location == null) {
-            location = computer.mountWritable(desired + "_" + id, mount, "hqspeaker");
-        }
-        if (location != null) bindings.put(id, new Binding(computer, location));
     }
 
     public void detach(IComputerAccess computer) {
         attachedComputers.remove(computer);
-        Binding binding = bindings.remove(computer.getID());
-        if (binding != null) {
-            try { computer.unmount(binding.location()); }
-            catch (RuntimeException ignored) {}
-        }
     }
 
-    public String mountPath(IComputerAccess computer) throws LuaException {
-        Binding binding = bindings.get(computer.getID());
-        if (binding == null || binding.location() == null) throw new LuaException("HQ speaker media mount is unavailable");
-        return binding.location();
-    }
-
+    /** Historical direct-staged entrypoint retained until the old prototype surface can be removed. */
     public synchronized boolean playStaged(IComputerAccess computer, String path, double volume, boolean consume) throws LuaException {
         if (isActive()) return false;
-        Binding binding = bindings.get(computer.getID());
-        if (binding == null) throw new LuaException("HQ speaker media mount is unavailable");
-
-        String safePath;
-        try { safePath = FiniteMediaPath.normalize(path); }
-        catch (IllegalArgumentException e) { throw new LuaException("invalid staged path: " + e.getMessage()); }
-
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
         float appliedVolume = (float) Math.max(0.0, Math.min(3.0, volume));
 
+        HQMediaStaging.StagedFile staged = staging.openStaged(computer, path);
+        SeekableByteChannel channel = staged.channel();
         try {
-            if (!mount.exists(safePath) || mount.isDirectory(safePath)) throw new LuaException("staged media file does not exist");
-            long size = mount.getSize(safePath);
-            if (size <= 0L) throw new LuaException("staged media file is empty");
-            if (size > MOUNT_CAPACITY_BYTES) throw new LuaException("staged media file exceeds " + (MOUNT_CAPACITY_BYTES / 1024 / 1024) + " MiB");
-
-            SeekableByteChannel channel = mount.openForRead(safePath);
             long generation = ++generationCounter;
-            Set<UUID> recipients = collectRecipients();
-            Session next = new Session(generation, detectFormat(safePath), size, channel, recipients,
-                appliedVolume, false, consume, safePath);
+            Session next = new Session(
+                UUID.randomUUID(), generation, detectFormat(staged.path()), staged.sizeBytes(), channel,
+                collectRecipients(), appliedVolume, false, consume, staged.path(), null, null
+            );
             session = next;
             terminalStatus = null;
             sendBegin(next);
             queueStateEvent();
             return true;
-        } catch (IOException e) {
-            throw new LuaException("cannot open staged media: " + safeMessage(e));
+        } catch (RuntimeException e) {
+            closeChannel(channel);
+            throw e;
+        }
+    }
+
+    /** Play one reusable media asset, retaining a playback reference until stop/end/error. */
+    public synchronized boolean playPrepared(String assetId, double volume) throws LuaException {
+        if (isActive()) return false;
+        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        float appliedVolume = (float) Math.max(0.0, Math.min(3.0, volume));
+        UUID id = HQMediaStaging.parseAssetId(assetId);
+        MediaAssetStore store = staging.assetStore();
+        MediaAsset asset = store.get(id).orElseThrow(() -> new LuaException("unknown or released media asset"));
+
+        if (!store.retain(id)) throw new LuaException("unknown or released media asset");
+        SeekableByteChannel channel = null;
+        try {
+            channel = store.openRead(id);
+            long generation = ++generationCounter;
+            Session next = new Session(
+                id, generation, detectFormat(asset.sourceName()), asset.sizeBytes(), channel,
+                collectRecipients(), appliedVolume, false, false, null, store, id
+            );
+            session = next;
+            terminalStatus = null;
+            sendBegin(next);
+            queueStateEvent();
+            return true;
+        } catch (IOException | RuntimeException e) {
+            closeChannel(channel);
+            try {
+                store.release(id);
+            } catch (IOException releaseFailure) {
+                e.addSuppressed(releaseFailure);
+            }
+            if (e instanceof LuaException lua) throw lua;
+            if (e instanceof IOException io) throw new LuaException("cannot open prepared media: " + safeMessage(io));
+            throw e;
         }
     }
 
@@ -210,6 +224,7 @@ public final class HQFiniteMediaServer {
         if (!s.clock.looping() && target >= s.clock.duration()) {
             s.clock.finish(now);
             s.state = State.ENDED;
+            releaseAssetReference(s);
         }
         sendControl(s, HQFiniteMediaControlPacket.Action.SEEK, target);
         queueStateEvent();
@@ -240,6 +255,7 @@ public final class HQFiniteMediaServer {
         if (s == null) return;
         sendControl(s, HQFiniteMediaControlPacket.Action.STOP, 0.0);
         closeSessionTransfer(s);
+        releaseAssetReference(s);
         terminalStatus = null;
         session = null;
         queueStateEvent();
@@ -266,10 +282,6 @@ public final class HQFiniteMediaServer {
 
     public void cleanup() {
         stop();
-        for (Binding binding : new ArrayList<>(bindings.values())) {
-            try { binding.computer().unmount(binding.location()); } catch (RuntimeException ignored) {}
-        }
-        bindings.clear();
         attachedComputers.clear();
         ACTIVE.remove(this);
         BY_SOURCE.remove(source, this);
@@ -281,9 +293,11 @@ public final class HQFiniteMediaServer {
 
         if (!s.transferComplete) transferSome(s);
 
-        if (s.transferComplete && !s.observed && System.nanoTime() - s.createdNanos > UNOBSERVED_TIMEOUT_NANOS) {
+        if (s.transferComplete && !s.observed && s.state != State.ERROR && s.state != State.ENDED
+                && System.nanoTime() - s.createdNanos > UNOBSERVED_TIMEOUT_NANOS) {
             s.state = State.ERROR;
             s.error = s.recipients.isEmpty() ? "no client renderer was in range" : "client renderer was not observed";
+            releaseAssetReference(s);
             terminalStatus = statusOf(s);
             queueStateEvent();
         }
@@ -323,8 +337,8 @@ public final class HQFiniteMediaServer {
         s.transferComplete = true;
         sendToRecipients(s, new HQFiniteMediaEndPacket(source, s.mediaId, s.generation));
         closeChannel(s.channel);
-        if (s.consume) {
-            try { mount.delete(s.stagedPath); }
+        if (s.consume && s.stagedPath != null) {
+            try { staging.deleteStaged(s.stagedPath); }
             catch (IOException e) { HQSpeakerMod.warn("could not delete consumed staged media: " + e.getMessage()); }
         }
     }
@@ -335,6 +349,7 @@ public final class HQFiniteMediaServer {
         s.transferComplete = true;
         closeChannel(s.channel);
         sendControl(s, HQFiniteMediaControlPacket.Action.STOP, 0.0);
+        releaseAssetReference(s);
         terminalStatus = statusOf(s);
         queueStateEvent();
     }
@@ -402,6 +417,7 @@ public final class HQFiniteMediaServer {
                 if (!s.successfulRenderers.contains(player.getUUID())) return;
                 s.clock.finish(now);
                 s.state = State.ENDED;
+                releaseAssetReference(s);
                 terminalStatus = statusOf(s);
             }
             case ERROR -> {
@@ -409,6 +425,7 @@ public final class HQFiniteMediaServer {
                 if (anotherSucceeded) return;
                 s.state = State.ERROR;
                 s.error = packet.error() == null || packet.error().isBlank() ? "client playback error" : packet.error();
+                releaseAssetReference(s);
                 terminalStatus = statusOf(s);
             }
         }
@@ -428,6 +445,7 @@ public final class HQFiniteMediaServer {
         out.put("observed", s.observed);
         out.put("transferredBytes", s.sentBytes);
         out.put("totalBytes", s.totalBytes);
+        if (s.retainedAssetId != null) out.put("assetId", s.retainedAssetId.toString());
         out.put("canPause", s.state != State.ENDED && s.state != State.ERROR);
         out.put("canSeek", s.clock.duration() > 0.0 && s.state != State.ENDED && s.state != State.ERROR);
         out.put("canLoop", s.state != State.ENDED && s.state != State.ERROR);
@@ -444,7 +462,7 @@ public final class HQFiniteMediaServer {
     }
 
     private HQFiniteMediaBeginPacket.MediaFormat detectFormat(String path) {
-        String lower = path.toLowerCase(Locale.ROOT);
+        String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".mp3") || lower.endsWith(".mp2")) return HQFiniteMediaBeginPacket.MediaFormat.MP3;
         if (lower.endsWith(".ogg")) return HQFiniteMediaBeginPacket.MediaFormat.OGG;
         return HQFiniteMediaBeginPacket.MediaFormat.AUDIO_FILE;
@@ -472,12 +490,23 @@ public final class HQFiniteMediaServer {
 
     private void closeSessionTransfer(Session s) {
         closeChannel(s.channel);
-        if (s.consume && !s.transferComplete) {
-            try { mount.delete(s.stagedPath); } catch (IOException ignored) {}
+        if (s.consume && !s.transferComplete && s.stagedPath != null) {
+            try { staging.deleteStaged(s.stagedPath); } catch (IOException ignored) {}
+        }
+    }
+
+    private void releaseAssetReference(Session s) {
+        if (!s.assetReferenceHeld || s.assetStore == null || s.retainedAssetId == null) return;
+        s.assetReferenceHeld = false;
+        try {
+            s.assetStore.release(s.retainedAssetId);
+        } catch (IOException e) {
+            HQSpeakerMod.warn("could not release playback media asset " + s.retainedAssetId + ": " + e.getMessage());
         }
     }
 
     private static void closeChannel(SeekableByteChannel channel) {
+        if (channel == null) return;
         try { channel.close(); } catch (IOException ignored) {}
     }
 
