@@ -46,7 +46,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
     private static final int HQ_RAW_SAMPLE_RATE = 48_000;
     private static final int HQ_RAW_QUEUE_LIMIT = 16;
-    private static final long RAW_STOP_GRACE_NANOS = 1_000_000_000L;
+    private static final int RAW_STOP_GRACE_TICKS = 20;
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
 
@@ -67,7 +67,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final Set<IComputerAccess> rawCapacityWaiters = ConcurrentHashMap.newKeySet();
 
     private volatile Owner owner = Owner.NONE;
-    private volatile long rawAudibleUntilNanos;
+    private volatile long rawDrainTicks;
+    private volatile int rawIdleTicks;
 
     public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla, HQFiniteMediaServer finite) {
         this.legacy = legacy;
@@ -104,14 +105,22 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
         }
 
-        long now = System.nanoTime();
-        if (legacy.speakIsPlaying() || now < rawAudibleUntilNanos + RAW_STOP_GRACE_NANOS) return;
+        // Count accepted sample time in server ticks rather than wall time. Integrated-server pauses therefore do not
+        // age out queued audio while Minecraft itself is paused. The inherited queue must also be empty before the
+        // final source stop is emitted.
+        if (rawDrainTicks > 0L) rawDrainTicks--;
+        if (legacy.speakIsPlaying() || rawDrainTicks > 0L) {
+            rawIdleTicks = 0;
+            return;
+        }
+        if (++rawIdleTicks < RAW_STOP_GRACE_TICKS) return;
 
         // The inherited RAW client stream otherwise returns silence forever. End the source after the last accepted
         // samples have had time to drain. A later speakPCM call creates a fresh RAW session.
         legacy.speakStop();
         rawCapacityWaiters.clear();
-        rawAudibleUntilNanos = 0L;
+        rawDrainTicks = 0L;
+        rawIdleTicks = 0;
         owner = Owner.NONE;
     }
 
@@ -136,7 +145,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         ACTIVE.remove(this);
         rawCapacityWaiters.clear();
         owner = Owner.NONE;
-        rawAudibleUntilNanos = 0L;
+        rawDrainTicks = 0L;
+        rawIdleTicks = 0;
         finite.cleanup();
         legacy.cleanup();
         legacyComputerViews.clear();
@@ -238,9 +248,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (immediateTrue(result)) {
             owner = Owner.RAW;
             rawCapacityWaiters.remove(computer);
-            long now = System.nanoTime();
-            long duration = Math.max(1L, Math.round(samples * (1_000_000_000.0 / HQ_RAW_SAMPLE_RATE)));
-            rawAudibleUntilNanos = Math.max(now, rawAudibleUntilNanos) + duration;
+            long durationTicks = Math.max(1L,
+                (samples * 20L + HQ_RAW_SAMPLE_RATE - 1L) / HQ_RAW_SAMPLE_RATE);
+            rawDrainTicks += durationTicks;
+            rawIdleTicks = 0;
         } else {
             rawCapacityWaiters.add(computer);
         }
@@ -270,7 +281,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             case NONE -> { }
         }
         rawCapacityWaiters.clear();
-        rawAudibleUntilNanos = 0L;
+        rawDrainTicks = 0L;
+        rawIdleTicks = 0;
         owner = Owner.NONE;
     }
 
@@ -279,15 +291,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         finite.stop();
         legacy.speakStop();
         rawCapacityWaiters.clear();
-        rawAudibleUntilNanos = 0L;
+        rawDrainTicks = 0L;
+        rawIdleTicks = 0;
         owner = Owner.NONE;
     }
 
     private boolean isHQContinuousActive() {
         return switch (owner) {
             case NONE -> false;
-            case RAW -> legacy.speakIsPlaying()
-                || System.nanoTime() < rawAudibleUntilNanos + RAW_STOP_GRACE_NANOS;
+            case RAW -> legacy.speakIsPlaying() || rawDrainTicks > 0L || rawIdleTicks < RAW_STOP_GRACE_TICKS;
             case LEGACY_FINITE -> legacy.speakIsPlaying();
             case STAGED_FINITE -> finite.isActive();
             case STREAM -> legacy.isStreaming();
@@ -298,7 +310,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (!isHQContinuousActive()) {
             owner = Owner.NONE;
             rawCapacityWaiters.clear();
-            rawAudibleUntilNanos = 0L;
+            rawDrainTicks = 0L;
+            rawIdleTicks = 0;
         }
     }
 
