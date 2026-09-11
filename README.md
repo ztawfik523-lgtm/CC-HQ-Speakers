@@ -1,71 +1,78 @@
 # CC:HQ Speakers
 
-CC:HQ Speakers upgrades the normal CC:Tweaked `speaker` peripheral with higher-quality PCM, finite encoded media, Internet streams, metadata, multi-speaker helpers, and richer playback control.
+CC:HQ Speakers upgrades the normal CC:Tweaked `speaker` peripheral with higher-quality programmable audio while preserving the standard CC:T speaker contract.
 
-This fork targets:
+Target stack:
 
 - Minecraft 1.21.1
 - Java 21
 - CC:Tweaked 1.120.0
-- NeoForge 21.1.247 / 21.1.248
+- NeoForge 21.1.247 baseline / 21.1.248 compatibility
 
 ## Product direction
 
 This mod is a **programmable audio peripheral**, not a prebuilt music player.
 
-Lua decides whether a sound is music, speech, an alarm, a notification, ambience, a soundboard entry, or something else. The Java implementation only distinguishes sources when their technical capabilities differ.
+Lua decides whether audio is music, speech, an alarm, a notification, ambience, a soundboard entry, or something else. Java distinguishes sources only where their technical capabilities differ.
 
-### Raw/feed audio
+### Standard CC:T speaker
 
-- `playAudio` — CC:T-compatible signed 8-bit PCM feed
-- `speakPCM` — HQ signed 16-bit PCM feed
-
-These are open-ended feeds. They do not have a truthful finite duration or arbitrary seek position.
-
-### Finite media
-
-- `speakMp3`
-- `speakOgg`
-- `speakWav`
-- `speakAudio` / `speakFile` / `speakPacked`
-
-Finite media can support truthful duration, position, seek, loop, pause/resume, stop, natural EOF, and error state.
-
-### Live network streams
-
-- `speakStream`
-- `speakHLS`
-- `speakTS`
-
-Live sources are open-ended. They should not expose fake finite duration/seek. The intended future pause/resume behavior is reconnect-to-live, not preservation of a historical stream cursor.
-
-## Current development status
-
-The M1 finite-media branch added retained decoded PCM, exact decoded sample rates, generation-aware state/control, real finite EOF, pause/resume, seek, duration/position, looping, and live finite volume control.
-
-However, the current reviewed M1 reference (`fba84a3`) still has source-proven compatibility, lifecycle, raw-feed, multi-client, sync, and stream defects. It should not be treated as a finished release candidate.
-
-See:
-
-- `docs/CURRENT-STATE.md`
-- `docs/KNOWN-ISSUES.md`
-- `docs/CC-T-COMPATIBILITY-CONTRACT.md`
-- `docs/P0-DESIGN-DECISIONS.md`
-- `docs/P0-TEST-MATRIX.md`
-
-## API direction
-
-Standard CC:T `speaker` behavior is a hard compatibility requirement:
+The normal `computercraft:speaker` remains the product surface. Standard behavior is a compatibility requirement:
 
 - `playNote`
 - `playSound`
 - `playAudio`
 - `stop`
-- `speaker_audio_empty`
+- native `speaker_audio_empty`
 
-HQ extensions add richer formats and controls. The exact public surface should remain capability-oriented rather than application-oriented.
+### HQ raw/feed audio
 
-Current M1 finite controls include:
+HQ `speakPCM` is an open-ended producer feed with bounded backpressure. It does not pretend to have finite duration or arbitrary seek.
+
+### Finite media
+
+Final finite product target:
+
+- MP3 / MPEG Layer III
+- common WAV
+- normal native FLAC only after its exact implementation is proven
+
+Finite files have truthful server-owned duration, position, pause/resume, seek, loop, volume, and EOF.
+
+The final architecture **streams finite encoded data progressively from the server to relevant clients**. Clients do not need the whole file before playback and do not maintain a persistent song cache. They keep only bounded temporary encoded/decoded RAM for active playback.
+
+One physical speaker renders one mono positional source. Mono input stays mono; stereo input is downmixed to mono; more-than-stereo finite input is rejected.
+
+OGG Vorbis, AIFF/AIF, AU/SND, Ogg-FLAC, and unusual WAV encodings are not final finite product requirements. Frozen M1D historically contains analysis support for some of those formats, but the replacement streaming engine is intentionally narrower.
+
+### Live network streams
+
+Live MP3/HLS/TS remain later work. Live sources are open-ended and must not expose fake finite duration/seek. Future live pause/resume means reconnecting to the current live point rather than preserving old stream history.
+
+## Current development status
+
+Frozen M1D source/test/CI head:
+
+`4a2cd5de96228fc091226c7e72fb669b82be258c`
+
+Active branch:
+
+`codex/m1e-server-authoritative-finite`
+
+Current implementation still contains the transitional whole-file finite sender/client. The active redesign replaces it in stages:
+
+- **M1E:** server-authoritative finite clock/state/EOF plus server->client state snapshots;
+- **M1F:** client-requested bounded encoded streaming with off-thread server IO;
+- **M1G:** progressive MP3/common-WAV decoding with bounded RAM and mono output;
+- **M1H:** dynamic listeners, late join, leave/re-enter, seek/underrun recovery;
+- **M1I:** optional/gated native FLAC extension;
+- **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
+
+See `docs/ROADMAP.md` and `docs/M1E-FINITE-STREAMING-DESIGN.md` for the current plan.
+
+## Main finite controls
+
+The current capability-oriented control surface includes:
 
 - `audioStatus()`
 - `audioPause()` / `audioResume()`
@@ -74,7 +81,7 @@ Current M1 finite controls include:
 - `audioSetLooping(loop)`
 - `audioStop()`
 
-Group/all/index variants exist for many HQ calls.
+The bundled `hqspeaker` Lua module also provides prepared/local-file helpers such as `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile`.
 
 ## Build
 
@@ -83,4 +90,15 @@ Group/all/index variants exist for many HQ calls.
 ./gradlew clean build -PneoForgeVersion=21.1.248
 ```
 
-CI builds both supported NeoForge versions with Java 21 and verifies the packaged mod metadata, mixin config, jarjar metadata, MP3SPI, JLayer, and Tritonus dependencies.
+CI targets both supported NeoForge versions with Java 21 and verifies packaged mod metadata, mixins, JarJar metadata/dependencies, and the bundled ComputerCraft ROM module.
+
+## Documentation
+
+Start with:
+
+- `docs/CURRENT-STATE.md`
+- `docs/ROADMAP.md`
+- `docs/ARCHITECTURE.md`
+- `docs/M1E-FINITE-STREAMING-DESIGN.md`
+- `docs/VERIFIED-FACTS.md`
+- `docs/KNOWN-ISSUES.md`
