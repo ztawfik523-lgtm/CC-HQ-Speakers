@@ -1,5 +1,6 @@
 package com.tom.hqspeaker;
 
+import com.tom.hqspeaker.media.ServerMediaAssets;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import com.tom.hqspeaker.peripheral.HQSpeakerPeripheralProvider;
 import net.minecraft.world.level.Level;
@@ -16,6 +17,8 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+
+import java.io.IOException;
 
 @Mod("hqspeaker")
 public class HQSpeakerMod {
@@ -59,10 +62,16 @@ public class HQSpeakerMod {
         }
     }
 
-    /** Final cache safety net for integrated-server restart and dedicated-server shutdown. */
+    /** Final cache/media safety net for integrated-server restart and dedicated-server shutdown. */
     @SubscribeEvent
     public void onServerStopped(ServerStoppedEvent event) {
+        // Speaker cleanup releases prepared/playback references before the shared store removes any remaining files.
         HQSpeakerPeripheralProvider.clearAll();
+        try {
+            ServerMediaAssets.closeServer(event.getServer());
+        } catch (IOException e) {
+            warn("could not close server media asset store: " + e.getMessage());
+        }
     }
 
     @SubscribeEvent
