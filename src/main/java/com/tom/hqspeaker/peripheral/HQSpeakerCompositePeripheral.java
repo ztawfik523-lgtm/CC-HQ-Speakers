@@ -63,6 +63,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final HQSpeakerPeripheral legacy;
     private final SpeakerPeripheral vanilla;
     private final HQFiniteMediaServer finite;
+    private final HQMediaStaging staging;
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
     private final Map<IComputerAccess, IComputerAccess> legacyComputerViews = new ConcurrentHashMap<>();
@@ -72,10 +73,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private volatile Owner owner = Owner.NONE;
 
-    public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla, HQFiniteMediaServer finite) {
+    public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla,
+                                        HQFiniteMediaServer finite, HQMediaStaging staging) {
         this.legacy = legacy;
         this.vanilla = vanilla;
         this.finite = finite;
+        this.staging = staging;
         this.legacyMethods = METHOD_SUPPLIER.getSelfMethods(legacy);
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
         names.addAll(STANDARD);
@@ -127,6 +130,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     @Override
     public void attach(IComputerAccess computer) {
         vanilla.attach(computer);
+        staging.attach(computer);
         finite.attach(computer);
         IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, this::filteredLegacyAccess);
         legacy.attach(filtered);
@@ -136,6 +140,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     public void detach(IComputerAccess computer) {
         rawCapacityWaiters.remove(computer);
         finite.detach(computer);
+        staging.detach(computer);
         IComputerAccess filtered = legacyComputerViews.remove(computer);
         if (filtered != null) legacy.detach(filtered);
         vanilla.detach(computer);
@@ -147,6 +152,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         owner = Owner.NONE;
         rawLifetime.clear();
         finite.cleanup();
+        staging.cleanup();
         legacy.cleanup();
         legacyComputerViews.clear();
     }
@@ -172,9 +178,32 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction
     public final String audioMountPath(IComputerAccess computer) throws LuaException {
-        return finite.mountPath(computer);
+        return staging.mountPath(computer);
     }
 
+    /** Prepare a staged CC file as a reusable server media asset without starting playback. */
+    @LuaFunction
+    public final String audioPrepareStaged(IComputerAccess computer, String path,
+                                           Optional<Boolean> consume) throws LuaException {
+        return staging.prepareAsset(computer, path, consume.orElse(true));
+    }
+
+    /** Start a prepared asset. The playback takes its own reference before this method returns true. */
+    @LuaFunction(mainThread = true)
+    public final synchronized boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
+        beginReplacingHQ(Owner.STAGED_FINITE);
+        boolean started = finite.playPrepared(assetId, volume.orElse(1.0));
+        if (started) owner = Owner.STAGED_FINITE;
+        return started;
+    }
+
+    /** Release the prepared-owner reference held by the calling computer. */
+    @LuaFunction
+    public final boolean audioReleasePrepared(IComputerAccess computer, String assetId) throws LuaException {
+        return staging.releasePrepared(computer, assetId);
+    }
+
+    /** Historical direct-staged entrypoint retained while the prototype transport still exists. */
     @LuaFunction(mainThread = true)
     public final synchronized boolean audioPlayStaged(IComputerAccess computer, String path,
                                                       Optional<Double> volume, Optional<Boolean> consume) throws LuaException {
@@ -186,7 +215,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction
     public final long audioMaxStagedBytes() {
-        return HQFiniteMediaServer.MOUNT_CAPACITY_BYTES;
+        return staging.maxStagedBytes();
     }
 
     @Override
