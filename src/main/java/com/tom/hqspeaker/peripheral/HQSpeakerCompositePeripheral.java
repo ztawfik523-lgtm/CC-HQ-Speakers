@@ -29,6 +29,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Standard speaker calls stay on CC:T's original SpeakerPeripheral. HQ-specific continuous sources have one
  * explicit owner so old/staged finite state cannot accidentally capture controls belonging to a later source.
+ * ComputerCraft may call this peripheral from multiple computer threads, so ownership-changing entry points are
+ * synchronized to keep stop -> start -> owner changes in one order.
  */
 public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final MethodSupplier<PeripheralMethod> METHOD_SUPPLIER = PeripheralMethodSupplier.create(List.of());
@@ -89,7 +91,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         for (HQSpeakerCompositePeripheral peripheral : ACTIVE) peripheral.tickOwnership();
     }
 
-    private void tickOwnership() {
+    private synchronized void tickOwnership() {
         if (owner != Owner.RAW) return;
 
         // hqspeaker_audio_empty means exactly what the HQ RAW writer needs: another speakPCM call can enter the
@@ -128,7 +130,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         vanilla.detach(computer);
     }
 
-    public void cleanup() {
+    public synchronized void cleanup() {
         ACTIVE.remove(this);
         rawCapacityWaiters.clear();
         owner = Owner.NONE;
@@ -163,8 +165,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @LuaFunction(mainThread = true)
-    public final boolean audioPlayStaged(IComputerAccess computer, String path,
-                                         Optional<Double> volume, Optional<Boolean> consume) throws LuaException {
+    public final synchronized boolean audioPlayStaged(IComputerAccess computer, String path,
+                                                      Optional<Double> volume, Optional<Boolean> consume) throws LuaException {
         beginReplacingHQ(Owner.STAGED_FINITE);
         boolean started = finite.playStaged(computer, path, volume.orElse(1.0), consume.orElse(true));
         if (started) owner = Owner.STAGED_FINITE;
@@ -177,7 +179,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @Override
-    public MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
+    public synchronized MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
         if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
         String name = dynamicNames[method];
 
