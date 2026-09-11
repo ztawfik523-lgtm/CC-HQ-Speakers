@@ -1,26 +1,37 @@
 package com.tom.hqspeaker.media;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Public identity/size/analysis information for one encoded finite-media asset.
  *
- * The actual disk path is deliberately owned by {@link MediaAssetStore}: callers refer to media by UUID instead of
- * tying playback state to a speaker-specific file path.
+ * <p>The store creates the identity when the encoded file is committed. M1D then attaches the already-computed
+ * server metadata before the asset ID is returned to Lua. The actual disk path remains private to the store.</p>
  */
-public record MediaAsset(UUID id, long sizeBytes, String sourceName, MediaMetadata metadata) {
-    public MediaAsset {
-        if (id == null) throw new NullPointerException("id");
-        if (sizeBytes <= 0L) throw new IllegalArgumentException("sizeBytes must be positive");
-        sourceName = sourceName == null ? "" : sourceName;
-    }
+public final class MediaAsset {
+    private final UUID id;
+    private final long sizeBytes;
+    private final String sourceName;
+    private volatile MediaMetadata metadata;
 
-    /** M1B compatibility constructor for generic/unanalysed store tests and callers. */
     public MediaAsset(UUID id, long sizeBytes, String sourceName) {
-        this(id, sizeBytes, sourceName, null);
+        this.id = Objects.requireNonNull(id, "id");
+        if (sizeBytes <= 0L) throw new IllegalArgumentException("sizeBytes must be positive");
+        this.sizeBytes = sizeBytes;
+        this.sourceName = sourceName == null ? "" : sourceName;
     }
 
-    public boolean analyzed() {
-        return metadata != null;
+    public UUID id() { return id; }
+    public long sizeBytes() { return sizeBytes; }
+    public String sourceName() { return sourceName; }
+    public MediaMetadata metadata() { return metadata; }
+    public boolean analyzed() { return metadata != null; }
+
+    /** Attach the server analysis exactly once, before the asset is exposed to Lua/playback. */
+    public synchronized void attachMetadata(MediaMetadata metadata) {
+        Objects.requireNonNull(metadata, "metadata");
+        if (this.metadata != null) throw new IllegalStateException("media asset metadata is already attached");
+        this.metadata = metadata;
     }
 }
