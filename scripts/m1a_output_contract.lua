@@ -19,10 +19,11 @@ local function waitFor(eventName, timeout)
 end
 
 local function waitUntil(predicate, timeout, label)
-  local deadline = os.clock() + timeout
-  while os.clock() < deadline do
+  local remaining = timeout
+  while remaining > 0 do
     if predicate() then return end
     sleep(0.05)
+    remaining = remaining - 0.05
   end
   error("timed out waiting for " .. label, 0)
 end
@@ -35,6 +36,7 @@ assert(type(speaker.playSound) == "function", "native playSound is missing")
 assert(type(speaker.playAudio) == "function", "native playAudio is missing")
 assert(type(speaker.speakPCM) == "function", "HQ speakPCM is missing")
 assert(type(speaker.audioStatus) == "function", "HQ audioStatus is missing")
+assert(type(speaker.audioStop) == "function", "HQ audioStop is missing")
 assert(speaker.speakMaxSamples() == 131072,
   "speakMaxSamples must report the real 131072-sample table limit")
 
@@ -80,6 +82,14 @@ assert(speaker.playAudio(native, 0.2) == false,
 waitFor("hqspeaker_audio_empty", 5)
 assert(speaker.speakPCM(raw, 0.2) == true,
   "speakPCM retry after hqspeaker_audio_empty was rejected")
+
+-- audioStop is a truthful stop capability even though RAW has no finite seek/duration controls.
+speaker.audioStop()
+waitUntil(function() return not speaker.speakIsPlaying() end, 2, "audioStop RAW cleanup")
+assert(speaker.audioStatus().kind == "none", "audioStop left stale RAW status ownership")
+
+-- Start RAW again to test incompatible HQ replacement.
+assert(speaker.speakPCM(raw, 0.2) == true, "could not restart RAW after audioStop")
 
 if finitePath then
   local handle = assert(fs.open(finitePath, "rb"), "cannot open finite fixture: " .. finitePath)
