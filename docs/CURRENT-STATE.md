@@ -81,6 +81,7 @@ Current source behavior on `codex/m1a-compat-output`:
 - standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain delegated to CC:T 1.120.0's real `SpeakerPeripheral`;
 - synthetic inherited HQ `speaker_audio_empty` events are suppressed;
 - the normal single physical speaker has one explicit HQ continuous owner: RAW, legacy finite, staged finite prototype, or stream intent;
+- calls which change that owner run one at a time on a physical speaker, preventing two connected computers from interleaving replacement state;
 - a new incompatible HQ start replaces the prior HQ source; Java does not create a playlist;
 - repeated `speakPCM` calls continue the current RAW feed;
 - native notes remain independent;
@@ -89,9 +90,14 @@ Current source behavior on `codex/m1a-compat-output`:
 - `audioStop()` truthfully stops the current HQ source, including RAW/stream intent;
 - `audioStatus()` is routed by current HQ ownership instead of stale terminal state from another subsystem;
 - RAW reports open-ended capabilities instead of fake duration/seek/loop support;
-- `speakMaxSamples()` now reports the real inherited contiguous table ceiling of `131072`;
-- rejected `speakPCM` writers receive the separate `hqspeaker_audio_empty` event when the bounded HQ server queue actually has capacity again;
+- `speakMaxSamples()` reports the real inherited contiguous table ceiling of `131072`;
+- RAW admission is bounded by both the inherited 16-packet server queue and a duration allowance of `135872` outstanding samples: one maximum `speakPCM` call plus 100 ms of headroom;
+- rejected valid `speakPCM` writers receive the separate `hqspeaker_audio_empty` event only when their requested chunk can fit both the packet queue and the sample-duration allowance;
+- the RAW allowance drains by `2400` samples per server tick at 48 kHz/20 TPS, preventing normal producers from feeding multi-second chunks every Minecraft tick and building a huge client backlog;
+- malformed/empty/oversized RAW tables still fail validation instead of being presented as ordinary backpressure;
 - RAW drain lifetime is sample-derived in server ticks and eventually releases the otherwise-silent inherited client source.
+
+`hqspeaker_audio_empty` is producer/server admission control, not a promise that every listener has physically played previous samples. The client RAW queue remains bounded and may discard stale PCM under pathological network/client conditions rather than allowing unlimited delay.
 
 Source/CI success is **not** Minecraft runtime proof. The acceptance scripts still need to be run on the target stack before M1A is declared runtime-complete.
 
@@ -159,7 +165,7 @@ The following remain intentionally outside the current compatibility/output slic
 - client-pulled range transfer and reusable client cache;
 - server-authoritative finite clock/EOF;
 - efficient asynchronous MP3 seek/indexing;
-- dynamic range-based renderer lifecycle;
+- dynamic range-based renderer lifecycle, including clients which walk away before a legacy stop packet is sent;
 - multispeaker asset/timeline sharing and `*All` / `*At` replacement;
 - migrate legacy finite byte APIs onto the new finite engine;
 - richer RAW pause behavior if later justified;
@@ -176,7 +182,8 @@ Pure Java tests currently cover:
 - retained-M1 `FiniteAudioTrack` behavior;
 - HLS playlist parsing;
 - `FinitePlaybackClock` behavior;
-- `FiniteMediaPath` validation.
+- `FiniteMediaPath` validation;
+- RAW outstanding-sample accounting, capacity checks, server-tick drain, idle grace, and invalid-capacity arguments.
 
 Runtime scripts relevant to the current milestone:
 
