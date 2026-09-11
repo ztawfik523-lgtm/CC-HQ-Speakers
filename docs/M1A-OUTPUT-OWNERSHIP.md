@@ -69,7 +69,7 @@ The 100 ms headroom lets a following maximum-sized chunk be accepted and sent be
 - the inherited 16-entry server packet queue cannot accept another packet; or
 - accepting that exact RAW chunk would exceed the duration-based `135872`-sample allowance.
 
-For a valid rejected call, M1A remembers how many samples that computer was trying to submit. Once **both** the packet queue and the duration allowance can fit that requested chunk, M1A emits:
+For a valid-sized rejected call, M1A remembers how many samples that computer was trying to submit. Once **both** the packet queue and the duration allowance can fit that requested chunk, M1A emits:
 
 ```text
 hqspeaker_audio_empty
@@ -87,7 +87,7 @@ end
 
 This is producer/server admission control, not a per-listener playback acknowledgement. The client RAW stream is separately bounded and may still discard stale PCM under pathological client/network conditions instead of allowing unlimited delay. That matches RAW/feed semantics: staying current is preferable to building an ever-growing backlog.
 
-M1A also corrects `speakMaxSamples()` at the composite boundary to the real contiguous table limit of `131072` samples. Oversized, empty, or malformed input still goes through validation and throws rather than being disguised as ordinary backpressure.
+M1A also corrects `speakMaxSamples()` at the composite boundary to the real contiguous table limit of `131072` samples. Empty and oversized tables still reach the inherited validation path and throw. Individual sample values are validated by the inherited converter when a call reaches conversion; a valid-sized call can be rejected for capacity before those value checks run.
 
 ## RAW renderer lifetime
 
