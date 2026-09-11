@@ -49,7 +49,7 @@ for i = 1, 4800 do
   raw[i] = math.floor(math.sin(i * 0.08) * 12000)
 end
 
--- Fill the bounded inherited HQ queue until it truthfully backpressures.
+-- Fill the inherited 16-packet server queue until it backpressures.
 local accepted = 0
 local backpressured = false
 for _ = 1, 64 do
@@ -60,7 +60,7 @@ for _ = 1, 64 do
     break
   end
 end
-assert(backpressured, "speakPCM never reported bounded backpressure")
+assert(backpressured, "speakPCM never reported packet-queue backpressure")
 assert(accepted > 0, "speakPCM accepted no data")
 
 local status = speaker.audioStatus()
@@ -87,6 +87,23 @@ assert(speaker.speakPCM(raw, 0.2) == true,
 speaker.audioStop()
 waitUntil(function() return not speaker.speakIsPlaying() end, 2, "audioStop RAW cleanup")
 assert(speaker.audioStatus().kind == "none", "audioStop left stale RAW status ownership")
+
+-- Test the duration limit separately from the 16-packet queue. Two 1-second chunks fit inside the
+-- 135872-sample allowance; a third must wait until enough of the first two has had time to play.
+local oneSecond = {}
+for i = 1, 48000 do
+  oneSecond[i] = math.floor(math.sin(i * 0.05) * 10000)
+end
+assert(speaker.speakPCM(oneSecond, 0.2) == true, "first 1-second RAW chunk was rejected")
+assert(speaker.speakPCM(oneSecond, 0.2) == true, "second 1-second RAW chunk was rejected")
+assert(speaker.speakPCM(oneSecond, 0.2) == false,
+  "third 1-second RAW chunk should have hit duration backpressure")
+waitFor("hqspeaker_audio_empty", 5)
+assert(speaker.speakPCM(oneSecond, 0.2) == true,
+  "duration-backpressured RAW retry was rejected after hqspeaker_audio_empty")
+
+speaker.audioStop()
+waitUntil(function() return not speaker.speakIsPlaying() end, 2, "duration-test RAW cleanup")
 
 -- Start RAW again to test incompatible HQ replacement.
 assert(speaker.speakPCM(raw, 0.2) == true, "could not restart RAW after audioStop")
