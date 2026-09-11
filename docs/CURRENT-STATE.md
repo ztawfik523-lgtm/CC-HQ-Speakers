@@ -8,9 +8,9 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - reviewed historical M1 reference: `fba84a33a94d451af09b983bcb04416c97ff64cf`
 - frozen staged/local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc`
 - completed M0.5 preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`
-- M1A compatibility/output branch: `codex/m1a-compat-output`
-- completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa` on `codex/m1b-media-assets`
-- current implementation branch: `codex/m1c-local-import`
+- completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`
+- M1C local-import/config base verified at: `33bcc6e04a2734500b7b15b84bee884562539216`
+- current implementation branch: `codex/m1d-media-analysis`
 
 Target stack:
 
@@ -50,9 +50,7 @@ M1A Minecraft acceptance remains pending until its runtime scripts are actually 
 
 ## M1B completed storage foundation
 
-M1B completed the reusable encoded-file primitive at exact head `40091ee32f412c1208e9016fca288b8d4f902dfa`.
-
-`MediaAssetStore` now provides:
+`MediaAssetStore` provides:
 
 - UUID media identity independent of speakers;
 - exact-size disk-backed import through `.part` then atomic `.media` publication;
@@ -69,68 +67,96 @@ The exact M1B head passed the Java 21 NeoForge 21.1.247/21.1.248 CI matrix inclu
 
 See `docs/M1B-MEDIA-ASSETS.md`.
 
-## M1C local-file import state
+## M1C local-file import and server storage configuration
 
-M1C connects ComputerCraft-visible files to the M1B server-wide asset store.
-
-The current local-file flow is now:
+The local-file path is now:
 
 ```text
 CC filesystem file
-    -> temporary writable speaker staging mount
+    -> temporary writable HQ Speaker staging mount
     -> shared server MediaAsset UUID
     -> prepared-owner reference
     -> playback reference when started
 ```
 
-Important current behavior:
+`HQMediaStaging` owns the ComputerCraft-visible staging mount. `ServerMediaAssets` owns one shared `MediaAssetStore` per running Minecraft server. Prepared ownership is tracked by ComputerCraft computer ID; playback takes a separate reference, so releasing a preparation handle does not kill a playing asset.
 
-- `HQMediaStaging` owns the writable ComputerCraft mount; `HQFiniteMediaServer` no longer owns staging;
-- `ServerMediaAssets` owns one shared `MediaAssetStore` per running `MinecraftServer`;
-- current per-asset/staging ceiling is 512 MiB;
-- the total shared-store cap is currently an interim 2 GiB implementation value and is **not** a settled product policy;
-- successful prepare imports encoded bytes into the server-wide store and returns an asset UUID;
-- prepared ownership is tracked by ComputerCraft computer ID;
-- detaching the preparing computer releases prepared references it still owns;
-- `audioPlayPrepared` takes its own playback reference before returning success;
-- releasing the preparation reference therefore does not stop or delete an active playback;
-- the same asset UUID may deliberately be played by another speaker because media identity is server-wide rather than speaker-owned;
-- server shutdown cleans speaker/prepared/playback references first, then closes the shared media store;
-- a failed store close remains reachable so cleanup can be retried.
-
-New peripheral capabilities:
-
-- `audioPrepareStaged(path [, consume]) -> assetId`
-- `audioPlayPrepared(assetId [, volume]) -> boolean`
-- `audioReleasePrepared(assetId) -> boolean`
-- existing `audioMountPath()` / `audioMaxStagedBytes()`
-
-The bundled `hqspeaker` Lua module now exposes:
+Lua helper capabilities:
 
 - `prepareFile(speaker, path)`
+- `preparedInfo(speaker, assetId)`
 - `playPrepared(speaker, assetId [, options])`
 - `releasePrepared(speaker, assetId)`
-- `playFile(speaker, path [, options])` as prepare -> play -> release convenience behavior.
+- `playFile(speaker, path [, options])`
 
-The helper checks file size before copying and removes partial staging files when `fs.copy` fails. Once shared-asset import succeeds, inability to delete temporary staging does not invalidate the valid asset; Java logs the cleanup failure and Lua retries deleting the staged path.
+### Storage policy
 
-See `docs/M1C-LOCAL-IMPORT.md`.
+ComputerCraft's own filesystem capacity is **not** controlled by HQ Speaker.
+
+HQ Speaker has NeoForge `SERVER` safety settings only for disk space allocated by the mod itself:
+
+- `mediaStorage.maxAssetMiB` — default 512 MiB per prepared asset/staging file;
+- `mediaStorage.maxTotalMiB` — default 2048 MiB total prepared-media store;
+- either value may be set to `0` to remove that HQ Speaker-specific quota;
+- changes require a world/server restart.
+
+The old prototype packet's hard-coded 512 MiB policy check has been removed. Transfer packets validate wire sanity; file-size policy belongs to the server config/store.
+
+See `docs/SERVER-CONFIG.md` and `docs/M1C-LOCAL-IMPORT.md`.
+
+## M1D server finite-media analysis
+
+M1D moves finite file identity/duration facts onto the server before playback starts.
+
+Prepared files are inspected from their encoded bytes rather than their filename extension. `FiniteMediaAnalyzer` uses one 64 KiB read window and does not decode the whole track to PCM.
+
+Current accepted prepared/local formats:
+
+- MP3 / MPEG Layer III;
+- OGG Vorbis;
+- WAV;
+- uncompressed AIFF/AIF;
+- AU/SND.
+
+The analyzer records:
+
+- actual format;
+- duration;
+- sample rate;
+- channel count;
+- bits per sample when meaningful;
+- coarse MP3/OGG encoded-byte seek hints.
+
+Examples of explicit rejection now include:
+
+- arbitrary bytes renamed to `.mp3`;
+- OGG using a codec other than Vorbis;
+- compressed AIFC;
+- unsupported WAV/AU encodings.
+
+`audioPreparedInfo(assetId)` and `hqspeaker.preparedInfo(...)` expose the server-derived facts before playback. The prepared-file bridge also puts the same format/duration/rate/channel facts into `audioStatus()` immediately.
+
+The exposed `speakSupportedFiles()` list has been narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`; MP2/MP4/M4A/AAC are no longer advertised without decoder evidence.
+
+MP3 duration is currently frame/sample-count duration and does not yet subtract encoder delay/padding from gapless metadata.
+
+See `docs/M1D-MEDIA-ANALYSIS.md`.
 
 ## Transitional finite playback still present
 
-M1C changes file ownership/import but deliberately does not pretend the old finite sender is final.
+M1D fixes file truth; it does not pretend the old finite sender is final.
 
 Prepared assets currently bridge into `HQFiniteMediaServer`, which still uses prototype behavior:
 
 - fixed player recipients captured at playback start;
 - server-pushed begin/chunk/end whole-file transfer;
-- client READY/STARTED/ENDED reports affecting the playback clock;
+- client STARTED/ENDED reports affecting canonical playback state;
 - renderer-observation timeout;
 - no dynamic late join from authoritative server state.
 
-A prepared playback keeps its own asset reference while active and releases it on stop/end/error/failed transfer. `audioStatus()` identifies prepared playback with `assetId`.
+One improvement already available to the bridge is that finite duration/format now comes from the server analysis rather than a client renderer or filename extension.
 
-M1E replaces client renderer authority with a server-owned finite clock. M1F replaces the fixed-recipient push transfer with bounded client-pulled asset ranges.
+M1E removes client renderer authority and makes the server clock/state canonical. M1F replaces fixed-recipient whole-file push with bounded client-pulled asset ranges.
 
 ## Multi-speaker boundary
 
@@ -138,24 +164,31 @@ The inherited `*All` / `*At` helpers still bypass the modern single-speaker owne
 
 ## Runtime/testing state
 
-Pure Java coverage includes the existing M1/M1A tests plus M1B asset import, quotas, reference lifetime, concurrent reservations, crash cleanup, root locking, and shutdown/import behavior.
+Pure Java coverage now includes:
+
+- existing finite track/clock/path and HLS parser tests;
+- M1A RAW lifetime/admission tests;
+- M1B asset import, quota, reference, crash, root-lock, and shutdown tests;
+- M1D synthetic WAV/AIFF/AU/OGG-Vorbis/MP3 analysis;
+- ID3v2 MP3 handling;
+- non-Vorbis OGG rejection;
+- invalid/unsupported file rejection;
+- analyzer channel reset after failure.
 
 Runtime scripts relevant now:
 
 - `scripts/p0_cc_speaker_contract.lua`
-- `scripts/m1a_output_contract.lua [optional-small-mp3]`
-- `scripts/m1c_local_import_test.lua <path-to-mp3/ogg/wav>`
+- `scripts/m1a_output_contract.lua`
+- `scripts/m1c_local_import_test.lua`
+- `scripts/m1d_media_analysis_test.lua`
 
-The M1C script checks prepare/release, released-asset rejection, prepared playback, independent playback reference lifetime, `audioStatus().assetId`, and the `hqspeaker.playFile` convenience path.
-
-None of these should be reported as a runtime PASS until they are actually executed successfully in Minecraft on the target stack.
+None should be reported as a runtime PASS until actually executed successfully in Minecraft on the target stack.
 
 ## Next implementation milestones
 
-- M1D: server media format/duration analysis without whole-track PCM decode;
 - M1E: server-authoritative finite playback state/clock/EOF;
 - M1F: bounded client-pulled asset transfer and worker-thread IO;
 - M1G/H: reusable client cache and hardened incremental decode;
 - M1I/J: dynamic range rendering and shared multispeaker assets/sync clocks.
 
-Other retained issues such as old finite byte APIs, live HLS/TS behavior, sound-category normalization, SPR integration, and the license metadata mismatch remain later roadmap work.
+Other retained issues such as legacy finite byte APIs, live HLS/TS behavior, sound-category normalization, SPR integration, and the license metadata mismatch remain later roadmap work.
