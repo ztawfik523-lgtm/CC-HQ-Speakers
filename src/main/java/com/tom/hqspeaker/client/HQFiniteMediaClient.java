@@ -6,6 +6,7 @@ import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaChunkPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaControlPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaEndPacket;
+import com.tom.hqspeaker.network.HQFiniteMediaStatePacket;
 import com.tom.hqspeaker.network.HQFiniteMediaStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import net.minecraft.client.Minecraft;
@@ -83,6 +84,10 @@ public final class HQFiniteMediaClient {
         Minecraft.getInstance().execute(() -> control0(packet));
     }
 
+    public static void state(HQFiniteMediaStatePacket packet) {
+        Minecraft.getInstance().execute(() -> state0(packet));
+    }
+
     public static void tick() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
@@ -103,6 +108,7 @@ public final class HQFiniteMediaClient {
         Session old = SESSIONS.remove(packet.source());
         if (old != null) destroy(old, true);
         try {
+            // M1E keeps the old whole-file bridge only temporarily. M1F removes these disk files entirely.
             Path dir = Minecraft.getInstance().gameDirectory.toPath().resolve("hqspeaker-cache");
             Files.createDirectories(dir);
             String stem = packet.source() + "-" + packet.mediaId() + "-" + packet.generation();
@@ -144,13 +150,59 @@ public final class HQFiniteMediaClient {
                 Files.move(s.partPath, s.finalPath, StandardCopyOption.REPLACE_EXISTING);
             }
             s.stream = new FileFiniteAudioStream(s.finalPath, s.begin.format(), s.clock.looping());
-            double duration = s.stream.durationSeconds();
-            s.clock.setDuration(duration, System.nanoTime());
+            double decoderDuration = s.stream.durationSeconds();
             s.ready = true;
-            report(s, HQFiniteMediaStatusPacket.Transition.READY, 0.0, duration, "");
-            if (!s.desiredPaused) startRenderer(s, 0.0);
+            // READY requests a fresh canonical snapshot. The client must not start from 0 merely because transfer ended.
+            report(s, HQFiniteMediaStatusPacket.Transition.READY, 0.0, decoderDuration, "");
         } catch (Exception e) {
             fail(s, "finite media decode failed: " + safeMessage(e));
+        }
+    }
+
+    private static void state0(HQFiniteMediaStatePacket packet) {
+        Session s = SESSIONS.get(packet.source());
+        if (!matches(s, packet.mediaId(), packet.generation()) || s.terminal) return;
+
+        if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
+                || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
+            destroy(s, true);
+            SESSIONS.remove(packet.source(), s);
+            return;
+        }
+
+        long now = System.nanoTime();
+        double oldPosition = s.clock.duration() > 0.0 ? s.clock.position(now) : packet.position();
+        boolean wasPaused = s.desiredPaused;
+
+        s.volume = (float) Math.max(0.0, Math.min(3.0, packet.volume()));
+        s.clock.setDuration(packet.duration(), now);
+        s.clock.setLooping(packet.looping(), now);
+        s.clock.seek(packet.position(), now);
+        s.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
+        if (s.desiredPaused) s.clock.pause(now); else s.clock.resume(now);
+
+        if (s.stream != null) s.stream.setLooping(packet.looping());
+        if (s.sound != null) {
+            s.sound.setVolume(s.volume);
+            HQSoundChannelControl.refreshBlocksVolume();
+        }
+
+        if (!s.ready) return;
+
+        try {
+            if (s.desiredPaused) {
+                // A READY client may have received pause/seek while downloading. Rebuild silently at exact server state.
+                stopRenderer(s);
+                restartStreamOnly(s, packet.position());
+                return;
+            }
+
+            boolean active = s.sound != null && Minecraft.getInstance().getSoundManager().isActive(s.sound);
+            if (!active || wasPaused || Math.abs(oldPosition - packet.position()) > 0.5) {
+                restartRenderer(s, packet.position());
+            }
+        } catch (IOException e) {
+            fail(s, "finite state apply failed: " + safeMessage(e));
         }
     }
 
@@ -166,12 +218,6 @@ public final class HQFiniteMediaClient {
                     if (SESSIONS.get(source) != s || s.sound != expected || s.terminal) return;
                     s.started = true;
                     s.startConfirmationQueued = false;
-                    long now = System.nanoTime();
-                    if (s.desiredPaused) s.clock.pause(now); else s.clock.start(now);
-                    report(s, HQFiniteMediaStatusPacket.Transition.STARTED,
-                        s.clock.position(now), s.clock.duration(), "");
-                    if (s.desiredPaused) report(s, HQFiniteMediaStatusPacket.Transition.PAUSED,
-                        s.clock.position(now), s.clock.duration(), "");
                 });
             });
             if (found) s.startConfirmationQueued = true;
@@ -179,9 +225,9 @@ public final class HQFiniteMediaClient {
 
         if (s.sound != null && !minecraft.getSoundManager().isActive(s.sound)) {
             if (s.stream != null && s.stream.ended()) {
-                finish(s);
+                finishLocal(s);
             } else if (s.started && !s.desiredPaused) {
-                // Sound engine/resource reload: rebuild from the semantic cursor.
+                // Sound engine/resource reload: rebuild from the local projection of the authoritative server cursor.
                 double resumeAt = s.clock.position(System.nanoTime());
                 try { restartRenderer(s, resumeAt); }
                 catch (IOException e) { fail(s, "finite renderer restart failed: " + safeMessage(e)); }
@@ -215,7 +261,6 @@ public final class HQFiniteMediaClient {
         s.clock.pause(now);
         s.desiredPaused = true;
         if (s.sound != null) HQSoundChannelControl.execute(s.sound, channel -> channel.pause());
-        report(s, HQFiniteMediaStatusPacket.Transition.PAUSED, s.clock.position(now), s.clock.duration(), "");
     }
 
     private static void resume(Session s) throws IOException {
@@ -223,11 +268,8 @@ public final class HQFiniteMediaClient {
         s.desiredPaused = false;
         long now = System.nanoTime();
         s.clock.resume(now);
-        if (s.sound != null && HQSoundChannelControl.execute(s.sound, channel -> channel.unpause())) {
-            report(s, HQFiniteMediaStatusPacket.Transition.RESUMED, s.clock.position(now), s.clock.duration(), "");
-        } else if (s.ready) {
-            restartRenderer(s, s.clock.position(now));
-        }
+        if (s.sound != null && HQSoundChannelControl.execute(s.sound, channel -> channel.unpause())) return;
+        if (s.ready) restartRenderer(s, s.clock.position(now));
     }
 
     private static void seek(Session s, double seconds) throws IOException {
@@ -237,13 +279,10 @@ public final class HQFiniteMediaClient {
         if (!s.clock.looping() && s.clock.duration() > 0.0 && target >= s.clock.duration()) {
             stopRenderer(s);
             s.clock.finish(now);
-            s.terminal = true;
-            report(s, HQFiniteMediaStatusPacket.Transition.ENDED, s.clock.duration(), s.clock.duration(), "");
             return;
         }
         restartStreamOnly(s, target);
         if (!s.desiredPaused) startRenderer(s, target);
-        report(s, HQFiniteMediaStatusPacket.Transition.SEEKED, target, s.clock.duration(), "");
     }
 
     private static void setVolume(Session s, double volume) {
@@ -284,19 +323,23 @@ public final class HQFiniteMediaClient {
         s.startConfirmationQueued = false;
     }
 
-    private static void finish(Session s) {
+    private static void finishLocal(Session s) {
         long now = System.nanoTime();
-        s.clock.finish(now);
-        s.terminal = true;
-        report(s, HQFiniteMediaStatusPacket.Transition.ENDED, s.clock.duration(), s.clock.duration(), "");
+        double position = s.clock.position(now);
+        if (!s.clock.looping() && s.clock.duration() > 0.0 && position + 0.5 < s.clock.duration()) {
+            report(s, HQFiniteMediaStatusPacket.Transition.ERROR, position, s.clock.duration(),
+                "client decoder ended before authoritative server EOF");
+        }
         stopRenderer(s);
     }
 
     private static void fail(Session s, String error) {
         if (s.terminal) return;
         s.terminal = true;
-        report(s, HQFiniteMediaStatusPacket.Transition.ERROR, s.clock.position(System.nanoTime()), s.clock.duration(), error);
-        destroy(s, false);
+        report(s, HQFiniteMediaStatusPacket.Transition.ERROR,
+            s.clock.position(System.nanoTime()), s.clock.duration(), error);
+        destroy(s, true);
+        SESSIONS.remove(s.begin.source(), s);
     }
 
     private static void reportError(UUID source, long generation, String error) {
