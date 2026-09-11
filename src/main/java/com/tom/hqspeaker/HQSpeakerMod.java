@@ -1,6 +1,8 @@
 package com.tom.hqspeaker;
 
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
+import com.tom.hqspeaker.peripheral.HQSpeakerPeripheralProvider;
+import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.IEventBus;
@@ -11,6 +13,8 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 @Mod("hqspeaker")
@@ -44,6 +48,20 @@ public class HQSpeakerMod {
     public void onServerTick(ServerTickEvent.Post event) {
         com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
         com.tom.hqspeaker.peripheral.HQFiniteMediaServer.tickAll();
+    }
+
+    /** Explicitly evict Level-keyed speaker composites before their server Level can become stale. */
+    @SubscribeEvent
+    public void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof Level level && !level.isClientSide) {
+            HQSpeakerPeripheralProvider.forgetLevel(level);
+        }
+    }
+
+    /** Final cache safety net for integrated-server restart and dedicated-server shutdown. */
+    @SubscribeEvent
+    public void onServerStopped(ServerStoppedEvent event) {
+        HQSpeakerPeripheralProvider.clearAll();
     }
 
     @SubscribeEvent
