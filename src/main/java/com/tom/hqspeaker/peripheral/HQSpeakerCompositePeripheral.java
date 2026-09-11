@@ -14,11 +14,14 @@ import dan200.computercraft.core.methods.PeripheralMethod;
 import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
 
 import javax.annotation.Nullable;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The physical CC speaker exposed to Lua. Standard speaker calls are delegated to CC:T's original
@@ -41,6 +44,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final HQFiniteMediaServer finite;
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
+    private final Map<IComputerAccess, IComputerAccess> legacyComputerViews = new ConcurrentHashMap<>();
 
     public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla, HQFiniteMediaServer finite) {
         this.legacy = legacy;
@@ -56,23 +60,47 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     @Override public boolean equals(@Nullable IPeripheral other) { return this == other; }
     @Override public String[] getMethodNames() { return dynamicNames.clone(); }
 
+    boolean usesVanilla(SpeakerPeripheral candidate) { return vanilla == candidate; }
+
     @Override
     public void attach(IComputerAccess computer) {
         vanilla.attach(computer);
-        legacy.attach(computer);
         finite.attach(computer);
+        IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, HQSpeakerCompositePeripheral::filteredLegacyAccess);
+        legacy.attach(filtered);
     }
 
     @Override
     public void detach(IComputerAccess computer) {
         finite.detach(computer);
-        legacy.detach(computer);
+        IComputerAccess filtered = legacyComputerViews.remove(computer);
+        if (filtered != null) legacy.detach(filtered);
         vanilla.detach(computer);
     }
 
     public void cleanup() {
         finite.cleanup();
         legacy.cleanup();
+        legacyComputerViews.clear();
+    }
+
+    /**
+     * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented
+     * playAudio backpressure contract. Standard events must therefore come exclusively from the native
+     * SpeakerPeripheral; the old synthetic event is swallowed at this boundary.
+     */
+    private static IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
+        return (IComputerAccess) Proxy.newProxyInstance(
+            IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
+            (proxy, method, args) -> {
+                if ("queueEvent".equals(method.getName()) && args != null && args.length > 0
+                        && "speaker_audio_empty".equals(args[0])) return null;
+                try {
+                    return method.invoke(delegate, args);
+                } catch (InvocationTargetException e) {
+                    throw e.getCause();
+                }
+            });
     }
 
     @LuaFunction
