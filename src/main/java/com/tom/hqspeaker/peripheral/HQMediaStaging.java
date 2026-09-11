@@ -40,9 +40,9 @@ public final class HQMediaStaging {
     private final UUID stagingId = UUID.randomUUID();
     private final WritableMount mount;
     private final Map<Integer, Binding> bindings = new ConcurrentHashMap<>();
-    private final Set<IComputerAccess> attachedComputers = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> attachedComputerIds = ConcurrentHashMap.newKeySet();
     private final Object ownershipLock = new Object();
-    private final Map<IComputerAccess, Set<UUID>> preparedByComputer = new HashMap<>();
+    private final Map<Integer, Set<UUID>> preparedByComputerId = new HashMap<>();
 
     public HQMediaStaging(Level level) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -64,13 +64,12 @@ public final class HQMediaStaging {
         if (location == null) return;
 
         bindings.put(id, new Binding(computer, location));
-        synchronized (ownershipLock) {
-            attachedComputers.add(computer);
-        }
+        attachedComputerIds.add(id);
     }
 
     public void detach(IComputerAccess computer) {
-        Binding binding = bindings.remove(computer.getID());
+        int computerId = computer.getID();
+        Binding binding = bindings.remove(computerId);
         if (binding != null) {
             try {
                 computer.unmount(binding.location());
@@ -80,8 +79,8 @@ public final class HQMediaStaging {
 
         Set<UUID> owned;
         synchronized (ownershipLock) {
-            attachedComputers.remove(computer);
-            owned = preparedByComputer.remove(computer);
+            attachedComputerIds.remove(computerId);
+            owned = preparedByComputerId.remove(computerId);
         }
         releaseDetached(owned);
     }
@@ -100,6 +99,7 @@ public final class HQMediaStaging {
 
     /** Import one staged file into the server-wide media store and return its reusable asset UUID. */
     public String prepareAsset(IComputerAccess computer, String path, boolean consume) throws LuaException {
+        int computerId = computer.getID();
         StagedFile staged = openStaged(computer, path);
         MediaAssetStore store = assetStore();
         MediaAsset asset;
@@ -121,7 +121,7 @@ public final class HQMediaStaging {
         }
 
         synchronized (ownershipLock) {
-            if (!attachedComputers.contains(computer)) {
+            if (!attachedComputerIds.contains(computerId)) {
                 try {
                     store.release(asset.id());
                 } catch (IOException e) {
@@ -129,19 +129,20 @@ public final class HQMediaStaging {
                 }
                 throw new LuaException("computer detached while preparing media");
             }
-            preparedByComputer.computeIfAbsent(computer, ignored -> new HashSet<>()).add(asset.id());
+            preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(asset.id());
         }
         return asset.id().toString();
     }
 
-    /** Release one prepared-owner reference belonging to this computer. */
+    /** Release one prepared-owner reference belonging to this computer id. */
     public boolean releasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         UUID id = parseAssetId(assetId);
+        int computerId = computer.getID();
         boolean owned;
         synchronized (ownershipLock) {
-            Set<UUID> assets = preparedByComputer.get(computer);
+            Set<UUID> assets = preparedByComputerId.get(computerId);
             owned = assets != null && assets.remove(id);
-            if (assets != null && assets.isEmpty()) preparedByComputer.remove(computer);
+            if (assets != null && assets.isEmpty()) preparedByComputerId.remove(computerId);
         }
         if (!owned) return false;
 
@@ -151,8 +152,8 @@ public final class HQMediaStaging {
             return true;
         } catch (IOException e) {
             synchronized (ownershipLock) {
-                if (attachedComputers.contains(computer)) {
-                    preparedByComputer.computeIfAbsent(computer, ignored -> new HashSet<>()).add(id);
+                if (attachedComputerIds.contains(computerId)) {
+                    preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(id);
                 }
             }
             throw new LuaException("cannot release prepared media: " + safeMessage(e));
@@ -201,11 +202,11 @@ public final class HQMediaStaging {
         for (Binding binding : new ArrayList<>(bindings.values())) detach(binding.computer());
         bindings.clear();
 
-        Map<IComputerAccess, Set<UUID>> leftover;
+        Map<Integer, Set<UUID>> leftover;
         synchronized (ownershipLock) {
-            attachedComputers.clear();
-            leftover = new HashMap<>(preparedByComputer);
-            preparedByComputer.clear();
+            attachedComputerIds.clear();
+            leftover = new HashMap<>(preparedByComputerId);
+            preparedByComputerId.clear();
         }
         for (Set<UUID> assets : leftover.values()) releaseDetached(assets);
     }
