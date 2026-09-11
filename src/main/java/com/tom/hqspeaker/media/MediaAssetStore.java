@@ -339,28 +339,31 @@ public final class MediaAssetStore implements AutoCloseable {
      */
     @Override
     public void close() throws IOException {
-        ArrayList<Entry> toDelete;
+        ArrayList<Entry> toDelete = null;
         synchronized (this) {
-            if (closed) return;
-            closed = true;
-            toDelete = new ArrayList<>(entries.values());
-            entries.clear();
-            committedBytes = 0L;
-        }
-
-        IOException failure = null;
-        for (Entry entry : toDelete) {
-            try {
-                Files.deleteIfExists(entry.path);
-            } catch (IOException exception) {
-                if (failure == null) failure = exception;
-                else failure.addSuppressed(exception);
+            if (!closed) {
+                closed = true;
+                toDelete = new ArrayList<>(entries.values());
+                entries.clear();
+                committedBytes = 0L;
             }
         }
 
-        synchronized (this) {
-            closeCleanupDone = true;
+        IOException failure = null;
+        if (toDelete != null) {
+            for (Entry entry : toDelete) {
+                try {
+                    Files.deleteIfExists(entry.path);
+                } catch (IOException exception) {
+                    if (failure == null) failure = exception;
+                    else failure.addSuppressed(exception);
+                }
+            }
+            synchronized (this) {
+                closeCleanupDone = true;
+            }
         }
+
         try {
             releaseRootLockIfReady();
         } catch (IOException exception) {
