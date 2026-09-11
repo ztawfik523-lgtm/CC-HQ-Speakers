@@ -8,6 +8,7 @@ local function checkSpeaker(speaker)
     if type(speaker) ~= "table"
         or type(speaker.audioMountPath) ~= "function"
         or type(speaker.audioPrepareStaged) ~= "function"
+        or type(speaker.audioPreparedInfo) ~= "function"
         or type(speaker.audioPlayPrepared) ~= "function"
         or type(speaker.audioReleasePrepared) ~= "function"
         or type(speaker.audioMaxStagedBytes) ~= "function" then
@@ -47,7 +48,7 @@ local function stageFile(speaker, path)
     return stagedName, stagedPath
 end
 
---- Prepare a finite CC-local file without starting playback.
+--- Prepare and analyze a finite CC-local file without starting playback.
 --- The returned asset ID owns one prepared reference. Call releasePrepared when no longer needed.
 --- @param speaker table A wrapped HQ speaker peripheral.
 --- @param path string Path in the CC filesystem.
@@ -64,6 +65,16 @@ function hqspeaker.prepareFile(speaker, path)
     -- is never discarded merely because the first cleanup attempt failed.
     pcall(fs.delete, stagedPath)
     return assetOrError
+end
+
+--- Return server-derived facts for a prepared finite asset.
+--- @param speaker table A wrapped HQ speaker peripheral.
+--- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
+--- @return table info format, duration, sampleRate, channels, bitsPerSample, sizeBytes, sourceName
+function hqspeaker.preparedInfo(speaker, assetId)
+    checkSpeaker(speaker)
+    if type(assetId) ~= "string" then error("assetId must be a string", 2) end
+    return speaker.audioPreparedInfo(assetId)
 end
 
 --- Start a previously prepared asset on this speaker.
