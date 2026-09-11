@@ -43,12 +43,14 @@ public class HQSpeakerMod {
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
         com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
+        com.tom.hqspeaker.peripheral.HQFiniteMediaServer.tickAll();
     }
 
     @SubscribeEvent
     @OnlyIn(Dist.CLIENT)
     public void onClientTick(ClientTickEvent.Post event) {
         com.tom.hqspeaker.client.HQSpeakerClientHandler.tick();
+        com.tom.hqspeaker.client.HQFiniteMediaClient.tick();
     }
 
     public static void log(String msg)   { System.out.println("[HQSpeaker] " + msg); }
