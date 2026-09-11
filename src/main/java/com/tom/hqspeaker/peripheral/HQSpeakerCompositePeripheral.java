@@ -42,9 +42,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
 
-    /** The real contiguous sample ceiling enforced by the inherited speakPCM table conversion. */
+    /** Exact inherited single-speaker RAW limits. */
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
     private static final int HQ_RAW_SAMPLE_RATE = 48_000;
+    private static final int HQ_RAW_QUEUE_LIMIT = 16;
     private static final long RAW_STOP_GRACE_NANOS = 1_000_000_000L;
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
@@ -92,6 +93,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private void tickOwnership() {
         if (owner != Owner.RAW) return;
+
+        // hqspeaker_audio_empty means exactly what the HQ RAW writer needs: another speakPCM call can enter the
+        // bounded server queue. It is deliberately separate from CC:T's native speaker_audio_empty event.
+        if (!rawCapacityWaiters.isEmpty() && legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT) {
+            for (IComputerAccess computer : rawCapacityWaiters) {
+                if (rawCapacityWaiters.remove(computer)) {
+                    computer.queueEvent("hqspeaker_audio_empty", computer.getAttachmentName());
+                }
+            }
+        }
+
         long now = System.nanoTime();
         if (legacy.speakIsPlaying() || now < rawAudibleUntilNanos + RAW_STOP_GRACE_NANOS) return;
 
@@ -132,20 +144,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     /**
      * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented playAudio
-     * contract, so the native event remains exclusively owned by CC:T. For HQ RAW, a legacy heartbeat is translated
-     * into hqspeaker_audio_empty only for a computer which actually observed speakPCM backpressure.
+     * contract, so those synthetic events are swallowed. M1A emits hqspeaker_audio_empty itself from actual HQ RAW
+     * queue capacity instead.
      */
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
             IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
             (proxy, method, args) -> {
                 if ("queueEvent".equals(method.getName()) && args != null && args.length > 0
-                        && "speaker_audio_empty".equals(args[0])) {
-                    if (rawCapacityWaiters.remove(delegate)) {
-                        delegate.queueEvent("hqspeaker_audio_empty", delegate.getAttachmentName());
-                    }
-                    return null;
-                }
+                        && "speaker_audio_empty".equals(args[0])) return null;
                 try {
                     return method.invoke(delegate, args);
                 } catch (InvocationTargetException e) {
