@@ -16,15 +16,15 @@ Do not add application roles or a Java playlist manager.
 ## Reference points
 
 - immutable reviewed M1 reference: `fba84a33a94d451af09b983bcb04416c97ff64cf`;
-- M1A local-file prototype reference: `69e34a5346f6ce47580f49ed867c9951bfd338bc` on `codex/m1a-local-finite-media`;
-- completed M0.5 cleanup/preparation reference: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
-- active compatibility/output implementation: `codex/m1a-compat-output`.
+- frozen local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc` on `codex/m1a-local-finite-media`;
+- completed M0.5 cleanup/preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
+- M1A compatibility/output branch: `codex/m1a-compat-output`;
+- completed M1B media-asset storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa` on `codex/m1b-media-assets`;
+- active local-import implementation: `codex/m1c-local-import`.
 
-The local-file prototype proved that CC writable staging, chunked client-bound transfer, disk-backed client cache files, and incremental finite decoding are viable. Its fixed-recipient, renderer-authority, observation-timeout, and per-speaker media ownership models are prototypes scheduled for replacement, not architecture to polish.
+The frozen prototype proved that writable CC staging, chunked client transfer, disk-backed client encoded files, and incremental finite decoding are viable. Its fixed-recipient, renderer-authority, observation-timeout, and per-speaker media ownership models are prototypes scheduled for replacement, not architecture to polish.
 
 ## Settled architecture decisions
-
-These supersede the old unresolved D1-D4 framing.
 
 1. **No Java playlist.** A new incompatible HQ continuous playback replaces the prior HQ continuous playback. Lua owns sequencing/queue policy. Repeated chunks of one raw feed remain one feed. Standard CC:T methods retain their own native compatibility semantics.
 2. **No permanent listener ownership list.** The server owns playback state; clients dynamically create/destroy renderers according to current range/tracking state and receive current state when they become relevant again.
@@ -35,75 +35,94 @@ These supersede the old unresolved D1-D4 framing.
 7. **Finite sync has no expected-member barrier.** Synchronized playbacks reference a shared sync clock. A client may render whichever physical speakers are currently relevant without waiting for a global group count.
 8. **Large-file local playback is the priority.** Internet MP3/HLS/TS work is deferred until finite/local media is solid.
 
-Two implementation choices remain deliberately open:
+Two later implementation choices remain deliberately open:
 
 - first-play timing: immediately advance the server clock vs wait for initial nearby readiness;
 - progressive finite playback: M1 starts with complete encoded cache before playback; progressive download/play is a later milestone, but the range protocol must not prevent it.
+
+The **total server media-asset disk cap** is also not yet a settled product-policy number. M1C currently centralizes an interim implementation value so it can be replaced/configured without changing the asset-store primitive.
 
 ## M0.5 — cleanup and redesign preparation
 
 **Status: completed at `ad38412a2173f849a0fc8e867030da8a78965c9c`.**
 
-Goal: make the codebase safe to refactor without spending effort repairing concepts that will be deleted.
+Completed:
 
-Completed work:
-
-- preserved `69e34a5` as the prototype reference and moved redesign work to separate branches;
-- added deterministic provider/world/server cleanup instead of relying on weak-key cache behavior;
-- established cleanup boundaries for speaker removal, Level unload, server shutdown, and computer detach;
-- kept native CC:T compatibility delegation as the standard-method boundary;
-- marked legacy finite and prototype finite paths clearly so new code does not accidentally grow both architectures;
-- updated roadmap/agent/design docs to remove stale unresolved D1-D4 guidance;
-- verified the bundled `hqspeaker.lua` ROM module in CI;
-- kept pure finite clock/path tests green;
-- deliberately did **not** repair prototype renderer-observation timeout, fixed recipient set, or client-authoritative status model because those concepts are scheduled for removal.
+- preserved the prototype as historical evidence;
+- added deterministic speaker/provider cleanup for block removal, Level unload, and server stop;
+- retained exact native CC:T delegation as the compatibility boundary;
+- updated project guidance around the accepted redesign;
+- made CI verify the bundled `hqspeaker.lua` module;
+- deliberately did not repair prototype fixed-recipient/renderer-authority concepts scheduled for deletion.
 
 ## M1A — compatibility and output ownership
 
-**Status: source implementation active on `codex/m1a-compat-output`; Minecraft runtime acceptance pending.**
+**Status: source/CI implemented on `codex/m1a-compat-output`; Minecraft runtime acceptance pending.**
 
-Implemented source scope for the normal single physical speaker:
+Implemented for the normal single physical speaker:
 
-- preserve CC:T 1.120.0 behavior by delegating `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T's original speaker;
-- keep note events independent as CC:T expects;
-- define one HQ continuous output owner across HQ raw, finite, and stream intent;
-- new incompatible HQ playback replaces the previous HQ playback;
-- remove ambiguous status ownership between old and staged finite paths;
-- fix `speakMaxSamples()` reporting to the real 131072-sample table limit;
-- give HQ raw feed a truthful, separate readiness/backpressure event (`hqspeaker_audio_empty`);
-- track RAW accepted duration in server ticks and close drained RAW ownership after an idle grace;
-- make `audioStop()` truthful for every HQ continuous owner;
-- add pure `RawFeedLifetimeTest` coverage and a dedicated M1A Lua runtime contract.
+- delegate standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T 1.120.0;
+- keep notes independent;
+- one HQ continuous owner across raw/finite/stream intent;
+- latest incompatible HQ start replaces the previous HQ source;
+- truthful status/control ownership;
+- truthful 131072 `speakPCM` table ceiling;
+- separate `hqspeaker_audio_empty` RAW admission event;
+- packet-count plus audio-duration RAW backpressure;
+- sample-derived server-tick RAW drain and idle release;
+- serialized source replacement when several computers use the same speaker.
 
 Intentional M1A boundaries:
 
-- inherited `*All` / `*At` helpers still bypass the composite and are replaced in M1J rather than patched onto the old expected-count architecture;
-- leaving/re-entering speaker range and off-range stale renderer invalidation are still M1I work; M1A does not add a historical listener list;
-- source/CI success is not a runtime PASS until `p0_cc_speaker_contract.lua` and `m1a_output_contract.lua` run successfully in Minecraft.
+- old `*All` / `*At` methods remain legacy until M1J;
+- range leave/re-enter rendering remains M1I;
+- runtime scripts still need in-game execution.
 
-## M1B — media asset layer
+## M1B — media asset storage layer
 
-Create a server-side finite media asset abstraction independent of a speaker:
+**Status: completed at `40091ee32f412c1208e9016fca288b8d4f902dfa`.**
 
-- generated asset ID;
-- encoded disk-backed file;
-- size, detected format, duration/metadata;
-- lifetime/reference ownership;
-- safe cleanup after no playbacks reference the asset;
-- no speaker UUID as the conceptual media identity.
+Completed reusable encoded-media storage:
 
-The writable CC mount becomes an import/staging mechanism for assets, not a speaker-private song store.
+- speaker-independent UUID media identity;
+- disk-backed `.part` -> atomic `.media` import;
+- bounded exact-size copying;
+- caller-supplied per-asset/total quotas with reservation before copy;
+- `retain`/`release` ownership and final-reference deletion;
+- seekable encoded-file reads;
+- crash-orphan pruning;
+- root OS lock;
+- shutdown/import race handling and retryable close cleanup;
+- unit coverage for import/lifetime/quota/concurrency/failure paths;
+- exact `.247` / `.248` CI pass.
 
 ## M1C — local CC file import
 
-Keep the simple Lua entrypoint:
+**Status: source/CI implementation active on `codex/m1c-local-import`; Minecraft runtime acceptance pending.**
 
-```lua
-local hq = require("hqspeaker")
-hq.playFile(speaker, "/music/song.mp3")
-```
+Implemented/current scope:
 
-Internally use `fs.copy` into the writable mount, validate size/path, clean partial staging on failure, prepare an asset, then play it. Add lower-level prepare/play/release capabilities so Lua may preload without Java implementing a playlist.
+- separate writable staging from finite playback (`HQMediaStaging`);
+- one server-wide `MediaAssetStore` service (`ServerMediaAssets`);
+- CC file size check before `fs.copy`;
+- partial staging cleanup when `fs.copy` fails;
+- import staged encoded bytes into a reusable asset UUID;
+- lower-level peripheral prepare/play/release capabilities;
+- bundled Lua helpers `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile` convenience behavior;
+- prepared ownership tied to ComputerCraft computer ID and released on detach;
+- playback takes a separate asset reference so releasing a prepared handle does not stop playback;
+- an asset UUID can deliberately be played by another physical speaker because the encoded file is server-wide;
+- server shutdown releases speaker ownership before closing the shared store;
+- failed store close remains reachable for cleanup retry;
+- current transitional finite status includes `assetId`;
+- dedicated `scripts/m1c_local_import_test.lua` runtime contract.
+
+Current safety values:
+
+- per-asset/staging ceiling: 512 MiB;
+- total shared store: interim 2 GiB value, **not yet a settled product-policy choice**.
+
+M1C deliberately still bridges prepared assets into the prototype finite sender. Fixed recipients, server-push whole-file transfer, client STARTED/ENDED authority, and renderer observation timeout remain temporary until M1E/M1F.
 
 ## M1D — server media analysis
 
@@ -179,7 +198,7 @@ One asset may feed several physical speakers without repeated file transfer.
 - one client cache entry per asset;
 - eventually decode once per shared asset/timeline and fan PCM to relevant renderers;
 - one positional renderer per audible physical speaker, preserving distance, stereo direction, occlusion, VS2 movement, and future SPR processing;
-- replace or reroute the inherited `*All` / `*At` helpers so they no longer bypass the current ownership/state architecture.
+- replace/reroute inherited `*All` / `*At` helpers so they no longer bypass current ownership/state architecture.
 
 ## M1K — renderer fan-out optimization
 
@@ -189,17 +208,17 @@ For playbacks using the same asset and sync clock, share decoder/PCM production 
 
 Keep compatibility names such as `speakMp3(bytes)`, `speakOgg(bytes)`, and `speakWav(bytes)`, but route them into the same asset/playback engine. A modest Lua argument cap may remain; large CC files use `hq.playFile`.
 
-Then remove the old whole-packet/whole-PCM finite decoder, duplicate status logic, and unbounded legacy finite decoder queue.
+Then remove the old whole-packet/whole-PCM finite decoder, duplicate status logic, and legacy finite decoder queue.
 
 ## M1M — HQ raw feed finalization
 
-M1A establishes the normal single-speaker RAW ownership/backpressure/idle-release contract. After the shared renderer/range architecture exists, finish any remaining RAW integration work:
+M1A establishes normal single-speaker RAW ownership/backpressure/idle-release. After shared renderer/range architecture exists:
 
 - use the common dynamic range/state renderer lifecycle;
-- preserve the distinct `hqspeaker_audio_empty` readiness contract;
-- finite duration/seek remain unavailable;
-- add pause semantics only if there is a technically coherent producer/feed contract for them;
-- ensure old multi-speaker RAW helpers are migrated away from legacy expected-group behavior.
+- preserve `hqspeaker_audio_empty`;
+- keep finite duration/seek unavailable;
+- add pause only if a coherent producer/feed contract justifies it;
+- migrate old multi-speaker RAW helpers away from expected-group behavior.
 
 ## M1N — Minecraft/OpenAL integration cleanup
 
@@ -211,7 +230,7 @@ M1A establishes the normal single-speaker RAW ownership/backpressure/idle-releas
 
 ## M1O — lifecycle hardening
 
-Complete explicit block/Level/server/computer cleanup for peripheral caches, asset managers, transfer workers, decoder workers, client caches, and global maps. No static world retention across integrated-server restart.
+Complete explicit cleanup for peripheral caches, asset managers, transfer workers, decoder workers, client caches, and global maps. No static world retention across integrated-server restart.
 
 ## M1P — automated state-machine coverage
 
@@ -219,7 +238,7 @@ Add pure/component tests for replacement generation, server EOF, pause/resume/se
 
 ## M1Q — CI/package verification
 
-Keep Java 21 builds green on NeoForge 21.1.247 and 21.1.248. Verify the packaged mod includes metadata, mixin config, JarJar dependencies, and the bundled ComputerCraft ROM `hqspeaker.lua` module.
+Keep Java 21 builds green on NeoForge 21.1.247 and 21.1.248. Verify packaged metadata, mixins, JarJar dependencies, and the bundled ComputerCraft ROM `hqspeaker.lua` module.
 
 ## M1R — consolidated Minecraft acceptance
 
@@ -249,4 +268,4 @@ Only after finite/local media is stable:
 
 ## M5 — release cleanup
 
-Update all state/fact/architecture docs, remove obsolete P0 unresolved language and dead classes, decide whether the separate `hqspeaker:hq_speaker` block remains, document final Lua APIs, and resolve the repository MPL-2.0 vs NeoForge metadata LGPL-3.0 mismatch before public release.
+Update state/fact/architecture docs, remove obsolete P0 language and dead classes, decide whether the separate `hqspeaker:hq_speaker` block remains, document final Lua APIs, and resolve the repository MPL-2.0 vs NeoForge metadata LGPL-3.0 mismatch before public release.
