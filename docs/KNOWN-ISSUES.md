@@ -8,7 +8,7 @@ Severity here is project priority, not a claim of exploitability. Source/CI work
 
 **Status: source-implemented in M1A; runtime acceptance pending.**
 
-The normal speaker now delegates exposed `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T 1.120.0's actual `SpeakerPeripheral` through the composite boundary.
+The normal speaker delegates exposed `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T 1.120.0's actual `SpeakerPeripheral` through the composite boundary.
 
 ### KI-002 — synthetic `speaker_audio_empty` was not native CC:T backpressure
 
@@ -20,7 +20,7 @@ Legacy HQ synthetic `speaker_audio_empty` is filtered. Standard CC:T owns native
 
 **Status: source-implemented for the normal single-speaker M1A path.**
 
-The composite tracks one HQ continuous owner. Legacy `*All` / `*At` paths still bypass this boundary and are migrated in M1J/M1L rather than patched onto obsolete architecture.
+The composite tracks one HQ continuous owner. Legacy `*All` / `*At` paths still bypass this boundary and are migrated later rather than patched onto obsolete architecture.
 
 ### KI-005 — RAW renderer could remain alive after data drains
 
@@ -28,77 +28,77 @@ The composite tracks one HQ continuous owner. Legacy `*All` / `*At` paths still 
 
 Accepted RAW duration drains in server ticks and releases ownership after queue/data idle. Dynamic listener lifecycle remains M1H work.
 
+### KI-006 — loop-disable position edge
+
+**Status: source-resolved by the server-authoritative clock path; runtime acceptance pending.**
+
+`FinitePlaybackClock.setLooping()` rebases the current wrapped position before changing loop state, and M1E uses that clock as canonical server state.
+
+### KI-007 — prototype renderer/anchor authority
+
+**Status: source-resolved in M1E.**
+
+`successfulRenderers` and renderer/anchor authority were removed from `HQFiniteMediaServer`. The server clock starts immediately and remains canonical regardless of client renderers.
+
+### KI-008 — client STARTED/SEEKED/etc. could rewrite canonical state
+
+**Status: source-resolved in M1E.**
+
+Protocol v4 removes `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` from client finite-status telemetry. Only READY and diagnostic ERROR remain. Client renderer state cannot rewrite the server clock/state.
+
+### KI-009 — no-renderer timeout could fail valid playback
+
+**Status: source-resolved in M1E.**
+
+The 15-second renderer-observation failure and canonical `observed` state were removed. Playback progresses with zero listeners.
+
+### KI-010 — exact-duration seek edge
+
+**Status: source-resolved in M1E; runtime acceptance pending.**
+
+Non-looping `seek(duration)` immediately enters canonical ENDED. Looping exact-duration seek wraps to 0. `FinitePlaybackClockTest` covers the deterministic clock edge and `scripts/m1e_server_authority_test.lua` covers the intended in-game contract.
+
 ### KI-020 — provider cache could retain stale world state
 
 **Status: source-resolved in M0.5.**
 
 Composite entries are explicitly evicted on speaker removal, server Level unload, and server shutdown.
 
-## Active high priority — finite engine replacement
+### KI-028 — early canonical EOF could outlive the temporary transfer
+
+**Status: source-resolved in M1E.**
+
+Canonical EOF now closes the old transfer channel before releasing the playback asset reference, so a short song cannot release/delete the asset while the transitional transfer still reads it.
+
+### KI-029 — old BEGIN/CONTROL packets lacked current canonical state
+
+**Status: source-resolved in M1E.**
+
+Protocol v4 adds `HQFiniteMediaStatePacket`. BEGIN remains immutable/setup information for the temporary bridge; STATE carries current canonical state/position/duration/loop/volume. A READY client explicitly receives fresh server truth before it starts/reseeks.
+
+## Active high priority — M1F/M1G finite engine replacement
 
 ### KI-004 — leaving range can leave stale client renderer state
 
-Current inherited stop/control delivery is range-local. A client can leave before later invalidation and retain stale local audio state.
+Current inherited stop/control delivery is range-local and the temporary finite recipient set is still fixed. A client can leave before later invalidation and retain stale local audio state.
 
 **Target:** M1H dynamic relevance. Leaving range destroys/parks local renderer and cancels demand; returning receives current server state and only restarts if playback is still active.
 
-### KI-006 — retained loop-disable position edge
+### KI-026 — transitional client still requires a complete local file
 
-The retained path can mishandle disabling loop after one or more wraps.
+Current M1E `HQFiniteMediaClient` still creates `hqspeaker-cache`, writes the whole encoded file, renames `.part` -> `.media`, and opens `FileFiniteAudioStream` only after complete transfer. The important M1E change is that READY then requests current server state instead of starting from 0.
 
-**Target:** M1E server-authoritative `FinitePlaybackClock` semantics with rebase-before-loop-change tests.
+**Target:** M1F/M1G replace this bridge with bounded in-memory encoded streaming and progressive decoding. No persistent client song cache remains in the final path.
 
-### KI-007 — prototype renderer/anchor authority
+### KI-027 — transitional finite file IO still runs on game threads
 
-The transitional server lets successful client renderers become canonical authority.
+The old server bridge still reads chunks from its open file channel during `tick()`. The old client bridge writes received chunks after scheduling onto the Minecraft client thread.
 
-**Target:** M1E deletes successful-renderer/anchor authority entirely.
-
-### KI-008 — client STARTED/SEEKED/etc. can rewrite canonical state
-
-The transitional status handler accepts renderer position/state transitions and mutates the server clock.
-
-**Target:** M1E makes STARTED/PAUSED/RESUMED/SEEKED/ENDED non-authoritative and later removes obsolete transitions.
-
-### KI-009 — no-renderer timeout can fail valid playback
-
-The prototype can enter error after 15 seconds without an observed renderer.
-
-**Target:** M1E removes the timeout. Canonical playback progresses with zero listeners.
-
-### KI-010 — exact-duration seek edge
-
-The retained client/server path can try to treat an exact-end seek like an active renderer position.
-
-**Target:** M1E: non-looping seek to `duration` immediately enters ENDED; looping seek to `duration` wraps to 0.
-
-### KI-026 — transitional client requires a complete local file
-
-Current `HQFiniteMediaClient` creates `hqspeaker-cache`, writes the whole encoded file, renames `.part` -> `.media`, and only then opens the decoder.
-
-**Target:** M1F/M1G replace this with bounded in-memory encoded streaming and progressive decoding. No persistent client song cache remains.
-
-### KI-027 — current finite file IO runs on game threads
-
-Current prototype server reads chunks from its open file channel during `tick()`. Current client writes received chunks after scheduling onto the Minecraft client thread.
-
-**Target:** M1F moves server asset reads to a bounded IO executor. M1G packet/main-thread handling only enqueues bounded bytes; decode/conversion happens on decoder workers. Sound thread consumes ready PCM only.
-
-### KI-028 — M1E early canonical EOF can outlive the temporary transfer
-
-Once the server clock starts immediately, a short file may canonically end before the old whole-file transfer completes. Releasing the only playback asset reference while the old transfer channel is still active is unsafe/OS-dependent.
-
-**Target:** M1E closes/cancels the temporary transfer before releasing its playback reference on canonical end/error/stop.
-
-### KI-029 — old BEGIN/CONTROL packets do not carry enough canonical state
-
-The temporary client needs a fresh current position after it finishes downloading; existing BEGIN does not provide a current server timeline snapshot.
-
-**Target:** M1E adds a real server -> client finite state snapshot packet and uses it for READY/control/relevance synchronization.
+**Target:** M1F moves server asset reads to a bounded IO executor and removes client disk transfer. M1G decode/conversion runs on workers; the sound thread consumes ready PCM only.
 
 ### KI-030 — no final demand-driven finite protocol yet
 
-Current server captures recipients once and blindly pushes the whole file.
+M1E still captures recipients once and pushes the complete file. The new STATE packet fixes semantic authority but intentionally does not pretend this is final transport.
 
 **Target:** M1F adds bounded client-requested encoded ranges, generation/relevance validation, async reads, stale-work discard, and per-player outstanding/rate limits.
 
@@ -204,7 +204,7 @@ Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old 
 
 ### KI-024 — documentation/testing can become stale during redesign
 
-**Status:** active docs were realigned on the M1E branch around server-authoritative streamed finite media. Historical docs remain explicitly labeled as historical evidence.
+**Status:** active docs are being kept aligned milestone-by-milestone. M1E docs distinguish source implementation from Minecraft runtime proof and explicitly retain frozen M1D as historical evidence.
 
 ### KI-025 — license metadata mismatch
 
