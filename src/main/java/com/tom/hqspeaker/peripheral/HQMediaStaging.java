@@ -2,9 +2,11 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.config.HQSpeakerServerConfig;
+import com.tom.hqspeaker.media.FiniteMediaAnalyzer;
 import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetStore;
+import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.filesystem.WritableMount;
@@ -98,15 +100,19 @@ public final class HQMediaStaging {
         return maxStagedBytes;
     }
 
-    /** Import one staged file into the server-wide media store and return its reusable asset UUID. */
+    /** Analyze and import one staged file, returning a reusable asset UUID only when the format is supported. */
     public String prepareAsset(IComputerAccess computer, String path, boolean consume) throws LuaException {
         int computerId = computer.getID();
         StagedFile staged = openStaged(computer, path);
         MediaAssetStore store = assetStore();
         MediaAsset asset;
         try (SeekableByteChannel channel = staged.channel()) {
+            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(channel);
+            // analyze() returns the channel to byte zero. Import the exact encoded bytes, then attach the already
+            // computed metadata before the UUID can be returned to Lua.
             asset = store.importAsset(staged.path(), staged.sizeBytes(), channel);
-        } catch (IOException e) {
+            asset.attachMetadata(metadata);
+        } catch (IOException | RuntimeException e) {
             throw new LuaException("cannot prepare staged media: " + safeMessage(e));
         }
 
@@ -133,6 +139,15 @@ public final class HQMediaStaging {
             preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(asset.id());
         }
         return asset.id().toString();
+    }
+
+    /** Return server-derived format/duration facts for a prepared asset. */
+    public Map<String, Object> preparedInfo(String assetId) throws LuaException {
+        UUID id = parseAssetId(assetId);
+        MediaAsset asset = assetStore().get(id).orElseThrow(() -> new LuaException("unknown or released media asset"));
+        MediaMetadata metadata = asset.metadata();
+        if (metadata == null) throw new LuaException("media asset has not been analyzed");
+        return metadata.toLuaMap(asset.sizeBytes(), asset.sourceName());
     }
 
     /** Release one prepared-owner reference belonging to this computer id. */
