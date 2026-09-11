@@ -12,9 +12,8 @@ import dan200.computercraft.core.asm.PeripheralMethodSupplier;
 import dan200.computercraft.core.methods.MethodSupplier;
 import dan200.computercraft.core.methods.PeripheralMethod;
 import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
-import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayList;
+import javax.annotation.Nullable;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
