@@ -47,6 +47,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /** Exact inherited single-speaker RAW limits. */
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
     private static final int HQ_RAW_QUEUE_LIMIT = 16;
+    /** Keep at most one maximum speakPCM call worth of not-yet-played RAW audio outstanding. */
+    private static final long HQ_RAW_BUFFER_SAMPLES = HQ_RAW_MAX_SAMPLES;
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
 
@@ -64,7 +66,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
     private final Map<IComputerAccess, IComputerAccess> legacyComputerViews = new ConcurrentHashMap<>();
-    private final Set<IComputerAccess> rawCapacityWaiters = ConcurrentHashMap.newKeySet();
+    /** Requested sample count for each computer currently waiting for RAW capacity. */
+    private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
 
     private volatile Owner owner = Owner.NONE;
@@ -94,23 +97,31 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private synchronized void tickOwnership() {
         if (owner != Owner.RAW) return;
 
-        // hqspeaker_audio_empty means exactly what the HQ RAW writer needs: another speakPCM call can enter the
-        // bounded server queue. It is deliberately separate from CC:T's native speaker_audio_empty event.
+        boolean queueHasData = legacy.speakIsPlaying();
+
+        // Count down accepted RAW audio at the real 48 kHz playback rate. This prevents the server from feeding the
+        // client one multi-second PCM chunk every Minecraft tick just because packet slots are free.
+        if (rawLifetime.tick(queueHasData)) {
+            legacy.speakStop();
+            rawCapacityWaiters.clear();
+            rawLifetime.clear();
+            owner = Owner.NONE;
+            return;
+        }
+
+        // hqspeaker_audio_empty means the rejected speakPCM call can now be retried: both the server packet queue and
+        // the duration-based RAW buffer have room for that computer's requested sample count.
         if (!rawCapacityWaiters.isEmpty() && legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT) {
-            for (IComputerAccess computer : rawCapacityWaiters) {
-                if (rawCapacityWaiters.remove(computer)) {
+            for (Map.Entry<IComputerAccess, Integer> entry : rawCapacityWaiters.entrySet()) {
+                IComputerAccess computer = entry.getKey();
+                int requestedSamples = entry.getValue();
+                if (requestedSamples > 0
+                        && rawLifetime.canAccept(requestedSamples, HQ_RAW_BUFFER_SAMPLES)
+                        && rawCapacityWaiters.remove(computer, requestedSamples)) {
                     computer.queueEvent("hqspeaker_audio_empty", computer.getAttachmentName());
                 }
             }
         }
-
-        // The inherited RAW client stream otherwise returns silence forever. RawFeedLifetime counts accepted sample
-        // duration in server ticks and only expires after the outbound queue is empty plus a short idle grace.
-        if (!rawLifetime.tick(legacy.speakIsPlaying())) return;
-        legacy.speakStop();
-        rawCapacityWaiters.clear();
-        rawLifetime.clear();
-        owner = Owner.NONE;
     }
 
     @Override
@@ -143,7 +154,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /**
      * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented playAudio
      * contract, so those synthetic events are swallowed. M1A emits hqspeaker_audio_empty itself from actual HQ RAW
-     * queue capacity instead.
+     * capacity instead.
      */
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
@@ -232,13 +243,20 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (owner != Owner.RAW) beginReplacingHQ(Owner.RAW);
 
         int samples = contiguousRawSamples(args);
+        boolean validSizedChunk = samples > 0 && samples <= HQ_RAW_MAX_SAMPLES;
+        if (validSizedChunk && (legacy.speakQueueSize() >= HQ_RAW_QUEUE_LIMIT
+                || !rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES))) {
+            rawCapacityWaiters.put(computer, samples);
+            return MethodResult.of(false);
+        }
+
         MethodResult result = invokeLegacy(name, computer, context, args);
         if (immediateTrue(result)) {
             owner = Owner.RAW;
             rawCapacityWaiters.remove(computer);
             rawLifetime.acceptedSamples(samples);
-        } else {
-            rawCapacityWaiters.add(computer);
+        } else if (validSizedChunk) {
+            rawCapacityWaiters.put(computer, samples);
         }
         return result;
     }
