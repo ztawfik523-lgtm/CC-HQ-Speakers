@@ -1,20 +1,26 @@
 # Current state
 
-## Reviewed reference
+## Active references
 
 Repository:
 
 `ztawfik523-lgtm/CC-HQ-Speakers`
 
-Reviewed M1 branch/reference:
-
-`codex/m1-player-core`
-
-`fba84a33a94d451af09b983bcb04416c97ff64cf`
-
 Untouched inherited fork baseline:
 
 `d1a592351c866f9a28ceef00b59e591ee773f3d5`
+
+Reviewed M1 reference:
+
+`fba84a33a94d451af09b983bcb04416c97ff64cf`
+
+M1A local-file prototype reference:
+
+`69e34a5346f6ce47580f49ed867c9951bfd338bc`
+
+Current cleanup/redesign preparation branch:
+
+`codex/m0.5-cleanup-prep`
 
 Target stack:
 
@@ -27,147 +33,127 @@ Target stack:
 
 ## Product identity
 
-The mod replaces/upgrades the normal CC:Tweaked speaker peripheral. It should be treated as a **programmable ComputerCraft audio device**, not a built-in music player.
+The mod upgrades the normal CC:Tweaked speaker into a **programmable ComputerCraft audio peripheral**. Java exposes capabilities; Lua owns application policy such as playlists, priorities, alarms, notifications, music-player behavior, and sequencing.
 
-Audio is separated by technical capability:
+Technical source categories remain:
 
-- raw/feed PCM: no finite timeline;
-- finite files: known timeline and finite controls;
-- live streams: open-ended remote sources.
+- standard CC:T speaker behavior;
+- HQ raw/feed PCM;
+- finite files with a truthful timeline;
+- live/open-ended network streams later.
 
-Application roles such as music/effect/notification/alarm belong to Lua programs.
+## What the M1A prototype proved
 
-## Build/CI state
+The frozen `69e34a5` prototype established that the following are viable on the target stack:
 
-The reviewed M1 HEAD builds successfully in GitHub Actions for:
+- standard CC:T calls can be delegated to CC:T's original `SpeakerPeripheral` while HQ extensions remain exposed through a composite peripheral;
+- a writable ComputerCraft mount can stage local CC files without `readAll()`;
+- client-bound finite media can be split into 256 KiB chunks;
+- the client can keep encoded media on disk instead of retaining the complete decoded track;
+- OGG/JavaSound finite media can be consumed incrementally from a file-backed stream;
+- a bundled `hqspeaker.lua` ROM helper can expose a simple `hq.playFile(speaker, path)` interface;
+- pure tests cover finite clock and staged path behavior.
 
-- NeoForge 21.1.247
-- NeoForge 21.1.248
+The prototype built successfully on NeoForge 21.1.247 and 21.1.248 before M0.5 started.
 
-The workflow uses Java 21 and verifies the packaged mod contains:
+## Prototype concepts scheduled for replacement
 
-- `META-INF/neoforge.mods.toml`
-- `hqspeaker.mixins.json`
-- jarjar metadata
-- mp3spi 1.9.5.4
-- JLayer 1.0.1.4
-- Tritonus share 0.3.7.4
+Do **not** treat these as the target architecture:
 
-This proves build/package compatibility, not client playback correctness.
+- fixed player recipient set captured when playback starts;
+- server-push transfer for the entire encoded file;
+- media identity/lifetime owned by one physical speaker;
+- client READY/STARTED/ENDED reports acting as canonical playback authority;
+- renderer-observation timeout;
+- successful-renderer/anchor-style state;
+- delete-on-initial-transfer behavior;
+- expected-group-size/expected-tap synchronization.
 
-During P0, an initial test-only commit failed `compileTestJava` because direct tests of Minecraft-bound packet classes could not resolve `CustomPacketPayload` from the ordinary unit-test source set. Production `compileJava` completed first. Those packet-constructor tests were removed in favor of keeping the pure unit suite independent from Minecraft-generated classes; protocol rules remain scheduled for extracted/component tests.
+M0.5 deliberately does not polish these concepts because the accepted redesign removes them.
 
-## M1 finite-media implementation
+## Accepted finite-media direction
 
-Current M1 finite media has:
+The target model is:
 
-- monotonically increasing per-speaker generations;
-- retained decoded signed-16-bit mono PCM;
-- exact decoded sample rate;
-- frame-aligned independent renderer cursors;
-- natural finite EOF;
-- duration from frame count/sample rate;
-- seek over retained PCM without re-decode;
-- loop by retained cursor rewind;
-- server semantic states;
-- client READY/STARTED/PAUSED/RESUMED/SEEKED/ENDED/ERROR reports;
-- real `Channel.pause()` / `Channel.unpause()`;
-- live finite volume through Minecraft BLOCKS/MASTER scaling;
-- F3+T renderer re-prime logic;
-- VS2 position updates.
+```text
+ComputerCraft file
+    -> staging/import
+    -> reusable server media asset
+    -> server-authoritative playback state
+    -> small state snapshots
+    -> bounded client-pulled asset ranges
+    -> reusable encoded client cache
+    -> incremental decoder/shared PCM timeline
+    -> one positional renderer per audible physical speaker
+```
 
-This is a useful base and should not be discarded.
+Important consequences:
 
-## Standard CC:T compatibility state
+- no Java playlist;
+- new incompatible HQ continuous playback replaces the prior HQ continuous playback;
+- no permanent historical listener list;
+- finite media asset is separate from playback and physical speaker;
+- server owns finite position/pause/loop/EOF;
+- clients dynamically join/leave rendering according to current range/tracking state;
+- multispeaker playback shares asset/timeline work without collapsing physical source positions;
+- large local files are a core requirement, not a later optional extension.
 
-The fork still reports peripheral type `speaker`, but the reviewed code does **not** fully implement CC:T 1.120.0 speaker semantics.
+See `docs/ROADMAP.md` for implementation order.
 
-Known mismatches include:
+## Standard CC:T compatibility
 
-- `playNote` ignores the selected instrument and synthesizes a sine wave;
-- its Java signature makes volume/pitch required rather than optional;
-- `playSound` ignores the requested sound name;
-- standard `stop()` is absent;
-- `playAudio` does not preserve CC:T's single-pending-buffer/backpressure behavior;
-- omitted `playAudio` volume uses HQ default volume instead of previous `playAudio` volume;
-- `speaker_audio_empty` is driven by the server dispatch queue and can fire repeatedly while idle.
+The composite peripheral currently delegates standard methods to CC:T's actual speaker implementation:
 
-The exact CC:T 1.120.0 source and its public docs disagree on the omitted `playNote` pitch default. That discrepancy is recorded explicitly in `CC-T-COMPATIBILITY-CONTRACT.md` rather than silently reconciled.
+- `playNote`
+- `playSound`
+- `playAudio`
+- `stop`
 
-## Major source-proven blockers
+The legacy HQ synthetic `speaker_audio_empty` event is filtered at the composite boundary so native `speaker_audio_empty` remains CC:T's backpressure event.
 
-### Raw/finite desynchronization
+Known follow-up work remains around the interaction between standard CC sources and HQ continuous playback, but standard behavior itself should continue to be delegated rather than reimplemented.
 
-A raw packet causes the client to reset finite playback state, while the server raw API does not clear its finite semantic queue. The two sides can disagree permanently.
+## M0.5 work
 
-### Raw lifecycle/backpressure
+M0.5 is cleanup/preparation, not the finite-engine redesign itself.
 
-The server queue is a packet-dispatch queue, not an audible raw buffer. It is currently used as though it were CC:T's raw backpressure buffer. Client raw playback may also keep a streaming source alive with silence after data drains.
+Current goals:
 
-### Stop/control recipient ownership
+- freeze the prototype reference and work on a separate redesign branch;
+- deterministic provider cache cleanup on server Level unload and server shutdown;
+- stop relying on a weak-key cache whose values strongly reference the same Level;
+- update agent/design/roadmap guidance so obsolete P0 choices are not revived;
+- verify the bundled ComputerCraft Lua module in packaged JARs;
+- preserve current unit tests and dual-NeoForge CI;
+- avoid repairing prototype recipient/renderer-timeout/client-authority concepts which are scheduled for deletion.
 
-Audio is sent to players within speaker range at dispatch time. Later stop/control packets are also sent only to players currently in range, so a player can receive playback, walk away, and miss the stop/control.
+## Known work intentionally deferred past M0.5
 
-### Finite loop clock
+The following remain real issues but are not prerequisites for the cleanup milestone:
 
-Turning looping off after one or more wraps does not rebase the wrapped logical position before changing the clock interpretation.
+- migrate legacy finite byte APIs onto the new future asset engine;
+- replace the 8 MiB whole-byte finite path for local-file use;
+- server media metadata/duration analysis;
+- client-pulled range transfer;
+- reusable client asset cache;
+- efficient asynchronous MP3 seek/indexing;
+- dynamic range-based renderer lifecycle;
+- multispeaker asset/timeline sharing;
+- HQ raw feed backpressure/lifecycle cleanup;
+- stream double-volume/HLS/TS/live-state problems;
+- SPR integration;
+- dead custom HQ block decision;
+- MPL/LGPL metadata mismatch resolution before public release.
 
-### Multi-client finite authority
+## Testing state
 
-The first successful renderer becomes the anchor and there is no anchor failover. A later generation STARTED report can also promote past an earlier generation which another client is still playing.
+Pure Java tests currently cover:
 
-### No-renderer finite state
+- retained-M1 `FiniteAudioTrack` behavior;
+- HLS playlist parsing;
+- `FinitePlaybackClock` behavior;
+- `FiniteMediaPath` validation.
 
-Finite media is one-shot delivered. With no successful nearby renderer, semantic state can remain loading indefinitely.
+Runtime scripts include standard CC:T speaker-contract acceptance and the M1A staged finite prototype test. Do not run the staged prototype test as final architecture acceptance after the asset redesign begins; it remains useful only as historical/prototype evidence until rewritten.
 
-### Decoder backlog
-
-Finite decode uses a single-thread executor with an unbounded work queue. Stale generation results are rejected, but stale queued work is not cancelled.
-
-### Stream correctness
-
-Current stream code has source-proven problems:
-
-- stream volume is applied to decoded PCM and again in the Minecraft sound;
-- HLS live refresh uses a persistent list index rather than media-sequence progression;
-- direct TS demux collects frames until EOF before queueing playback;
-- unsupported TS audio can fall back to returning compressed bytes as PCM;
-- stream server state does not reflect actual renderer/network failure;
-- stream pause/reconnect-resume is not implemented.
-
-### Multi-speaker sync
-
-Expected group size is global while packet delivery is range-local. A client receiving only part of a group may wait for members it can never receive.
-
-### Provider cache lifecycle
-
-`HQSpeakerPeripheralProvider` caches by dimension+position but stores a concrete `Level`; an eviction method exists but has no current call path in the reviewed source.
-
-## Test state
-
-Before P0, the Java test suite consisted only of `FiniteAudioTrackTest`.
-
-P0 prep adds:
-
-- finite cursor/end/loop-disable edge coverage;
-- pure HLS parser tests;
-- a runtime CC:T compatibility acceptance script;
-- a finite lifecycle regression script;
-- an explicit test matrix mapping every blocker to an automated or runtime proof.
-
-Direct packet-constructor tests were attempted and then deliberately removed after CI proved the ordinary unit-test source set lacks Minecraft's generated packet classes. Packet/status validation remains a future extracted/component test target.
-
-Many source-proven defects are intentionally not "tested green" yet. Tests should encode the desired contract before those fixes land.
-
-## Next milestone
-
-`P0 — implementation readiness`
-
-Exit criteria:
-
-- repository docs describe current source truth;
-- exact CC:T speaker compatibility contract is documented;
-- the four material architecture choices have explicit options/tradeoffs and user decisions;
-- regression harness exists for compatibility and current defect classes.
-
-Only after P0 should broad stabilization implementation proceed.
+CI must continue to build NeoForge 21.1.247 and 21.1.248 with Java 21 and verify required packaged resources, including the bundled `data/computercraft/lua/rom/modules/main/hqspeaker.lua` module.
