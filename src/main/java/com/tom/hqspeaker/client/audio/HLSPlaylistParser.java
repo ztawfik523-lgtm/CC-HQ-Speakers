@@ -1,7 +1,5 @@
 package com.tom.hqspeaker.client.audio;
 
-import com.tom.hqspeaker.HQSpeakerMod;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -13,7 +11,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 public class HLSPlaylistParser {
 
     private static final Pattern BANDWIDTH_PATTERN = Pattern.compile("BANDWIDTH=(\\d+)");
@@ -21,8 +18,8 @@ public class HLSPlaylistParser {
     private static final Pattern RESOLUTION_PATTERN = Pattern.compile("RESOLUTION=(\\d+)x(\\d+)");
 
     public enum PlaylistType {
-        MASTER,     
-        MEDIA       
+        MASTER,
+        MEDIA
     }
 
     public static class VariantStream {
@@ -42,7 +39,7 @@ public class HLSPlaylistParser {
 
         @Override
         public String toString() {
-            return String.format("VariantStream{bw=%d, %dx%d, codecs=%s}", 
+            return String.format("VariantStream{bw=%d, %dx%d, codecs=%s}",
                 bandwidth, width, height, codecs);
         }
     }
@@ -91,30 +88,23 @@ public class HLSPlaylistParser {
         }
     }
 
-    
     public static Playlist fetchAndParse(String playlistUrl) throws IOException {
-        HQSpeakerMod.log("HLS: Fetching playlist from " + playlistUrl);
-        
         String content = fetchUrl(playlistUrl);
         String baseUrl = extractBaseUrl(playlistUrl);
-        
         return parse(content, baseUrl);
     }
 
-    
+    /** Pure parser: intentionally has no Minecraft/NeoForge logging dependency so it stays independently testable. */
     public static Playlist parse(String content, String baseUrl) {
         List<VariantStream> variants = new ArrayList<>();
         List<MediaSegment> segments = new ArrayList<>();
-        
+
         double targetDuration = 0;
         boolean endList = false;
         long mediaSequence = 0;
-        
+
         String[] lines = content.split("\\r?\\n");
-        
-        
         if (lines.length == 0 || !lines[0].trim().equals("#EXTM3U")) {
-            HQSpeakerMod.warn("HLS: Invalid playlist - missing #EXTM3U header");
             return new Playlist(PlaylistType.MEDIA, variants, segments, 0, true, 0, baseUrl);
         }
 
@@ -129,7 +119,6 @@ public class HLSPlaylistParser {
             if (line.isEmpty()) continue;
 
             if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                
                 isMaster = true;
                 currentVariant = parseStreamInfo(line, baseUrl);
             } else if (line.startsWith("#EXT-X-TARGETDURATION:")) {
@@ -139,7 +128,6 @@ public class HLSPlaylistParser {
             } else if (line.startsWith("#EXT-X-ENDLIST")) {
                 endList = true;
             } else if (line.startsWith("#EXTINF:")) {
-                
                 String info = line.substring(8);
                 int commaIdx = info.indexOf(',');
                 if (commaIdx >= 0) {
@@ -152,17 +140,13 @@ public class HLSPlaylistParser {
             } else if (line.startsWith("#EXT-X-DISCONTINUITY")) {
                 currentDiscontinuity = true;
             } else if (!line.startsWith("#")) {
-                
                 String url = resolveUrl(line, baseUrl);
-                
                 if (isMaster && currentVariant != null) {
-                    
-                    variants.add(new VariantStream(url, currentVariant.bandwidth, 
+                    variants.add(new VariantStream(url, currentVariant.bandwidth,
                         currentVariant.codecs, currentVariant.width, currentVariant.height));
                     currentVariant = null;
                 } else {
-                    
-                    segments.add(new MediaSegment(url, currentSegmentDuration, 
+                    segments.add(new MediaSegment(url, currentSegmentDuration,
                         currentSegmentTitle, currentDiscontinuity));
                     currentSegmentDuration = 0;
                     currentSegmentTitle = "";
@@ -172,29 +156,22 @@ public class HLSPlaylistParser {
         }
 
         PlaylistType type = isMaster ? PlaylistType.MASTER : PlaylistType.MEDIA;
-        HQSpeakerMod.log("HLS: Parsed " + (type == PlaylistType.MASTER ? 
-            variants.size() + " variants" : segments.size() + " segments"));
-        
         return new Playlist(type, variants, segments, targetDuration, endList, mediaSequence, baseUrl);
     }
 
     private static VariantStream parseStreamInfo(String line, String baseUrl) {
-        String info = line.substring(18); 
-        
+        String info = line.substring(18);
+
         int bandwidth = 0;
         String codecs = "";
         int width = 0;
         int height = 0;
 
         Matcher bwMatcher = BANDWIDTH_PATTERN.matcher(info);
-        if (bwMatcher.find()) {
-            bandwidth = Integer.parseInt(bwMatcher.group(1));
-        }
+        if (bwMatcher.find()) bandwidth = Integer.parseInt(bwMatcher.group(1));
 
         Matcher codecsMatcher = CODECS_PATTERN.matcher(info);
-        if (codecsMatcher.find()) {
-            codecs = codecsMatcher.group(1);
-        }
+        if (codecsMatcher.find()) codecs = codecsMatcher.group(1);
 
         Matcher resMatcher = RESOLUTION_PATTERN.matcher(info);
         if (resMatcher.find()) {
@@ -213,47 +190,35 @@ public class HLSPlaylistParser {
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(30000);
         conn.setRequestProperty("User-Agent", "HQSpeaker-HLS/1.0");
-        
+
         int responseCode = conn.getResponseCode();
-        if (responseCode != 200) {
-            throw new IOException("HTTP " + responseCode + " for " + urlStr);
-        }
+        if (responseCode != 200) throw new IOException("HTTP " + responseCode + " for " + urlStr);
 
         StringBuilder content = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null) {
-                content.append(line).append("\n");
-            }
+            while ((line = reader.readLine()) != null) content.append(line).append("\n");
         }
         return content.toString();
     }
 
     private static String extractBaseUrl(String url) {
         int lastSlash = url.lastIndexOf('/');
-        if (lastSlash > 0) {
-            return url.substring(0, lastSlash + 1);
-        }
+        if (lastSlash > 0) return url.substring(0, lastSlash + 1);
         return url;
     }
 
     private static String resolveUrl(String url, String baseUrl) {
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-            return url;
-        }
+        if (url.startsWith("http://") || url.startsWith("https://")) return url;
         if (url.startsWith("/")) {
-            
             int protocolEnd = baseUrl.indexOf("://");
             if (protocolEnd > 0) {
                 int pathStart = baseUrl.indexOf('/', protocolEnd + 3);
-                if (pathStart > 0) {
-                    return baseUrl.substring(0, pathStart) + url;
-                }
+                if (pathStart > 0) return baseUrl.substring(0, pathStart) + url;
             }
             return baseUrl + url;
         }
-        
         return baseUrl + url;
     }
 
@@ -273,39 +238,30 @@ public class HLSPlaylistParser {
         }
     }
 
-    
     public static VariantStream selectBestVariant(List<VariantStream> variants, long preferredBandwidth) {
         if (variants.isEmpty()) return null;
-        
+
         VariantStream best = variants.get(0);
-        
         for (VariantStream v : variants) {
             if (preferredBandwidth == 0) {
-                
                 if (v.bandwidth < best.bandwidth) best = v;
             } else if (preferredBandwidth == Long.MAX_VALUE) {
-                
                 if (v.bandwidth > best.bandwidth) best = v;
             } else {
-                
                 long bestDiff = Math.abs(best.bandwidth - preferredBandwidth);
                 long vDiff = Math.abs(v.bandwidth - preferredBandwidth);
                 if (vDiff < bestDiff) best = v;
             }
         }
-        
         return best;
     }
 
-    
     public static boolean isAudioOnly(String codecs) {
         if (codecs == null || codecs.isEmpty()) return false;
         String lower = codecs.toLowerCase();
-        
-        
-        return !lower.contains("avc") && !lower.contains("hevc") && 
-               !lower.contains("vp9") && !lower.contains("av01") &&
-               (lower.contains("mp4a") || lower.contains("mp3") || 
-                lower.contains("ac-3") || lower.contains("ec-3"));
+        return !lower.contains("avc") && !lower.contains("hevc")
+            && !lower.contains("vp9") && !lower.contains("av01")
+            && (lower.contains("mp4a") || lower.contains("mp3")
+                || lower.contains("ac-3") || lower.contains("ec-3"));
     }
 }
