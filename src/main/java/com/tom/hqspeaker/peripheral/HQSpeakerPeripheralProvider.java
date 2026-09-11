@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -15,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HQSpeakerPeripheralProvider {
     private static final ResourceLocation CC_SPEAKER_ID = ResourceLocation.fromNamespaceAndPath("computercraft", "speaker");
 
-    // Level identity is part of the cache boundary. Weak keys prevent an integrated-server world from
-    // pinning old Level instances across unload/reload.
+    // Level identity is part of the cache boundary. The weak key is only a fallback: cached peripherals themselves
+    // reference their Level, so deterministic Level/server lifecycle hooks must evict this cache explicitly.
     private static final Map<Level, ConcurrentHashMap<BlockPos, HQSpeakerCompositePeripheral>> CACHE =
         Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -52,5 +53,28 @@ public class HQSpeakerPeripheralProvider {
         if (levelCache.isEmpty()) {
             synchronized (CACHE) { if (levelCache.isEmpty()) CACHE.remove(world); }
         }
+    }
+
+    /** Deterministically release every cached composite for one unloading server Level. */
+    public static void forgetLevel(Level world) {
+        ConcurrentHashMap<BlockPos, HQSpeakerCompositePeripheral> removed;
+        synchronized (CACHE) {
+            removed = CACHE.remove(world);
+        }
+        if (removed == null || removed.isEmpty()) return;
+        for (HQSpeakerCompositePeripheral peripheral : removed.values()) peripheral.cleanup();
+        removed.clear();
+    }
+
+    /** Final safety net for integrated-server restart and dedicated-server shutdown. */
+    public static void clearAll() {
+        ArrayList<HQSpeakerCompositePeripheral> removed = new ArrayList<>();
+        synchronized (CACHE) {
+            for (ConcurrentHashMap<BlockPos, HQSpeakerCompositePeripheral> levelCache : CACHE.values()) {
+                removed.addAll(levelCache.values());
+            }
+            CACHE.clear();
+        }
+        for (HQSpeakerCompositePeripheral peripheral : removed) peripheral.cleanup();
     }
 }
