@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetStore;
@@ -30,8 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * its encoded bytes live in the server-wide {@link MediaAssetStore} under an asset UUID.</p>
  */
 public final class HQMediaStaging {
-    public static final long MOUNT_CAPACITY_BYTES = ServerMediaAssets.DEFAULT_MAX_ASSET_BYTES;
-
     public record StagedFile(String path, long sizeBytes, SeekableByteChannel channel) {}
 
     private record Binding(IComputerAccess computer, String location) {}
@@ -39,6 +38,7 @@ public final class HQMediaStaging {
     private final MinecraftServer server;
     private final UUID stagingId = UUID.randomUUID();
     private final WritableMount mount;
+    private final long maxStagedBytes;
     private final Map<Integer, Binding> bindings = new ConcurrentHashMap<>();
     private final Set<Integer> attachedComputerIds = ConcurrentHashMap.newKeySet();
     private final Object ownershipLock = new Object();
@@ -49,10 +49,11 @@ public final class HQMediaStaging {
             throw new IllegalArgumentException("media staging requires a server level");
         }
         server = serverLevel.getServer();
+        maxStagedBytes = HQSpeakerServerConfig.maxAssetBytes();
         mount = ComputerCraftAPI.createSaveDirMount(
             server,
             "hqspeaker/staging/" + stagingId,
-            MOUNT_CAPACITY_BYTES
+            maxStagedBytes
         );
     }
 
@@ -94,7 +95,7 @@ public final class HQMediaStaging {
     }
 
     public long maxStagedBytes() {
-        return MOUNT_CAPACITY_BYTES;
+        return maxStagedBytes;
     }
 
     /** Import one staged file into the server-wide media store and return its reusable asset UUID. */
@@ -178,7 +179,7 @@ public final class HQMediaStaging {
             long size = mount.getSize(safePath);
             if (size <= 0L) throw new LuaException("staged media file is empty");
             if (size > maxStagedBytes()) {
-                throw new LuaException("staged media file exceeds " + (maxStagedBytes() / 1024 / 1024) + " MiB");
+                throw new LuaException("staged media file exceeds configured per-asset limit");
             }
             return new StagedFile(safePath, size, mount.openForRead(safePath));
         } catch (IOException e) {
