@@ -21,7 +21,7 @@ Do not add application roles or a Java playlist manager.
 - M1A compatibility/output branch: `codex/m1a-compat-output`;
 - completed M1B media-asset storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
 - verified M1C + configurable-storage base: `33bcc6e04a2734500b7b15b84bee884562539216`;
-- active M1D media-analysis branch: `codex/m1d-media-analysis`.
+- completed source/CI M1D media-analysis branch: `codex/m1d-media-analysis` (Minecraft runtime acceptance pending).
 
 The frozen prototype proved that writable CC staging, chunked client transfer, disk-backed client encoded files, and incremental finite decoding are viable. Its fixed-recipient, renderer-authority, observation-timeout, and per-speaker media ownership models are prototypes scheduled for replacement, not architecture to polish.
 
@@ -131,26 +131,30 @@ M1C deliberately still bridges prepared assets into the prototype finite sender.
 
 ## M1D — server media analysis
 
-**Status: source/unit-test implemented on `codex/m1d-media-analysis`; Minecraft runtime acceptance pending.**
+**Status: source/unit-test/CI complete on `codex/m1d-media-analysis`; Minecraft runtime acceptance pending.**
 
-Implemented:
+Implemented and hardened:
 
 - identify files from encoded bytes rather than filename extension;
+- commit staging bytes to an immutable server asset first, then analyze that exact committed copy;
+- reject and release the temporary asset if analysis fails, so no unsupported asset UUID is returned to Lua;
 - bounded 64 KiB analysis window; no whole-track PCM decode;
+- bounded seek metadata: at most 4096 MP3/OGG points, with adaptive self-thinning for deliberately huge/unlimited files;
 - MP3 Layer III frame scan, ID3v2 skip, duration from frame sample counts, and coarse byte seek hints;
-- OGG Vorbis identification, channel/rate metadata, final-granule duration, and coarse page seek hints;
-- WAV RIFF `fmt `/`data` metadata;
-- uncompressed AIFF `COMM`/`SSND` metadata including 80-bit sample rate;
-- AU/SND header/encoding/rate/channel metadata;
-- reject non-Vorbis OGG, compressed AIFC, unsupported containers/encodings, and arbitrary bytes renamed to a supported extension;
-- attach analyzed metadata to prepared assets before their UUID is returned to Lua;
+- OGG Vorbis identification/header validation, channel/rate metadata, final-granule duration, and coarse page seek hints;
+- WAV RIFF analysis aligned to the current JavaSound client path: first data chunk after `fmt `, frame/block-alignment validation, and 32/64-bit-only IEEE float;
+- uncompressed AIFF `COMM`/`SSND` analysis including 80-bit sample rate, 1–32-bit limit, real sound-byte validation, and rejection of non-zero SSND offsets the current JavaSound reader does not honor;
+- AU/SND header/encoding/rate/channel analysis matching current JavaSound AU encoding support;
+- reject non-Vorbis OGG, compressed AIFC, malformed decoder-incompatible WAV/AIFF, unsupported containers/encodings, and arbitrary bytes renamed to a supported extension;
+- convert malformed numeric/container overflow into checked analysis failures and bound no-progress reads;
 - `audioPreparedInfo` / `hqspeaker.preparedInfo` for format/duration/rate/channel facts;
 - prepared playback status uses the same server-derived metadata immediately;
 - finite advertised list narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, `snd`;
 - MP2/MP4/M4A/AAC no longer advertised without exact decoder evidence;
-- synthetic pure-Java analyzer tests and `scripts/m1d_media_analysis_test.lua` runtime contract.
+- synthetic analyzer tests cover byte-based identification, duration, decoder parity, malformed inputs, bounded index behavior, and channel-reset behavior;
+- `scripts/m1d_media_analysis_test.lua` remains the Minecraft runtime contract.
 
-Current MP3 duration is encoded-frame duration. Gapless encoder delay/padding correction may be added if exact timeline tests show it is needed.
+Current MP3 duration is encoded-frame duration. Gapless encoder delay/padding correction may be added later if exact timeline tests show it is needed.
 
 M1D changes finite file truth, not the old transport/state architecture. M1E/M1F still replace renderer authority and fixed-recipient push.
 
