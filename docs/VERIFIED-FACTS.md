@@ -18,7 +18,8 @@ References:
 - completed M0.5 preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
 - completed M1B asset-store foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
 - verified M1C + server-storage-config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
-- current implementation branch: `codex/m1d-media-analysis`.
+- frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
+- current implementation branch: `codex/m1e-server-authoritative-finite`.
 
 ### FACT-PLATFORM-001
 
@@ -38,7 +39,7 @@ The exact M1B head `40091ee32f412c1208e9016fca288b8d4f902dfa` completed the Java
 
 The exact M1C + server-storage-config base `33bcc6e04a2734500b7b15b84bee884562539216` also completed both target-version jobs successfully after a pure-HLS-test dependency was corrected and the old prototype packet's hard-coded 512 MiB policy check was removed.
 
-The exact pre-hardening M1D documentation tip `7ea8a70527db6b0037af8d2af6415d3c887f50ff` completed both target-version jobs successfully. The hardened M1D code/test head `f08f690048c592be1f266a8b2915942c3238c0d3` also completed both target-version jobs successfully after decoder-parity, bounded-index, and immutable-asset-analysis fixes.
+The final frozen M1D head `4a2cd5de96228fc091226c7e72fb669b82be258c` completed GitHub Actions run `34635484316` successfully. The workflow head SHA exactly matches that frozen M1D commit. Both target NeoForge jobs completed successfully with build/tests, package verification, and candidate-JAR upload.
 
 A green CI build is build/test/package evidence, not Minecraft runtime proof.
 
@@ -152,7 +153,7 @@ Inherited `*All` / `*At` helpers still call legacy speaker instances directly an
 
 ### FACT-M1A-013
 
-The inherited HQ stop helper remains radius-local; dynamic leave/re-enter renderer ownership remains later M1I work.
+The inherited HQ stop helper remains radius-local; dynamic leave/re-enter renderer ownership remains later M1H work.
 
 ## M1B reusable media-asset facts
 
