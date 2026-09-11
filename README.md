@@ -11,19 +11,11 @@ Target stack:
 
 ## Product direction
 
-This mod is a **programmable audio peripheral**, not a prebuilt music player.
-
-Lua decides whether audio is music, speech, an alarm, a notification, ambience, a soundboard entry, or something else. Java distinguishes sources only where their technical capabilities differ.
+This mod is a **programmable audio peripheral**, not a prebuilt music player. Lua decides whether audio is music, speech, an alarm, a notification, ambience, a soundboard entry, or something else. Java distinguishes sources only where their technical capabilities differ.
 
 ### Standard CC:T speaker
 
-The normal `computercraft:speaker` remains the product surface. Standard behavior is a compatibility requirement:
-
-- `playNote`
-- `playSound`
-- `playAudio`
-- `stop`
-- native `speaker_audio_empty`
+The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` behavior is a compatibility requirement.
 
 ### HQ raw/feed audio
 
@@ -59,20 +51,21 @@ Active branch:
 
 `codex/m1e-server-authoritative-finite`
 
-Current implementation still contains the transitional whole-file finite sender/client. The active redesign replaces it in stages:
+M1E source implementation has landed: finite playback now starts/advances on the server immediately, renderer status no longer owns the server clock/EOF, the no-renderer timeout is gone, and protocol v4 adds an authoritative server->client finite STATE packet. Minecraft M1E runtime acceptance is still pending.
 
-- **M1E:** server-authoritative finite clock/state/EOF plus server->client state snapshots;
-- **M1F:** client-requested bounded encoded streaming with off-thread server IO;
+The old whole-file sender/client is intentionally still present only as a bridge. The next implementation milestones are:
+
+- **M1F:** client-requested bounded encoded streaming with off-thread server IO and no final client disk cache;
 - **M1G:** progressive MP3/common-WAV decoding with bounded RAM and mono output;
 - **M1H:** dynamic listeners, late join, leave/re-enter, seek/underrun recovery;
 - **M1I:** optional/gated native FLAC extension;
 - **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
 
-See `docs/ROADMAP.md` and `docs/M1E-FINITE-STREAMING-DESIGN.md` for the current plan.
+See `docs/M1E-SERVER-AUTHORITY.md`, `docs/ROADMAP.md`, and `docs/M1E-FINITE-STREAMING-DESIGN.md`.
 
 ## Main finite controls
 
-The current capability-oriented control surface includes:
+The capability-oriented control surface includes:
 
 - `audioStatus()`
 - `audioPause()` / `audioResume()`
@@ -97,6 +90,7 @@ CI targets both supported NeoForge versions with Java 21 and verifies packaged m
 Start with:
 
 - `docs/CURRENT-STATE.md`
+- `docs/M1E-SERVER-AUTHORITY.md`
 - `docs/ROADMAP.md`
 - `docs/ARCHITECTURE.md`
 - `docs/M1E-FINITE-STREAMING-DESIGN.md`
