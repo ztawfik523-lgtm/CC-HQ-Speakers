@@ -4,6 +4,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -31,10 +33,12 @@ import java.util.UUID;
  *
  * <p>Imports are written to a UUID-named {@code .part} file, forced to disk, and atomically renamed to
  * {@code .media}. On startup, managed {@code .part} and {@code .media} files left by an earlier process are removed:
- * reference ownership is process-local at this milestone, so no old file can still have a live playback reference.</p>
+ * reference ownership is process-local at this milestone, so no old file can still have a live playback reference.
+ * A root-level file lock prevents a second live store from pruning files owned by the first.</p>
  */
 public final class MediaAssetStore implements AutoCloseable {
     private static final int COPY_BUFFER_BYTES = 64 * 1024;
+    private static final String LOCK_NAME = ".asset-store.lock";
 
     private static final class Entry {
         final MediaAsset asset;
@@ -50,6 +54,8 @@ public final class MediaAssetStore implements AutoCloseable {
     private final Path root;
     private final long maxAssetBytes;
     private final long maxTotalBytes;
+    private final FileChannel lockChannel;
+    private final FileLock storeLock;
     private final Map<UUID, Entry> entries = new HashMap<>();
     private final Set<Path> activeParts = new HashSet<>();
     private long committedBytes;
@@ -64,7 +70,27 @@ public final class MediaAssetStore implements AutoCloseable {
         this.maxTotalBytes = maxTotalBytes;
 
         Files.createDirectories(this.root);
-        pruneManagedOrphans();
+        FileChannel openedLockChannel = FileChannel.open(this.root.resolve(LOCK_NAME),
+            StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        FileLock acquiredLock = null;
+        boolean initialized = false;
+        try {
+            try {
+                acquiredLock = openedLockChannel.tryLock();
+            } catch (OverlappingFileLockException ignored) {
+                // Another store in this JVM already owns this directory.
+            }
+            if (acquiredLock == null) throw new IOException("media asset store directory is already in use");
+            pruneManagedOrphans();
+            initialized = true;
+        } finally {
+            if (!initialized) {
+                if (acquiredLock != null) acquiredLock.release();
+                openedLockChannel.close();
+            }
+        }
+        lockChannel = openedLockChannel;
+        storeLock = acquiredLock;
     }
 
     /**
@@ -199,8 +225,12 @@ public final class MediaAssetStore implements AutoCloseable {
 
     private synchronized void reserveImport(Path part, long sizeBytes) throws IOException {
         ensureOpen();
-        long used = committedBytes + reservedBytes;
-        if (used < 0L || sizeBytes > maxTotalBytes - Math.min(used, maxTotalBytes)) {
+        long available = maxTotalBytes - committedBytes;
+        if (reservedBytes > available) {
+            throw new IllegalStateException("media asset quota accounting is inconsistent");
+        }
+        available -= reservedBytes;
+        if (sizeBytes > available) {
             throw new IOException("media asset store exceeds total limit of " + maxTotalBytes + " bytes");
         }
         reservedBytes += sizeBytes;
@@ -297,6 +327,18 @@ public final class MediaAssetStore implements AutoCloseable {
                 if (failure == null) failure = exception;
                 else failure.addSuppressed(exception);
             }
+        }
+        try {
+            storeLock.release();
+        } catch (IOException exception) {
+            if (failure == null) failure = exception;
+            else failure.addSuppressed(exception);
+        }
+        try {
+            lockChannel.close();
+        } catch (IOException exception) {
+            if (failure == null) failure = exception;
+            else failure.addSuppressed(exception);
         }
         if (failure != null) throw failure;
     }
