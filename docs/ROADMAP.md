@@ -32,7 +32,7 @@ Detailed completed-milestone evidence lives in the milestone docs and `VERIFIED-
 2. Successful finite `play` starts the **server clock immediately**, even with zero listeners.
 3. The server owns generation, state, duration, position, pause/resume, seek, loop, volume, and EOF.
 4. A client renderer never becomes canonical playback authority.
-5. Finite files are **streamed progressively from server to client** in bounded encoded ranges. Full client-file download is not required.
+5. Finite files are **streamed progressively from server to client** in bounded encoded ranges. Full client-file download is not required by the final path.
 6. There is **no persistent client song cache**. Clients keep only bounded temporary encoded/decoded RAM needed by active playback.
 7. Seek and late join fetch a fresh bounded encoded window around the server's current/requested position.
 8. A slow client may go silent/refill/rejoin; it never slows the canonical server clock.
@@ -64,31 +64,52 @@ Verified base `33bcc6e04a2734500b7b15b84bee884562539216`. ComputerCraft files st
 
 Frozen at `4a2cd5de96228fc091226c7e72fb669b82be258c`, final CI run `34635484316` green on NeoForge 21.1.247 and 21.1.248. M1D historically analyzes MP3/OGG/WAV/AIFF/AU and records truthful server metadata. That historical format surface does **not** constrain the narrowed final product scope.
 
-## M1E — server-authoritative finite state + state snapshots
+## M1E — server-authoritative finite state + snapshots
 
-**Active milestone.**
+**Status: source implemented; dual-version CI verification/final documentation freeze in progress; Minecraft runtime acceptance pending.**
 
-Goal: make finite playback semantically correct before replacing transport.
+M1E makes finite playback semantically server-owned before replacing the old transport:
 
-Implement:
-
-- server semantic states `PLAYING`, `PAUSED`, `ENDED`, `ERROR`; no server `LOADING` state for client buffering;
-- `playPrepared` starts canonical time immediately at position 0;
+- server states are `PLAYING`, `PAUSED`, `ENDED`, `ERROR`; there is no server `LOADING` state for client buffering;
+- `playPrepared` / the transitional staged play path start canonical time immediately at position 0;
 - playback advances with zero listeners;
-- remove `successfulRenderers`, canonical `observed`, and the 15-second no-renderer failure;
-- client `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` reports never rewrite canonical state;
-- client decode/render errors remain diagnostic/local;
+- `successfulRenderers`, canonical `observed`, and the 15-second no-renderer failure are gone;
+- renderer `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` client status transitions are removed from protocol v4;
+- client -> server finite status now contains only `READY` and diagnostic `ERROR`;
+- client decode/render failure does not rewrite canonical playback state;
 - server duration/clock determines natural EOF;
 - non-looping `seek(duration)` ends immediately; looping `seek(duration)` wraps to 0;
-- status/control paths finalize elapsed EOF before returning/applying state;
-- close/cancel the temporary old transfer before releasing its playback asset when canonical playback ends;
-- add a real **server -> client finite state snapshot** packet carrying at least source, generation, asset ID, format, encoded size, duration, canonical position/state, loop, volume, and speaker position;
-- use that snapshot for play/control changes and the temporary READY bridge;
-- while old whole-file transfer remains, a READY client starts near the **current server position**, never at 0 merely because its download just finished.
+- status/control paths finalize elapsed EOF before reporting/applying state;
+- canonical EOF closes the temporary transfer before releasing its playback asset reference;
+- protocol v4 adds a real server -> client authoritative `finite_state` snapshot;
+- the old whole-file bridge no longer auto-starts at 0 after transfer: READY requests a fresh state snapshot and the client starts/seeks from the current server position.
 
-Tests belong in M1E itself: clock EOF, looping, exact-end seek, no-listener progression, client-status non-authority, replacement generation, and asset lifetime at early EOF.
+### M1E packet split
+
+Do not duplicate immutable setup into every state update.
+
+`finite_begin` remains temporary setup for the old bridge and carries immutable/setup data such as:
+
+- source/media/generation;
+- encoded format and total encoded size;
+- speaker world/block position;
+- initial volume/loop/pause setup.
+
+`finite_state` carries mutable authoritative truth:
+
+- source/media/generation;
+- `PLAYING` / `PAUSED` / `ENDED` / `ERROR`;
+- canonical position and duration;
+- volume and loop state;
+- optional server error detail.
+
+M1E unit coverage includes deterministic natural-EOF/loop behavior in `FinitePlaybackClockTest`. `scripts/m1e_server_authority_test.lua` is the Minecraft runtime contract for immediate server progression, pause/resume, exact-end seek, and looping exact-end wrap. Do **not** call M1E Minecraft-runtime PASS until that script is actually executed successfully.
+
+The remaining whole-file server push, fixed recipient set, server-tick file reads, client `.part/.media` bridge, and complete-file decoder requirement are intentionally **not M1E**. They are the next transport/decoder milestones.
 
 ## M1F — demand-driven finite transport
+
+**Next implementation milestone.**
 
 Goal: delete fixed-recipient whole-file push without yet depending on the final decoder.
 
@@ -107,7 +128,7 @@ Implement:
 
 ### Stream/seek descriptor rule
 
-Do **not** require clients to own the server's whole seek index. State/stream setup may include a codec-appropriate seek anchor such as:
+Do **not** require clients to own the server's whole seek index. Stream setup/state may be accompanied by a codec-appropriate seek anchor such as:
 
 - anchor encoded byte offset;
 - anchor media time;
@@ -120,8 +141,6 @@ M1F tests cover request bounds, stale generation, relevance, cancellation, in-fl
 ## M1G — core progressive finite engine: MP3 + common WAV
 
 Goal: finish the real single-speaker progressive decoder path without letting FLAC delay it.
-
-Pipeline:
 
 ```text
 bounded encoded RAM
@@ -140,7 +159,7 @@ bounded encoded RAM
 
 ### WAV
 
-Narrow the final prepared/advertised WAV contract to the converter we actually implement:
+Narrow the final prepared/advertised WAV contract to the converter actually implemented:
 
 - mono/stereo only;
 - unsigned 8-bit PCM;
@@ -166,9 +185,7 @@ M1G tests cover starvation-vs-EOF, bounded RAM, MP3 pre-roll/rejoin, WAV convers
 
 Goal: make the single-speaker streamed engine behave correctly as players move.
 
-Implement:
-
-- discover/notify newly relevant listeners with current state snapshot;
+- discover/notify newly relevant listeners with current state;
 - entering range begins from current server position, not from file start;
 - leaving range destroys/parks local renderer, cancels demand, and frees temporary buffers;
 - returning while active rejoins current time;
@@ -201,9 +218,7 @@ Do not add Ogg-FLAC. If a clean decoder/seek path is not found, leave FLAC unadv
 
 ## M1J — multispeaker shared clocks and correct physical renderers
 
-Goal: functional multispeaker behavior first, optimization second.
-
-Implement:
+Functional multispeaker behavior first, optimization second:
 
 - one server asset may back many playbacks;
 - synchronized playbacks reference a shared server sync-clock ID;
@@ -227,7 +242,7 @@ Only after M1J is correct:
 - route useful compatibility frontends such as `speakMp3(bytes)` / `speakWav(bytes)` into the new asset engine where sensible;
 - large files remain `hq.playFile`/prepared-asset territory;
 - deprecate/remove legacy OGG-specific finite APIs instead of adding Vorbis back to the final engine;
-- remove old whole-packet/whole-PCM finite decoder, duplicate finite state logic, and obsolete begin/chunk/end/status code after all callers are migrated.
+- remove old whole-packet/whole-PCM finite decoder, duplicate finite state logic, and obsolete prototype finite packets after all callers are migrated.
 
 ## M1M — HQ raw/feed finalization
 
@@ -263,26 +278,7 @@ Keep Java 21 builds green on NeoForge 21.1.247 and 21.1.248. Verify packaged met
 
 ## M1Q — consolidated Minecraft acceptance
 
-Run one batched final M1 pass covering:
-
-- standard CC:T speaker compatibility;
-- HQ raw feed;
-- MP3;
-- all supported common WAV variants;
-- FLAC only if M1I passed;
-- >8 MiB and 50–100+ MiB finite files;
-- audible start before full file transfer;
-- pause/resume/seek/loop/EOF/volume;
-- replacement;
-- late range entry and leave/return;
-- stop/end while away;
-- dimension change;
-- F3+T/resource reload;
-- disconnect/rejoin;
-- synchronized and independently controlled multispeaker playback;
-- mono downmix;
-- bounded RAM/network use;
-- server/client tick and sound-thread stall checks.
+Run one batched final M1 pass covering standard CC:T compatibility, HQ RAW, MP3, all supported common WAV variants, FLAC only if M1I passed, large files, progressive start, all finite controls/EOF/replacement, dynamic range/rejoin, resource reload/disconnect, multispeaker sync/independence, mono downmix, bounded RAM/network use, and server/client/sound-thread stall checks.
 
 OGG/AIFF/AU are not required final acceptance formats.
 
@@ -292,24 +288,10 @@ Integrate the frozen SPR compatibility work only after finite positional rendere
 
 ## M3 — live/open-ended streams
 
-Only after finite/local media is stable:
-
-- live MP3, HLS, TS;
-- no fake duration/seek;
-- pause/resume reconnects to current live point;
-- one gain stage;
-- correct HLS media-sequence progression;
-- incremental TS;
-- unsupported codecs fail explicitly;
-- bounded HTTP/resources;
-- dynamic renderer behavior without expected-tap deadlocks.
+Only after finite/local media is stable: live MP3/HLS/TS, truthful live semantics, reconnect-to-current-live pause/resume, one gain stage, correct HLS media-sequence progression, incremental TS, explicit unsupported-codec failure, bounded HTTP/resources, and dynamic renderer behavior without expected-tap deadlocks.
 
 Finite server-asset semantics must not be forced onto genuinely live sources.
 
 ## M4 — release cleanup
 
-- final docs/API surface;
-- remove obsolete prototype/dead classes and old P0 language;
-- remove obsolete OGG/AIFF/AU advertised finite surfaces once the new engine owns all finite playback;
-- decide whether the separate `hqspeaker:hq_speaker` block remains;
-- resolve the repository MPL-2.0 vs NeoForge metadata LGPL-3.0 mismatch before public release.
+Final docs/API surface, remove obsolete prototype/dead classes/P0 language, remove obsolete OGG/AIFF/AU finite surfaces once the new engine owns all finite playback, decide whether the separate `hqspeaker:hq_speaker` block remains, and resolve the repository MPL-2.0 vs NeoForge metadata LGPL-3.0 mismatch before public release.
