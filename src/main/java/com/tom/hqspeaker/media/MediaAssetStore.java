@@ -313,12 +313,14 @@ public final class MediaAssetStore implements AutoCloseable {
 
     private synchronized void releaseRootLockIfReady() throws IOException {
         if (!closed || !closeCleanupDone || !activeParts.isEmpty() || lockReleased) return;
-        lockReleased = true;
+
         IOException failure = null;
-        try {
-            storeLock.release();
-        } catch (IOException exception) {
-            failure = exception;
+        if (storeLock.isValid()) {
+            try {
+                storeLock.release();
+            } catch (IOException exception) {
+                failure = exception;
+            }
         }
         try {
             lockChannel.close();
@@ -327,6 +329,7 @@ public final class MediaAssetStore implements AutoCloseable {
             else failure.addSuppressed(exception);
         }
         if (failure != null) throw failure;
+        lockReleased = true;
     }
 
     /**
