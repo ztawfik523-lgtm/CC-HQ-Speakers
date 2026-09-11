@@ -1,254 +1,83 @@
-# P0 design decisions
+# P0 design decisions — superseded by accepted redesign
 
-These are the remaining architecture choices with meaningful tradeoffs.
+This file is retained as historical context for the options considered during P0. The original D1-D4 choices are **no longer unresolved** and must not be used as current implementation guidance.
 
-They are intentionally **not decided in this document**. The user should choose after reviewing the options.
+The current target architecture is defined in `docs/ROADMAP.md` and summarized below.
 
-Routine implementation details should not be escalated.
+## D1 — heterogeneous HQ playback
 
-## Scope boundaries already fixed by compatibility/source evidence
+Historical options considered ordered queueing, replacement, and simultaneous independent instances.
 
-These are **not** part of the choices below:
+Accepted direction:
 
-- standard `playNote` must regain CC:T note-block-instrument behavior and its normal independent note semantics;
-- standard `playSound` must regain real registered-sound playback and at minimum preserve CC:T's existing conflict/backpressure rules with standard `playAudio`;
-- the current D1 decision is specifically about the source-proven HQ raw/feed ↔ finite collision bug;
-- inherited live-stream start currently calls `speakStop()` and is exclusive. Stream arbitration can be revisited deliberately in M1C, together with live pause/reconnect and truthful stream state, rather than being silently folded into D1.
+- Java does **not** own a playlist or automatic finite queue;
+- a new incompatible HQ continuous playback replaces the previous HQ continuous playback;
+- repeated chunks belonging to one raw feed remain one feed;
+- Lua owns sequencing, playlists, priorities, and retry policy;
+- standard CC:T methods preserve CC:T's own semantics instead of being rewritten to match HQ policy.
 
-When D1 is implemented, `playSound` interaction with active HQ-only finite playback must be documented consistently with the chosen one-speaker busy/arbitration model; standard calls used on their own must remain CC:T-compatible.
+Reason: application policy belongs in Lua. An accidental replacement call is a Lua program bug, not something the Java peripheral should hide with a secret queue.
 
----
+## D2 — stop/control recipient ownership
 
-## D1 — heterogeneous raw + finite submissions on one physical speaker
+Historical options considered dimension-wide invalidation versus tracking all playback recipients.
 
-Question:
+Accepted direction:
 
-What happens when one HQ speaker receives raw/feed audio while finite media is active, or finite media while raw/feed playback is active?
+- do **not** keep a permanent historical listener/recipient set;
+- server playback state is authoritative;
+- clients dynamically create or destroy positional renderers according to current range/tracking relevance;
+- when a client becomes relevant again it receives the current state/generation and joins at the current position;
+- temporary transfer requests may contain player/request context, but that is not playback ownership.
 
-This is not a "music vs effect" question. Both are arbitrary Lua-controlled audio.
-
-### Option A — one ordered non-stream output sequence
-
-Raw submissions and finite items preserve call order on one physical output.
-
-Example:
-
-```text
-speakMp3(A)
-playAudio(B)
-speakOgg(C)
-
-audible order: A -> B -> C
-```
-
-Pros:
-
-- closest to inherited CC:HQ's one-output/queue mental model;
-- deterministic call ordering;
-- no semantic roles;
-- Lua can build queues naturally.
-
-Cons:
-
-- CC:T `playAudio` still needs its own single-pending-buffer backpressure contract;
-- raw/finite lifecycle must coexist without pretending raw chunks are seekable finite tracks;
-- queue/state implementation is more complex than replacement.
-
-### Option B — conflicting source type replaces/stops current HQ playback
-
-A new raw/finite source stops the currently incompatible source and becomes active.
-
-Pros:
-
-- much simpler lifecycle;
-- no hidden backlog;
-- state/status easier to reason about.
-
-Cons:
-
-- materially changes inherited CC:HQ queue behavior;
-- a small raw call can unexpectedly destroy a long finite playback;
-- scripts must implement more arbitration themselves.
-
-### Option C — independent concurrent playback instances
-
-Raw and finite audio may render simultaneously and require independent addressing/controls.
-
-Pros:
-
-- maximum flexibility;
-- Lua can explicitly build overlays/mixing behavior.
-
-Cons:
-
-- requires playback IDs/handles or another addressing model;
-- stop/status/volume/seek APIs become multi-instance;
-- larger architectural change, closer to a general audio engine;
-- far beyond the current single-speaker M1 model.
-
-Decision:
-
-`UNRESOLVED`
-
-Compatibility pressure:
-
-A is closest to inherited CC:HQ. C is the most capable but largest departure. Do not infer a decision from that observation.
-
----
-
-## D2 — who receives stop/control invalidation?
-
-Problem:
-
-A player can receive playback while near a speaker and later move out of the 32-block send radius. If stop/control is sent only to currently-nearby players, that client can retain stale playback.
-
-### Option A — send small stop/control packets to all players in the dimension
-
-Clients which never saw the source simply ignore the UUID.
-
-Pros:
-
-- simple;
-- robust against range changes;
-- little server state;
-- stop invalidation cannot miss a former listener in the dimension.
-
-Cons:
-
-- extra tiny packets to unrelated players;
-- less precise.
-
-### Option B — track playback recipients and target them
-
-Record which player UUIDs received/observed each playback/session and send later controls/stops to that set.
-
-Pros:
-
-- precise;
-- scales traffic with actual listeners;
-- useful foundation for renderer authority/failover.
-
-Cons:
-
-- additional session/recipient lifecycle;
-- must handle disconnect/reconnect and cleanup correctly;
-- more state to test.
-
-Decision:
-
-`UNRESOLVED`
-
----
+This removes the need to remember everyone who once heard a speaker.
 
 ## D3 — finite decoder backlog/cancellation
 
-Problem:
+Historical options assumed the retained-whole-PCM finite decoder would remain and debated bounded executor variants.
 
-Current global single-thread executor has an unbounded queue. Stale queued decode jobs retain encoded bytes and still consume CPU before lifecycle rejection.
+Accepted direction:
 
-### Option A — bounded single-thread executor, no active Future cancellation
+- the old whole-file/whole-PCM finite engine is not the large-file target;
+- finite media becomes a reusable encoded asset;
+- playback uses disk-backed client cache plus incremental decoding and bounded workers;
+- old byte-taking finite APIs are later migrated onto the same asset/playback engine;
+- obsolete whole-track decoder queue logic is removed rather than polished.
 
-Reject new decode work when the bounded queue is full; stale tasks already admitted finish and are discarded by generation/lifecycle checks.
+## D4 — partial multi-speaker synchronization
 
-Pros:
+Historical options considered per-player group membership, client timeouts, or sending every group member to the union of listeners.
 
-- small change;
-- hard cap on backlog;
-- easy to reason about.
+Accepted direction:
 
-Cons:
+- no expected-global-member or expected-tap barrier;
+- synchronized speaker playbacks reference a shared sync clock;
+- the encoded asset is transferred/cached once per client and decoded/shared where practical;
+- each audible physical speaker still gets its own positional Minecraft/OpenAL renderer;
+- a client renders whichever speakers are currently relevant and may join the shared clock at any time;
+- a physical speaker may later leave the shared clock if Lua pauses/seeks/replaces it independently.
 
-- rapid replacement can still waste CPU on admitted stale work;
-- a stale long decode can delay a newer valid track.
+This is the required basis for correct spatial audio and future Sound Physics Remastered integration.
 
-### Option B — bounded executor + per-track Future cancellation/removal
+## Large finite transfer decision
 
-Keep a handle for each decode job and cancel/remove obsolete work on stop/replacement.
+The old roadmap treated larger finite media as a future choice between chunked transfer plus whole decode or incremental decode.
 
-Pros:
+Accepted direction:
 
-- stronger resource cleanup;
-- replacement becomes responsive;
-- better behavior before M2 larger-media work.
+- client-pulled bounded byte-range transfer;
+- sub-1-MiB payload chunks (current target 256 KiB);
+- reusable disk-backed encoded client asset cache;
+- incremental finite decode;
+- no whole decoded track retained as the large-file architecture.
 
-Cons:
+The next client range request provides natural pacing/acknowledgement without a permanent server-side listener transfer list.
 
-- more lifecycle bookkeeping;
-- cancellation cannot safely interrupt every native/codec operation at arbitrary points without care;
-- requires tests around cancellation races.
+## Remaining open choices
 
-Decision:
+Only these materially different choices remain open in the current roadmap:
 
-`UNRESOLVED`
+1. first-play timing: advance the server playback clock immediately or wait for initial nearby readiness;
+2. progressive playback while downloading: M1 may require complete encoded cache first; M2 may add prebuffered progressive finite playback.
 
----
-
-## D4 — partial multi-speaker sync when a listener receives only part of a group
-
-Problem:
-
-Server group size describes all selected speakers, but each speaker's audio packet is range-filtered independently. A client can receive 2 of 4 packets while being told to wait for 4.
-
-### Option A — server computes per-player delivered membership
-
-For each listener, synchronize the subset of group members which will actually be delivered to that player.
-
-Pros:
-
-- preserves strict synchronization for every sound the listener can receive;
-- no arbitrary client timeout;
-- clean semantic result.
-
-Cons:
-
-- requires coordinated group dispatch rather than independent per-speaker ticks;
-- larger server-side sync refactor.
-
-### Option B — client bounded timeout then starts the received subset
-
-Client waits briefly for the declared group, then starts whatever members it has.
-
-Pros:
-
-- smallest implementation;
-- robust against packet/range asymmetry;
-- no server group coordinator required.
-
-Cons:
-
-- start timing becomes timeout-dependent;
-- a late packet may miss the group;
-- weakens strict sync semantics.
-
-### Option C — send group packets to the union of listeners for all members
-
-Any client eligible for one member receives the full group's packets; positional attenuation determines audibility.
-
-Pros:
-
-- client always receives declared group membership;
-- strict group start is simple.
-
-Cons:
-
-- more network/decoder work;
-- clients may decode sources well outside normal per-speaker range;
-- changes current locality/resource behavior.
-
-Decision:
-
-`UNRESOLVED`
-
----
-
-## After the decisions
-
-Once D1-D4 are chosen, encode them in:
-
-- `ARCHITECTURE.md`;
-- `CURRENT-STATE.md` as implementation target, not current fact;
-- `P0-TEST-MATRIX.md`;
-- targeted Java/state-machine tests;
-- Lua runtime acceptance scripts.
-
-Do not start implementation by silently filling in these choices.
+Do not revive the old D1-D4 alternatives unless new runtime/source evidence exposes a problem with the accepted architecture.
