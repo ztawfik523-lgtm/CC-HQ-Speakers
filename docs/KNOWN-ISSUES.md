@@ -1,169 +1,213 @@
 # Known issues / product gaps
 
-Severity here is project priority, not a claim of exploitability.
+Severity here is project priority, not a claim of exploitability. Source/CI work is not Minecraft runtime proof until the relevant runtime contract passes.
 
-Status labels distinguish source work from Minecraft runtime evidence. A source-implemented item is not considered runtime-proven until the relevant acceptance script passes on the target stack.
+## Source-implemented / runtime pending
 
-## M1A source-implemented / runtime pending
-
-### KI-001 — standard CC:T speaker contract was not preserved
+### KI-001 — standard CC:T contract was historically replaced instead of preserved
 
 **Status: source-implemented in M1A; runtime acceptance pending.**
 
-The normal physical speaker now delegates `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T 1.120.0's actual `SpeakerPeripheral` through the composite boundary.
+The normal speaker now delegates exposed `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` to CC:T 1.120.0's actual `SpeakerPeripheral` through the composite boundary.
 
-This replaces the inherited fake note/sound implementations for the exposed standard methods. Runtime acceptance remains `scripts/p0_cc_speaker_contract.lua`.
-
-### KI-002 — `speaker_audio_empty` was not real native backpressure
+### KI-002 — synthetic `speaker_audio_empty` was not native CC:T backpressure
 
 **Status: source-implemented in M1A; runtime acceptance pending.**
 
-Legacy HQ synthetic `speaker_audio_empty` events are filtered. Native CC:T `playAudio` and its real `speaker_audio_empty` event remain owned by CC:T.
-
-HQ `speakPCM` has its own queue and now uses a separate `hqspeaker_audio_empty` event only after a producer actually received `false` and queue capacity becomes available again.
+Legacy HQ synthetic `speaker_audio_empty` is filtered. Standard CC:T owns native `speaker_audio_empty`; HQ RAW uses separate bounded `hqspeaker_audio_empty` producer pacing.
 
 ### KI-003 — finite/raw source ownership could desynchronize
 
-**Status: source-implemented for the normal single-speaker M1A path; legacy multi-speaker helpers deferred.**
+**Status: source-implemented for the normal single-speaker M1A path.**
 
-The composite now tracks one explicit HQ continuous owner. A new incompatible HQ start replaces the previous HQ source; repeated `speakPCM` calls continue one RAW feed; status/control routing follows the current owner instead of stale terminal state.
+The composite tracks one HQ continuous owner. Legacy `*All` / `*At` paths still bypass this boundary and are migrated in M1J/M1L rather than patched onto obsolete architecture.
 
-Inherited `*All` / `*At` helpers still bypass this boundary and are replaced later by M1I rather than retrofitted here.
+### KI-005 — RAW renderer could remain alive after data drains
 
-### KI-005 — raw renderer could remain alive after data drains
+**Status: source lifecycle implemented for normal M1A path; runtime timing pending.**
 
-**Status: source lifecycle implemented for the normal M1A path; runtime timing pending.**
-
-Accepted RAW sample duration is tracked in server ticks. Once the outbound queue is empty, the accepted duration has drained, and a short idle grace elapses, M1A issues the inherited HQ stop and releases RAW ownership.
-
-Full client range-entry/range-exit lifecycle is still M1H work; see KI-004.
+Accepted RAW duration drains in server ticks and releases ownership after queue/data idle. Dynamic listener lifecycle remains M1H work.
 
 ### KI-020 — provider cache could retain stale world state
 
 **Status: source-resolved in M0.5.**
 
-Composite cache entries are deterministically evicted on CC speaker removal, server Level unload, and server shutdown. The weak-key map is no longer relied on as the lifecycle mechanism.
+Composite entries are explicitly evicted on speaker removal, server Level unload, and server shutdown.
 
-## Active high priority
+## Active high priority — finite engine replacement
 
-### KI-004 — range-local invalidation can leave stale client renderer state
+### KI-004 — leaving range can leave stale client renderer state
 
-Audio packets are intentionally range-local. The inherited HQ stop/control path is also currently range-local, so a client which previously rendered HQ audio can walk away before a later invalidation.
+Current inherited stop/control delivery is range-local. A client can leave before later invalidation and retain stale local audio state.
 
-The accepted target is **not** a permanent historical listener list. M1H replaces this with dynamic range/tracking state: entering range receives current server state, leaving range destroys/parks the local renderer, and returning rejoins only if the server still says playback is active.
+**Target:** M1H dynamic relevance. Leaving range destroys/parks local renderer and cancels demand; returning receives current server state and only restarts if playback is still active.
 
-A tiny broad stop invalidation may be used where necessary as a safety mechanism, but it must not become playback-recipient ownership bookkeeping.
+### KI-006 — retained loop-disable position edge
 
-### KI-006 — retained/prototype loop disable breaks wrapped logical position
+The retained path can mishandle disabling loop after one or more wraps.
 
-Looping position is modulo duration. The retained-M1 path did not first rebase to the current wrapped position when disabling loop.
+**Target:** M1E server-authoritative `FinitePlaybackClock` semantics with rebase-before-loop-change tests.
 
-The prototype `FinitePlaybackClock` demonstrated the corrected behavior. The final fix belongs in the server-authoritative finite engine rather than further polishing the retained engine.
+### KI-007 — prototype renderer/anchor authority
 
-### KI-007 — prototype finite anchor has no failover
+The transitional server lets successful client renderers become canonical authority.
 
-The prototype can make the first successful renderer server authority. That entire model is scheduled for deletion in M1E: the server owns the finite clock regardless of client renderers.
+**Target:** M1E deletes successful-renderer/anchor authority entirely.
 
-### KI-008 — prototype later STARTED generation can skip earlier server state
+### KI-008 — client STARTED/SEEKED/etc. can rewrite canonical state
 
-Legacy/prototype `promoteLocked` behavior allows a reporting client generation to influence canonical queue order.
+The transitional status handler accepts renderer position/state transitions and mutates the server clock.
 
-M1E removes client STARTED authority and Java-side finite queue semantics rather than repairing this mechanism.
+**Target:** M1E makes STARTED/PAUSED/RESUMED/SEEKED/ENDED non-authoritative and later removes obsolete transitions.
 
-### KI-009 — prototype no-renderer playback depends on renderer observation
+### KI-009 — no-renderer timeout can fail valid playback
 
-The staged prototype has READY/STARTED observation and timeout behavior.
+The prototype can enter error after 15 seconds without an observed renderer.
 
-M1E removes renderer-observation authority. Finite playback will progress on the server even with no nearby client, and late listeners will join current state.
+**Target:** M1E removes the timeout. Canonical playback progresses with zero listeners.
 
-### KI-010 — retained finite exact-duration seek edge
+### KI-010 — exact-duration seek edge
 
-The retained-M1 path can try to prime an empty renderer after seeking exactly to duration.
+The retained client/server path can try to treat an exact-end seek like an active renderer position.
 
-`FinitePlaybackClock` covers the desired semantic end behavior. Final implementation belongs to the server-authoritative finite engine.
+**Target:** M1E: non-looping seek to `duration` immediately enters ENDED; looping seek to `duration` wraps to 0.
 
-### KI-011 — legacy finite decoder work queue is unbounded
+### KI-026 — transitional client requires a complete local file
 
-The retained decoder executor is single-threaded with an unbounded task queue. Lifecycle tokens reject stale results but do not cancel/remove queued stale work.
+Current `HQFiniteMediaClient` creates `hqspeaker-cache`, writes the whole encoded file, renames `.part` -> `.media`, and only then opens the decoder.
 
-Legacy finite byte APIs will migrate onto the new bounded finite engine rather than keeping this architecture.
+**Target:** M1F/M1G replace this with bounded in-memory encoded streaming and progressive decoding. No persistent client song cache remains.
 
-### KI-012 — legacy whole decoded PCM allocation is duration-scaled
+### KI-027 — current finite file IO runs on game threads
 
-OGG/JavaSound legacy decode can materialize the complete decoded result before the old 64 MiB validation.
+Current prototype server reads chunks from its open file channel during `tick()`. Current client writes received chunks after scheduling onto the Minecraft client thread.
 
-The staged prototype proved incremental decode concepts. M1G makes bounded encoded buffering and bounded mono PCM production the final finite architecture.
+**Target:** M1F moves server asset reads to a bounded IO executor. M1G packet/main-thread handling only enqueues bounded bytes; decode/conversion happens on decoder workers. Sound thread consumes ready PCM only.
 
-### KI-026 — transitional finite client still requires a complete local encoded file
+### KI-028 — M1E early canonical EOF can outlive the temporary transfer
 
-The current staged client writes the entire encoded asset to a local `.part`/completed file and only constructs `FileFiniteAudioStream` after the full transfer completes.
+Once the server clock starts immediately, a short file may canonically end before the old whole-file transfer completes. Releasing the only playback asset reference while the old transfer channel is still active is unsafe/OS-dependent.
 
-This is no longer target architecture. M1F/M1G replace it with bounded server range streaming into temporary client RAM and progressive decode. The final path does not maintain a persistent client song cache or require a complete client file before first audio.
+**Target:** M1E closes/cancels the temporary transfer before releasing its playback reference on canonical end/error/stop.
+
+### KI-029 — old BEGIN/CONTROL packets do not carry enough canonical state
+
+The temporary client needs a fresh current position after it finishes downloading; existing BEGIN does not provide a current server timeline snapshot.
+
+**Target:** M1E adds a real server -> client finite state snapshot packet and uses it for READY/control/relevance synchronization.
+
+### KI-030 — no final demand-driven finite protocol yet
+
+Current server captures recipients once and blindly pushes the whole file.
+
+**Target:** M1F adds bounded client-requested encoded ranges, generation/relevance validation, async reads, stale-work discard, and per-player outstanding/rate limits.
+
+### KI-031 — MP3 temporary starvation can be mistaken for EOF
+
+The final progressive MP3 path must not return permanent EOF to JLayer just because a requested network range has not arrived yet.
+
+**Target:** M1G decoder input waits/refills on a decoder worker until bytes arrive or true asset EOF is reached.
+
+### KI-032 — MP3 seek/rejoin needs bit-reservoir pre-roll
+
+Opening Layer III exactly at the audible target frame may produce incorrect initial frames because compressed main-data can depend on earlier frames.
+
+**Target:** server-selected earlier frame anchor + silent decode/discard pre-roll in M1G.
+
+### KI-033 — historical WAV acceptance is broader than the final converter target
+
+Frozen M1D accepts unusual sample widths/encodings because it followed JavaSound parity.
+
+**Target:** M1G narrows active prepared/local WAV support to mono/stereo common PCM (8/16/24/32 integer) plus float32, matching the implemented progressive converter.
+
+### KI-034 — FLAC is desired but not proven
+
+There is no current native-FLAC analyzer/decoder/seek implementation in the project.
+
+**Target:** M1I is a gated extension. MP3/WAV completion does not wait for FLAC. Do not advertise FLAC until analyzer, progressive decode, seek/rejoin, malformed-input behavior, packaging, and Minecraft runtime pass.
+
+## Retained legacy/stream/multispeaker problems
+
+### KI-011 — legacy finite decoder queue is unbounded
+
+The inherited decoder executor is single-threaded with an unbounded task queue.
+
+**Target:** M1L removes/migrates the old finite engine rather than polishing it.
+
+### KI-012 — legacy whole decoded PCM allocation scales with duration
+
+Legacy finite decode can materialize a complete decoded result before validation.
+
+**Target:** M1G bounded encoded RAM + bounded mono PCM queue.
 
 ### KI-013 — stream volume is applied twice
 
-`StreamingAudioSource.queuePCM()` scales decoded PCM by stream volume and the renderer applies packet volume again.
+`StreamingAudioSource.queuePCM()` scales PCM and renderer volume applies gain again.
 
-Desired result: one logical gain stage plus normal Minecraft category/master scaling. Streaming remains low priority until local finite media is solid.
+**Target:** later live/OpenAL cleanup; one logical gain stage plus Minecraft master/category scaling.
 
-### KI-014 — HLS live window progression can stall
+### KI-014 — HLS live-window progression can stall
 
-`EXT-X-MEDIA-SEQUENCE` is parsed but not used to identify newly appeared segments. A persistent list index can reach the old playlist size and then skip all same-sized refreshed windows.
+`EXT-X-MEDIA-SEQUENCE` is parsed but the retained logic can rely on a persistent segment-list index.
 
-### KI-015 — direct TS path is not incrementally streaming
+**Target:** M3 live-stream rebuild.
 
-Direct `streamTS()` collects the demuxer's full `List<AudioFrame>` before queueing playback. Endless TS input therefore need not produce output and can grow memory.
+### KI-015 — direct TS path is not incremental
 
-### KI-016 — unsupported TS audio may be treated as PCM
+`streamTS()` can collect a full demuxed list before playback.
 
-`decodeAudioFrame` can return compressed frame bytes unchanged after unsupported JavaSound decode.
+**Target:** M3 incremental TS.
 
-Desired result: unsupported codecs fail clearly; compressed bytes are never mislabeled as PCM.
+### KI-016 — unsupported TS audio may be mislabeled as PCM
 
-### KI-017 — stream server state is intent, not renderer/network truth
+Unsupported decode may return compressed bytes unchanged.
 
-`streamActive` describes server intent rather than confirmed client network/decode/render state. Live pause/reconnect-resume is also not implemented.
+**Target:** M3 explicit unsupported-codec failure.
 
-### KI-018 — inherited partial multi-speaker sync can wait forever
+### KI-017 — live server state is intent, not renderer/network truth
 
-Expected group size is global while packet delivery is range-local. A client may receive only a subset but wait for the full count.
+Current stream state does not prove client render/network state; live pause/reconnect semantics are incomplete.
 
-M1I removes expected-member barriers for final finite sync: synchronized playbacks reference a shared clock and the client renders whichever physical speakers are currently relevant.
+**Target:** M3.
 
-### KI-019 — shared stream session can leak if it never starts
+### KI-018 — inherited multispeaker expected-member barrier can deadlock partial listeners
 
-`forceClose()` removes a shared stream session only inside a successful `running.compareAndSet(true, false)`. A session which never reached expected taps can remain in the static map.
+Expected group size is global while packet delivery is range-local.
 
-Streaming/group cleanup remains later work.
+**Target:** M1J shared server sync clocks with no expected-global-member barrier.
+
+### KI-019 — retained shared stream session can leak before start
+
+A shared stream session which never reaches its expected taps can remain mapped.
+
+**Target:** M3/release cleanup.
 
 ## Medium / cleanup
 
-### KI-021 — advertised finite formats historically exceeded exact bundled decoder evidence
+### KI-021 — finite advertised formats need narrowing after M1D
 
-**Status: source-resolved for the frozen M1D advertisement; final format scope is being narrowed further.**
+Frozen M1D correctly narrowed earlier unsupported MP4/M4A/AAC claims, but its historical product surface still includes OGG/AIFF/AU.
 
-Earlier code advertised MP4/M4A/AAC without dedicated decoder evidence. Frozen M1D narrowed `speakSupportedFiles()` to formats its then-current analyzer/client path could support.
+**Target:** M1G final prepared/local advertisement becomes MP3 + implemented common WAV. M1I optionally adds native FLAC. Historical M1D remains reproducible on its frozen branch.
 
-The final product target is narrower again: MP3, common WAV, and native FLAC after exact proof. OGG/AIFF/AU historical M1D support does not need to survive the replacement streaming engine.
+### KI-022 — separate HQ block/group architecture appears duplicated
 
-### KI-022 — separate HQ block/group architecture appears unused or duplicated
+The repo registers `hqspeaker:hq_speaker` while the actual product path upgrades normal CC speakers.
 
-The repo registers `hqspeaker:hq_speaker` while the actual product path upgrades normal CC speakers. Legacy All/At behavior is also duplicated inside `HQSpeakerPeripheral`.
+**Target:** decide/remove/quarantine before release (M4).
 
-Prove these paths are intentionally supported or remove/quarantine them before release.
+### KI-023 — inherited 8 MiB finite byte API remains
 
-### KI-023 — local finite media still has an inherited 8 MiB byte-input path
+Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old engine.
 
-Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use the inherited one-shot limit and old finite engine.
+**Target:** M1L. Large local files use prepared/server assets and streamed client ranges.
 
-The limit is **not** the target limit for CC filesystem playback. M1B–M1G replace local-file transport/decode with reusable server assets, bounded client-requested streaming, bounded temporary client RAM, and progressive decoding. Legacy byte methods later become compatibility frontends where they still make sense for the narrowed format set.
+### KI-024 — documentation/testing can become stale during redesign
 
-### KI-024 — documentation/testing can become stale during the redesign
-
-P0/M0.5 established separate fact/decision/architecture/current-state documents. M1E cleanup realigns those documents with the server-authoritative, no-client-cache finite streaming plan while preserving frozen M1D facts as historical evidence.
+**Status:** active docs were realigned on the M1E branch around server-authoritative streamed finite media. Historical docs remain explicitly labeled as historical evidence.
 
 ### KI-025 — license metadata mismatch
 
-Repository `LICENSE` is MPL-2.0 while NeoForge metadata declares LGPL-3.0.
+Top-level `LICENSE` is MPL-2.0 while NeoForge metadata declares LGPL-3.0.
 
-Resolve provenance before public release; do not silently relicense.
+**Target:** resolve provenance before public release (M4). Do not silently relicense.
