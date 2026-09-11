@@ -1,9 +1,12 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.media.FiniteMediaAnalyzer;
+import com.tom.hqspeaker.media.FiniteMediaFormat;
 import com.tom.hqspeaker.media.FinitePlaybackClock;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetStore;
+import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaChunkPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaControlPacket;
@@ -34,9 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Transitional finite playback sender.
  *
- * <p>M1C removes staging ownership from this class. It may still play the old direct-staged path for compatibility,
- * but prepared playback reads a reusable server-wide media asset. Fixed recipients/client renderer authority remain
- * prototype behavior scheduled for replacement by M1E/M1F.</p>
+ * <p>M1C removed staging ownership from this class. M1D supplies server-derived format/duration metadata. Fixed
+ * recipients and client renderer authority remain prototype behavior scheduled for replacement by M1E/M1F.</p>
  */
 public final class HQFiniteMediaServer {
     private static final double SPEAKER_RADIUS = 32.0;
@@ -52,6 +54,7 @@ public final class HQFiniteMediaServer {
         final UUID mediaId;
         final long generation;
         final HQFiniteMediaBeginPacket.MediaFormat format;
+        final MediaMetadata metadata;
         final long totalBytes;
         final SeekableByteChannel channel;
         final Set<UUID> recipients;
@@ -70,17 +73,19 @@ public final class HQFiniteMediaServer {
         State state = State.LOADING;
         String error = "";
 
-        Session(UUID mediaId, long generation, HQFiniteMediaBeginPacket.MediaFormat format, long totalBytes,
+        Session(UUID mediaId, long generation, MediaMetadata metadata, long totalBytes,
                 SeekableByteChannel channel, Set<UUID> recipients, float volume, boolean looping,
                 boolean consume, String stagedPath, MediaAssetStore assetStore, UUID retainedAssetId) {
             this.mediaId = mediaId;
             this.generation = generation;
-            this.format = format;
+            this.metadata = metadata;
+            this.format = wireFormat(metadata.format());
             this.totalBytes = totalBytes;
             this.channel = channel;
             this.recipients = recipients;
             this.volume = volume;
             this.clock = new FinitePlaybackClock(looping);
+            this.clock.setDuration(metadata.durationSeconds(), System.nanoTime());
             this.consume = consume;
             this.stagedPath = stagedPath;
             this.assetStore = assetStore;
@@ -138,9 +143,10 @@ public final class HQFiniteMediaServer {
         HQMediaStaging.StagedFile staged = staging.openStaged(computer, path);
         SeekableByteChannel channel = staged.channel();
         try {
+            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(channel);
             long generation = ++generationCounter;
             Session next = new Session(
-                UUID.randomUUID(), generation, detectFormat(staged.path()), staged.sizeBytes(), channel,
+                UUID.randomUUID(), generation, metadata, staged.sizeBytes(), channel,
                 collectRecipients(), appliedVolume, false, consume, staged.path(), null, null
             );
             session = next;
@@ -148,13 +154,16 @@ public final class HQFiniteMediaServer {
             sendBegin(next);
             queueStateEvent();
             return true;
+        } catch (IOException e) {
+            closeChannel(channel);
+            throw new LuaException("cannot analyze staged media: " + safeMessage(e));
         } catch (RuntimeException e) {
             closeChannel(channel);
             throw e;
         }
     }
 
-    /** Play one reusable media asset, retaining a playback reference until stop/end/error. */
+    /** Play one reusable analyzed media asset, retaining a playback reference until stop/end/error. */
     public synchronized boolean playPrepared(String assetId, double volume) throws LuaException {
         if (isActive()) return false;
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
@@ -162,6 +171,8 @@ public final class HQFiniteMediaServer {
         UUID id = HQMediaStaging.parseAssetId(assetId);
         MediaAssetStore store = staging.assetStore();
         MediaAsset asset = store.get(id).orElseThrow(() -> new LuaException("unknown or released media asset"));
+        MediaMetadata metadata = asset.metadata();
+        if (metadata == null) throw new LuaException("media asset has not been analyzed");
 
         if (!store.retain(id)) throw new LuaException("unknown or released media asset");
         SeekableByteChannel channel = null;
@@ -169,7 +180,7 @@ public final class HQFiniteMediaServer {
             channel = store.openRead(id);
             long generation = ++generationCounter;
             Session next = new Session(
-                id, generation, detectFormat(asset.sourceName()), asset.sizeBytes(), channel,
+                id, generation, metadata, asset.sizeBytes(), channel,
                 collectRecipients(), appliedVolume, false, false, null, store, id
             );
             session = next;
@@ -397,10 +408,9 @@ public final class HQFiniteMediaServer {
         long now = System.nanoTime();
         switch (packet.transition()) {
             case READY -> {
-                if (packet.duration() > 0.0) s.clock.setDuration(packet.duration(), now);
+                // M1D already knows finite duration from the encoded asset. Client duration is diagnostic only.
             }
             case STARTED -> {
-                if (packet.duration() > 0.0) s.clock.setDuration(packet.duration(), now);
                 s.clock.seek(packet.position(), now);
                 s.successfulRenderers.add(player.getUUID());
                 s.observed = true;
@@ -443,9 +453,12 @@ public final class HQFiniteMediaServer {
         out.put("generation", s.generation);
         out.put("state", s.state.name().toLowerCase(Locale.ROOT));
         out.put("kind", "finite");
-        out.put("format", switch (s.format) { case MP3 -> "mp3"; case OGG -> "ogg"; case AUDIO_FILE -> "audio"; });
+        out.put("format", s.metadata.format().id());
         out.put("position", s.clock.position(System.nanoTime()));
-        if (s.clock.duration() > 0.0) out.put("duration", s.clock.duration());
+        out.put("duration", s.metadata.durationSeconds());
+        out.put("sampleRate", s.metadata.sampleRate());
+        out.put("channels", s.metadata.channels());
+        out.put("bitsPerSample", s.metadata.bitsPerSample());
         out.put("volume", (double) s.volume);
         out.put("looping", s.clock.looping());
         out.put("observed", s.observed);
@@ -453,7 +466,7 @@ public final class HQFiniteMediaServer {
         out.put("totalBytes", s.totalBytes);
         if (s.retainedAssetId != null) out.put("assetId", s.retainedAssetId.toString());
         out.put("canPause", s.state != State.ENDED && s.state != State.ERROR);
-        out.put("canSeek", s.clock.duration() > 0.0 && s.state != State.ENDED && s.state != State.ERROR);
+        out.put("canSeek", s.state != State.ENDED && s.state != State.ERROR);
         out.put("canLoop", s.state != State.ENDED && s.state != State.ERROR);
         if (!s.error.isBlank()) out.put("error", s.error);
         return out;
@@ -467,11 +480,12 @@ public final class HQFiniteMediaServer {
         }
     }
 
-    private HQFiniteMediaBeginPacket.MediaFormat detectFormat(String path) {
-        String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".mp3") || lower.endsWith(".mp2")) return HQFiniteMediaBeginPacket.MediaFormat.MP3;
-        if (lower.endsWith(".ogg")) return HQFiniteMediaBeginPacket.MediaFormat.OGG;
-        return HQFiniteMediaBeginPacket.MediaFormat.AUDIO_FILE;
+    private static HQFiniteMediaBeginPacket.MediaFormat wireFormat(FiniteMediaFormat format) {
+        return switch (format) {
+            case MP3 -> HQFiniteMediaBeginPacket.MediaFormat.MP3;
+            case OGG_VORBIS -> HQFiniteMediaBeginPacket.MediaFormat.OGG;
+            case WAV, AIFF, AU -> HQFiniteMediaBeginPacket.MediaFormat.AUDIO_FILE;
+        };
     }
 
     private float[] computeWorldPos() {
