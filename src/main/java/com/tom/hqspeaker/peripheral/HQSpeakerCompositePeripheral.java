@@ -43,6 +43,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     );
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
+    private static final String[] SUPPORTED_FINITE_FILES = { "wav", "ogg", "mp3", "aiff", "aif", "au", "snd" };
 
     /** Exact inherited single-speaker RAW limits. */
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
@@ -188,6 +189,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return staging.prepareAsset(computer, path, consume.orElse(true));
     }
 
+    /** Server-derived format/duration facts for a prepared asset. */
+    @LuaFunction
+    public final Map<String, Object> audioPreparedInfo(String assetId) throws LuaException {
+        return staging.preparedInfo(assetId);
+    }
+
     /** Start a prepared asset. The playback takes its own reference before this method returns true. */
     @LuaFunction(mainThread = true)
     public final synchronized boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
@@ -227,6 +234,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (FINITE_CONTROLS.contains(name)) return callFiniteControl(name, computer, context, args);
 
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
+        if ("speakSupportedFiles".equals(name)) return MethodResult.of((Object) SUPPORTED_FINITE_FILES.clone());
 
         if ("speakStop".equals(name)) {
             stopEverything();
