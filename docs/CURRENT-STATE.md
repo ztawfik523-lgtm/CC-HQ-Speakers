@@ -106,17 +106,19 @@ See `docs/SERVER-CONFIG.md` and `docs/M1C-LOCAL-IMPORT.md`.
 
 ## M1D server finite-media analysis
 
-M1D moves finite file identity/duration facts onto the server before playback starts.
+M1D moves finite file identity/duration facts onto the server before playback starts. The source/unit-test implementation is complete on `codex/m1d-media-analysis`; Minecraft runtime acceptance remains pending.
 
-Prepared files are inspected from their encoded bytes rather than their filename extension. `FiniteMediaAnalyzer` uses one 64 KiB read window and does not decode the whole track to PCM.
+Prepared files are identified from their encoded bytes rather than their filename extension. The supported prepare path first commits the exact staging bytes to the immutable server asset store, then analyzes that committed copy. If analysis fails, the asset reference is released and the rejected file is not exposed to Lua. This avoids metadata/file races against the writable ComputerCraft staging mount.
+
+`FiniteMediaAnalyzer` uses one 64 KiB read window and never decodes the complete track to PCM.
 
 Current accepted prepared/local formats:
 
 - MP3 / MPEG Layer III;
 - OGG Vorbis;
-- WAV;
-- uncompressed AIFF/AIF;
-- AU/SND.
+- WAV shapes compatible with the current JavaSound client conversion path;
+- uncompressed AIFF/AIF within the current JavaSound reader's supported shape;
+- AU/SND encodings supported by the current JavaSound reader.
 
 The analyzer records:
 
@@ -125,20 +127,24 @@ The analyzer records:
 - sample rate;
 - channel count;
 - bits per sample when meaningful;
-- coarse MP3/OGG encoded-byte seek hints.
+- bounded MP3/OGG encoded-byte seek hints.
 
-Examples of explicit rejection now include:
+MP3/OGG seek metadata is capped at 4096 points per asset. The index starts at approximately five-second spacing and self-thins/doubles its spacing when necessary, so disabling the normal file-size quota cannot make seek metadata grow without bound.
 
-- arbitrary bytes renamed to `.mp3`;
-- OGG using a codec other than Vorbis;
-- compressed AIFC;
-- unsupported WAV/AU encodings.
+Format/decoder parity is intentionally conservative:
+
+- OGG must contain a complete valid-shape Vorbis identification header; Opus/non-Vorbis OGG is rejected;
+- compressed AIFC is rejected;
+- WAV uses the first `data` chunk after `fmt `, validates frame/block alignment, and only accepts 32/64-bit IEEE float;
+- AIFF is limited to 1–32 bits and rejects non-zero SSND offsets because the current JavaSound reader does not honor that offset when positioning audio data;
+- AIFF declared frame count must fit the available SSND bytes;
+- AU acceptance follows JavaSound-supported AU encodings and complete-frame duration.
 
 `audioPreparedInfo(assetId)` and `hqspeaker.preparedInfo(...)` expose the server-derived facts before playback. The prepared-file bridge also puts the same format/duration/rate/channel facts into `audioStatus()` immediately.
 
-The exposed `speakSupportedFiles()` list has been narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`; MP2/MP4/M4A/AAC are no longer advertised without decoder evidence.
+The exposed `speakSupportedFiles()` list is narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`; MP2/MP4/M4A/AAC are not advertised without exact finite-decoder evidence.
 
-MP3 duration is currently frame/sample-count duration and does not yet subtract encoder delay/padding from gapless metadata.
+MP3 duration is currently encoded-frame/sample-count duration and does not yet subtract encoder delay/padding from gapless metadata.
 
 See `docs/M1D-MEDIA-ANALYSIS.md`.
 
@@ -154,7 +160,7 @@ Prepared assets currently bridge into `HQFiniteMediaServer`, which still uses pr
 - renderer-observation timeout;
 - no dynamic late join from authoritative server state.
 
-One improvement already available to the bridge is that finite duration/format now comes from the server analysis rather than a client renderer or filename extension.
+One improvement already available to the bridge is that finite duration/format comes from server analysis rather than a client renderer or filename extension.
 
 M1E removes client renderer authority and makes the server clock/state canonical. M1F replaces fixed-recipient whole-file push with bounded client-pulled asset ranges.
 
@@ -171,9 +177,12 @@ Pure Java coverage now includes:
 - M1B asset import, quota, reference, crash, root-lock, and shutdown tests;
 - M1D synthetic WAV/AIFF/AU/OGG-Vorbis/MP3 analysis;
 - ID3v2 MP3 handling;
-- non-Vorbis OGG rejection;
-- invalid/unsupported file rejection;
-- analyzer channel reset after failure.
+- non-Vorbis and truncated-identification OGG rejection;
+- WAV first-data semantics, block-alignment checks, and float-width rejection;
+- AIFF width/offset/truncation checks;
+- bounded adaptive seek-index behavior on a long synthetic timeline;
+- accepted WAV/AIFF/AU fixtures opening through the same JavaSound conversion shape used by the client;
+- analyzer channel reset after both success and failure.
 
 Runtime scripts relevant now:
 
