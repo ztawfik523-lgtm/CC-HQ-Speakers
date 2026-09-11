@@ -180,7 +180,7 @@ class MediaAssetStoreTest {
     }
 
     @Test
-    void closeDuringImportLeavesNoPublishedOrPartialAsset() throws Exception {
+    void closeDuringImportKeepsRootLockedUntilUnpublishedFileIsCleaned() throws Exception {
         MediaAssetStore store = new MediaAssetStore(temp, 1024, 4096);
         BlockingChannel blocked = new BlockingChannel(bytes(16));
         var executor = Executors.newSingleThreadExecutor();
@@ -190,12 +190,19 @@ class MediaAssetStoreTest {
             assertEquals(16L, store.reservedBytes());
 
             store.close();
-            blocked.allowRead();
+            IOException stillLocked = assertThrows(IOException.class,
+                () -> new MediaAssetStore(temp, 1024, 4096));
+            assertTrue(stillLocked.getMessage().contains("already in use"));
 
+            blocked.allowRead();
             ExecutionException failure = assertThrows(ExecutionException.class,
                 () -> future.get(2, TimeUnit.SECONDS));
             assertTrue(failure.getCause() instanceof IOException);
             assertEquals(0L, managedFileCount(temp));
+
+            try (MediaAssetStore reopened = new MediaAssetStore(temp, 1024, 4096)) {
+                assertEquals(0, reopened.assetCount());
+            }
         } finally {
             blocked.allowRead();
             executor.shutdownNow();
