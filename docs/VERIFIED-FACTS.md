@@ -2,6 +2,8 @@
 
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
+When behavior changed after the reviewed M1 reference, historical facts are explicitly scoped to that reference instead of being called current.
+
 ## Repository/platform
 
 ### FACT-REPO-001
@@ -14,9 +16,21 @@ Untouched fork baseline:
 
 `d1a592351c866f9a28ceef00b59e591ee773f3d5`
 
-Reviewed M1 reference:
+Reviewed historical M1 reference:
 
 `fba84a33a94d451af09b983bcb04416c97ff64cf`
+
+Frozen staged/local-file prototype reference:
+
+`69e34a5346f6ce47580f49ed867c9951bfd338bc`
+
+Completed M0.5 preparation reference:
+
+`ad38412a2173f849a0fc8e867030da8a78965c9c`
+
+Current implementation branch:
+
+`codex/m1a-compat-output`
 
 ### FACT-PLATFORM-001
 
@@ -34,21 +48,35 @@ Build dependency:
 
 ### FACT-PLATFORM-002
 
-At reviewed M1 HEAD, GitHub Actions completed successfully for both NeoForge 21.1.247 and 21.1.248. The workflow runs `clean build` on Java 21 and verifies mod metadata, mixin config, jarjar metadata, mp3spi, JLayer, and Tritonus artifacts.
+The exact M0.5 HEAD completed GitHub Actions successfully on NeoForge 21.1.247 and 21.1.248. The workflow runs `clean build` on Java 21 and verifies required packaged mod resources, including the bundled ComputerCraft ROM module.
+
+Current M1A source changes continue to run through the same two-version matrix. A green CI build is build/test/package evidence, not Minecraft runtime proof.
 
 ### FACT-PLATFORM-003
 
-The network registrar at reviewed M1 HEAD registers five payload types:
+Current `HQSpeakerNetwork` registers ten custom payload types:
 
-- audio
-- stop
-- finite/player control
-- ICY metadata
-- finite/player status
+Client-bound:
+
+- legacy/HQ audio;
+- legacy/HQ stop;
+- legacy finite/player control;
+- staged finite begin;
+- staged finite chunk;
+- staged finite end;
+- staged finite control.
+
+Server-bound:
+
+- ICY metadata;
+- legacy finite/player status;
+- staged finite status.
+
+The staged finite payload family belongs to the frozen/prototype architecture and is scheduled for later replacement by the asset/range design.
 
 ## CC:T 1.120.0 base speaker contract
 
-Source basis: official CC:Tweaked 1.120.0 for Minecraft 1.21.1, release tag `v1.21.1-1.120.0` (release commit `98f3a71`), plus official speaker documentation.
+Source basis: exact CC:Tweaked 1.120.0 for Minecraft 1.21.1, tag `v1.21.1-1.120.0`, plus official speaker documentation.
 
 ### FACT-CCT-001
 
@@ -58,109 +86,156 @@ The normal peripheral type is `speaker`.
 
 `playNote(instrument [, volume [, pitch]])` accepts optional volume/pitch, resolves a real note-block instrument, validates the instrument, and is subject to the configured per-tick note limit.
 
-The official documentation says omitted pitch defaults to `12`, while the exact `v1.21.1-1.120.0` source uses `pitchA.orElse(1.0)`. This is an upstream source/documentation discrepancy and is not silently reconciled here.
+The official documentation says omitted pitch defaults to `12`, while exact 1.120.0 source uses `pitchA.orElse(1.0)`. This is an upstream source/documentation discrepancy.
 
 ### FACT-CCT-003
 
-`playSound(name [, volume [, pitch]])` resolves a Minecraft/modded sound identifier, accepts optional volume/pitch, and returns false when a sound/audio conflict prevents playback.
+`playSound(name [, volume [, pitch]])` resolves a Minecraft/modded sound identifier, accepts optional volume/pitch, rejects jukebox-song sound events, and returns false when native sound/audio conflict prevents playback.
 
 ### FACT-CCT-004
 
-`playAudio(audio [, volume])` accepts signed 8-bit samples, maximum 128*1024 samples per call, at 48 kHz. It buffers one pending call at a time and returns false when it cannot accept another buffer.
+`playAudio(audio [, volume])` accepts signed 8-bit samples, maximum `128 * 1024` samples per call, at 48 kHz. It has one pending DFPWM buffer and returns false when another cannot be accepted.
 
-If volume is omitted, the documented behavior is to reuse the previous `playAudio` volume.
+If volume is omitted, native DFPWM state retains the previous `playAudio` volume.
 
 ### FACT-CCT-005
 
-`speaker_audio_empty` is used as backpressure notification after the internal audio buffer is pulled/freed so another `playAudio` call can be accepted.
+`speaker_audio_empty` is emitted after native pending audio is pulled/freed and another standard `playAudio` buffer may be accepted.
 
 ### FACT-CCT-006
 
-`stop()` is a standard speaker method. It stops/clears the speaker's current playAudio/latest playSound state.
+`stop()` is a standard speaker method. Exact source sets a `shouldStop` flag; `SpeakerPeripheral.update()` processes that flag on a later server tick, clears native DFPWM/latest arbitrary sound state, and sends native stop when appropriate.
 
-## Current HQ replacement facts
+Pending note events are stored separately and are not cleared by `SpeakerPeripheral.stop()`.
 
-### FACT-HQ-001
+## Historical reviewed-M1 HQ facts
 
-`ComputerCraftSpeakerBlockEntityMixin` replaces the normal CC:T speaker peripheral with `HQSpeakerPeripheral`.
+These facts describe the reviewed `fba84a3` lineage and explain the defects M1A is replacing. They are not claims about the current composite surface.
 
-`HQSpeakerPeripheral.getType()` returns `speaker`.
+### FACT-HIST-001
 
-### FACT-HQ-002
+The inherited `HQSpeakerPeripheral.playNote` ignored its instrument argument and synthesized a sine wave into the HQ PCM queue. Its inherited `playSound` ignored the requested sound identifier and reused that generated-note path.
 
-Current `playNote` ignores its `instrument` argument and synthesizes a sine wave into the HQ PCM queue.
+### FACT-HIST-002
 
-Its Java method takes primitive volume and pitch arguments rather than optional arguments.
+The inherited `HQSpeakerPeripheral` exposed `speakStop()` / `audioStop()` but did not itself provide the standard CC:T `stop()` implementation.
 
-### FACT-HQ-003
+### FACT-HIST-003
 
-Current `playSound` ignores `soundName` and delegates to a generated harp/sine-note path.
+The inherited server queue is an `ArrayBlockingQueue` of 16 `SpeakerChunk`s, and `speakerTick()` polls one chunk per server tick.
 
-### FACT-HQ-004
+Its inherited synthetic `speaker_audio_empty` scheduling is based on the HQ packet queue threshold rather than CC:T native DFPWM capacity.
 
-Current HQ source exposes `speakStop()` and `audioStop()`, but no standard Lua `stop()` method in `HQSpeakerPeripheral`.
+### FACT-HIST-004
 
-### FACT-HQ-005
+Legacy finite byte input is capped at 8 MiB and enters the inherited whole-packet/whole-decoded-PCM path.
 
-`playAudio` preserves signed 8-bit input conversion; `speakPCM` accepts signed 16-bit input. Both become `PCM_S16LE`.
+### FACT-HIST-005
 
-### FACT-HQ-006
+Legacy `HQAudioStream` finite decode uses a single-thread decoder executor. OGG retained decode uses STB Vorbis memory decode; JavaSound-supported finite media uses whole converted reads. The retained decoded PCM path has a 64 MiB post-decode cap.
 
-Current raw/HQ server queue is a bounded queue of 16 `SpeakerChunk`s. `speakerTick()` polls one chunk per server tick.
+## Current M1A compatibility/output facts
 
-`speaker_audio_empty` is currently scheduled whenever that queue is below `SPEAKER_READY_MARK`, not when an actual client raw buffer has been consumed.
+### FACT-M1A-001
 
-### FACT-HQ-007
+`ComputerCraftSpeakerBlockEntityMixin` exposes an `HQSpeakerCompositePeripheral` for the normal CC:T speaker while retaining the original CC:T `SpeakerPeripheral` owned by `SpeakerBlockEntity`.
 
-Finite encoded media is capped at 8 MiB in both peripheral and audio packet code and is transported as a whole encoded `byte[]`.
+The exposed peripheral type remains `speaker`.
 
-### FACT-HQ-008
+### FACT-M1A-002
 
-`HQAudioStream` uses a single-thread `HQSpeaker-Decoder` executor and whole-file finite decode.
+For exposed standard method names, the composite calls the original CC:T `SpeakerPeripheral` for:
 
-OGG uses `STBVorbis.stb_vorbis_decode_memory`; JavaSound-supported finite media uses `readAllBytes()` after conversion.
+- `playNote`;
+- `playSound`;
+- `playAudio`;
+- `stop`.
 
-Decoded finite PCM has a 64 MiB post-decode validation cap.
+The inherited fake HQ methods with overlapping names remain present inside the legacy object but are not the composite's standard-method dispatch target.
 
-## M1 finite facts
+### FACT-M1A-003
 
-### FACT-M1-001
+The legacy HQ object is attached through an `IComputerAccess` proxy which suppresses its synthetic `speaker_audio_empty`. The original CC:T peripheral is attached to the real computer access, so native `speaker_audio_empty` remains sourced by CC:T.
 
-Finite packets carry:
+### FACT-M1A-004
 
-- generation
-- finite looping state
-- finite paused state
+The normal single-speaker composite tracks one HQ continuous owner from these technical categories:
 
-### FACT-M1-002
+- RAW;
+- legacy finite;
+- staged finite prototype;
+- stream intent;
+- none.
+
+Starting a new incompatible HQ source stops the prior HQ source. Repeated accepted `speakPCM` calls while RAW owns the output continue the same RAW feed.
+
+### FACT-M1A-005
+
+An HQ continuous-source start also calls native CC:T `stop()`. Exact CC:T notes are stored separately from native sound/DFPWM state, so this does not clear pending note events.
+
+While an HQ continuous source reports active, the composite returns false for exposed standard `playSound` / `playAudio` instead of dispatching them into overlapping native continuous audio.
+
+### FACT-M1A-006
+
+The composite exposes `speakMaxSamples()` as `131072`, matching the inherited contiguous table conversion ceiling.
+
+Legacy source still contains the older `SPEAKER_MAX_PCM = 192000` constant, but the actual table converter rejects lengths above `131072`.
+
+### FACT-M1A-007
+
+M1A uses a separate `hqspeaker_audio_empty` event for HQ `speakPCM` capacity. A calling computer is added as a waiter only after valid RAW input reaches the boolean enqueue result and that result is false. Once the inherited server queue has room, the composite emits the HQ-specific event to waiting computers.
+
+Malformed, empty, and over-limit RAW tables throw during validation/conversion rather than becoming successful capacity waiters.
+
+### FACT-M1A-008
+
+`RawFeedLifetime` is a pure Java server-tick state model. Accepted RAW samples add `ceil(samples * 20 / 48000)` drain ticks, with at least one tick for a non-empty accepted chunk. It does not expire while the inherited outbound queue still has data and requires a 20-tick idle grace before requesting source closure.
+
+`RawFeedLifetimeTest` covers sample/tick conversion, accumulated duration, queue gating, idle-grace reset, clear, and invalid zero-sample acceptance.
+
+### FACT-M1A-009
+
+`audioStatus()` is routed by current composite owner. RAW status is reported as RAW and does not claim finite seek/loop capabilities. `audioStop()` ends whichever HQ continuous owner is current; standard `stop()` additionally requests native CC:T stop.
+
+### FACT-M1A-010
+
+The inherited `*All` / `*At` helpers still call legacy `HQSpeakerPeripheral` instances directly and therefore bypass the new single-speaker composite ownership boundary. Their old expected-group/tap architecture has not been migrated in M1A.
+
+### FACT-M1A-011
+
+The inherited HQ stop packet contains only a source UUID and its current legacy broadcast helper sends it to players within the 32-block HQ radius. Dynamic leave-range/re-enter-range renderer ownership is not yet implemented; that is later M1I work.
+
+## Frozen staged finite prototype facts
+
+### FACT-PROTO-001
+
+The frozen prototype added a writable ComputerCraft mount and bundled `hqspeaker.lua` helper capable of copying a CC filesystem file into server-owned staging without Lua `readAll()`.
+
+### FACT-PROTO-002
+
+The prototype finite transfer uses begin/chunk/end client-bound payloads with 256 KiB chunks and a fixed recipient set captured for that session.
+
+### FACT-PROTO-003
+
+The prototype client stores encoded finite media on disk and has file-backed incremental finite decode paths instead of requiring complete decoded PCM retention for that staged path.
+
+### FACT-PROTO-004
+
+The prototype still uses client READY/STARTED/ENDED-style reports, renderer observation, fixed recipients, and per-speaker staged-media ownership. Those facts describe existing code, not the accepted final finite architecture.
+
+## Retained finite facts
+
+### FACT-FINITE-001
 
 `FiniteAudioTrack` retains complete mono signed-16-bit PCM, exact sample rate, and frame-aligned cursor state. Renderer forks share retained PCM with independent cursors.
 
-### FACT-M1-003
+### FACT-FINITE-002
 
-Finite controls include PAUSE, RESUME, SEEK, SET_VOLUME, and SET_LOOP.
+Legacy finite controls include PAUSE, RESUME, SEEK, SET_VOLUME, and SET_LOOP, and legacy status transitions include READY, STARTED, PAUSED, RESUMED, SEEKED, ENDED, and ERROR.
 
-Finite client status transitions include READY, STARTED, PAUSED, RESUMED, SEEKED, ENDED, and ERROR.
+### FACT-FINITE-003
 
-### FACT-M1-004
-
-Finite pause/resume reaches the actual Minecraft `Channel` through client-only accessors of `SoundManager.soundEngine` and `SoundEngine.instanceToChannel`.
-
-### FACT-M1-005
-
-Finite loop uses retained cursor rewind and does not use Minecraft `SoundInstance.looping`.
-
-### FACT-M1-006
-
-Finite client state currently uses one renderer boundary per logical finite item.
-
-### FACT-M1-007
-
-Server finite state currently uses the first successful renderer as `anchorRenderer`. PAUSED/RESUMED/SEEKED/ENDED are anchor-gated.
-
-### FACT-M1-008
-
-Server `promoteLocked(track)` removes all finite tracks before a STARTED track.
+The retained/prototype lineage contains client-renderer authority concepts including anchor/successful renderer state and generation promotion. These remain in source until M1E replaces them with server-authoritative finite state.
 
 ## Stream facts
 
@@ -170,62 +245,76 @@ Server `promoteLocked(track)` removes all finite tracks before a STARTED track.
 
 ### FACT-STREAM-002
 
-Stream volume is currently applied inside `StreamingAudioSource.queuePCM()` by scaling PCM samples. The Minecraft `HQSpeakerSound` also uses the packet volume.
+Stream volume is currently applied inside `StreamingAudioSource.queuePCM()` by scaling PCM samples, while the Minecraft HQ renderer also applies packet volume.
 
 ### FACT-STREAM-003
 
-Live HLS parsing records `EXT-X-MEDIA-SEQUENCE`, but `StreamingAudioSource.streamHLS()` advances using a persistent `currentSegmentIndex` across refreshed playlists.
+Live HLS parsing records `EXT-X-MEDIA-SEQUENCE`, while current stream progression uses a persistent segment index across refreshed playlists.
 
 ### FACT-STREAM-004
 
-Direct TS calls `TSDemuxer.demux(InputStream)` and receives a complete `List<AudioFrame>` before iterating and queueing decoded output.
+Direct TS obtains a complete `List<AudioFrame>` from `TSDemuxer.demux(InputStream)` before iterating playback output.
 
 ### FACT-STREAM-005
 
-`decodeAudioFrame` returns the compressed `frame.data` unchanged when JavaSound reports `UnsupportedAudioFileException`.
+The existing TS decode path can return compressed frame data unchanged after unsupported JavaSound decode failure.
 
 ## Multi-speaker facts
 
 ### FACT-SYNC-001
 
-All/group calls may assign a shared future start tick, sync group UUID, and expected group size.
+Inherited All/At calls can assign a shared future start tick, sync-group UUID, and expected group size.
 
 ### FACT-SYNC-002
 
-Audio packet delivery is per physical speaker to players within the speaker radius. The expected sync group size is derived from the full server-side member set, not a per-player received subset.
+Legacy audio packet delivery is per physical speaker/radius while expected group size can be based on the full server-side member set.
 
 ### FACT-SYNC-003
 
-`SharedStreamingGroup` waits for `taps.size() >= expectedTaps` before starting its shared decoder.
+`SharedStreamingGroup` waits for the expected tap count before beginning shared decode.
 
 ## Lifecycle facts
 
 ### FACT-LIFE-001
 
-`HQSpeakerPeripheralProvider` cache keys contain dimension resource location and block position. Cached values contain `HQSpeakerPeripheral`, which stores the concrete `Level`.
-
-A `forget(Level, BlockPos)` method exists in the provider.
+Current `HQSpeakerPeripheralProvider` keys its cache by concrete `Level` and block position and explicitly documents that weak keys alone are insufficient because cached composite values retain their Level.
 
 ### FACT-LIFE-002
 
-At reviewed M1 source, no call site to `HQSpeakerPeripheralProvider.forget()` is present in the tracked Java tree.
+M0.5 added deterministic provider eviction on:
+
+- CC speaker block removal through the exact `SpeakerBlockEntity.setRemoved()` injection;
+- server Level unload;
+- server shutdown.
+
+Composite cleanup also removes the M1A composite from its static active set.
 
 ## Test facts
 
 ### FACT-TEST-001
 
-Before P0, the only Java test class was `FiniteAudioTrackTest` with five tests.
+Current pure Java tests include:
+
+- `FiniteAudioTrackTest`;
+- `HLSPlaylistParserTest`;
+- `FinitePlaybackClockTest`;
+- `FiniteMediaPathTest`;
+- `RawFeedLifetimeTest`.
 
 ### FACT-TEST-002
 
-The M1 Lua helper immediately seeks after disabling loop, so it cannot observe the source-proven loop-disable position clock bug before that seek overwrites the base position.
+`scripts/p0_cc_speaker_contract.lua` is the standard CC:T runtime contract. It includes one short tick separation after native `stop()` because exact CC:T `stop()` sets a flag consumed by `SpeakerPeripheral.update()`.
 
-The helper stops finite playback before exercising raw PCM, so it does not cover finite-to-raw mode interaction.
+### FACT-TEST-003
+
+`scripts/m1a_output_contract.lua` is the M1A single-speaker runtime contract for HQ RAW ownership/backpressure/stop/replacement and native-method recovery.
+
+Neither script should be reported as a runtime pass until it has actually been run successfully in Minecraft on the target stack.
 
 ## License
 
 ### FACT-LICENSE-001
 
-Top-level repository LICENSE is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0.
+Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0.
 
-Do not silently relicense; resolve provenance before public release.
+No source change in M0.5/M1A resolves that provenance mismatch.
