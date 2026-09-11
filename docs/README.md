@@ -3,25 +3,34 @@
 | Need | File |
 |---|---|
 | What exists now? | `CURRENT-STATE.md` |
+| What do we build next? | `ROADMAP.md` |
+| What is the target architecture? | `ARCHITECTURE.md` |
+| What is the concrete M1E+ finite-streaming contract? | `M1E-FINITE-STREAMING-DESIGN.md` |
 | What is the exact CC:T compatibility contract? | `CC-T-COMPATIBILITY-CONTRACT.md` |
 | What does the M1A output/ownership slice guarantee? | `M1A-OUTPUT-OWNERSHIP.md` |
-| How does the reusable server media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
-| How do CC-local files become prepared reusable assets? | `M1C-LOCAL-IMPORT.md` |
-| How are finite files identified and timed on the server? | `M1D-MEDIA-ANALYSIS.md` |
+| How does reusable **server-side** media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
+| How do CC-local files become prepared reusable server assets? | `M1C-LOCAL-IMPORT.md` |
+| What did frozen M1D media analysis implement? | `M1D-MEDIA-ANALYSIS.md` |
 | What storage safety settings can the server owner configure? | `SERVER-CONFIG.md` |
-| What architecture decisions replaced the old P0 D1-D4 options? | `P0-DESIGN-DECISIONS.md` |
-| What did the cleanup/redesign preparation milestone do? | `M0.5-CLEANUP.md` |
-| What is tested now and what must be added? | `P0-TEST-MATRIX.md` |
-| What do we build next? | `ROADMAP.md` |
-| How is the repo structured and what is the target architecture? | `ARCHITECTURE.md` |
 | What is proven by source/runtime evidence? | `VERIFIED-FACTS.md` |
 | What are the known problems? | `KNOWN-ISSUES.md` |
 | General testing rules | `TESTING.md` |
+| Historical P0 design decisions | `P0-DESIGN-DECISIONS.md` |
+| Historical/baseline P0 test matrix | `P0-TEST-MATRIX.md` |
+| What did the M0.5 cleanup milestone do? | `M0.5-CLEANUP.md` |
 | M0 runtime baseline | `M0-SMOKE-TEST.md` |
-| M1 runtime procedure (historical/current until rewritten for asset engine) | `M1-RUNTIME-TEST.md` |
-| M1A staged finite prototype acceptance | `M1A-LOCAL-FINITE-TEST.md` |
+| Historical M1 runtime procedure | `M1-RUNTIME-TEST.md` |
+| Historical staged finite prototype acceptance | `M1A-LOCAL-FINITE-TEST.md` |
 | Source/provenance references | `SOURCES.md` |
 | Transferable HighAudio work | `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md` |
 | Existing SPR baseline | `research/SPR-INTEGRATION-BASELINE.md` |
 
-The documentation is deliberately split between facts, accepted architecture, current implementation state, and historical/prototype evidence so future work does not turn assumptions into project truth.
+The documentation is deliberately split between:
+
+- current implementation truth;
+- verified facts;
+- accepted architecture/design;
+- future roadmap;
+- historical/prototype evidence.
+
+Do not treat an old milestone document as the current product contract. For finite media after M1D, the authoritative design documents are `ARCHITECTURE.md`, `M1E-FINITE-STREAMING-DESIGN.md`, and `ROADMAP.md`.
