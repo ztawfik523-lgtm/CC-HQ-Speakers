@@ -177,15 +177,21 @@ public final class HQFiniteMediaServer {
             sendBegin(next);
             queueStateEvent();
             return true;
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException e) {
             closeChannel(channel);
             try {
                 store.release(id);
             } catch (IOException releaseFailure) {
                 e.addSuppressed(releaseFailure);
             }
-            if (e instanceof LuaException lua) throw lua;
-            if (e instanceof IOException io) throw new LuaException("cannot open prepared media: " + safeMessage(io));
+            throw new LuaException("cannot open prepared media: " + safeMessage(e));
+        } catch (RuntimeException e) {
+            closeChannel(channel);
+            try {
+                store.release(id);
+            } catch (IOException releaseFailure) {
+                e.addSuppressed(releaseFailure);
+            }
             throw e;
         }
     }
