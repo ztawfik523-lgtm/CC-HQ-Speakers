@@ -177,6 +177,8 @@ Those are M1E and later milestones. M1D only moves finite **file truth** onto th
 - accepted WAV/AIFF/AU fixtures opening through the same JavaSound conversion shape used by the client;
 - channel position reset after both successful and failed analysis.
 
-`scripts/m1d_media_analysis_test.lua` is the Minecraft runtime contract for byte-based identification, prepared metadata, playback-status agreement, invalid-file rejection, and the truthful supported-format list.
+`MediaStorageLimitsTest` also covers the storage-policy adapter needed by large/unlimited M1D files, including the CC:T writable-mount overflow clamp for the `0` (no HQ quota) setting.
+
+`scripts/m1d_media_analysis_test.lua` is the Minecraft runtime contract for byte-based identification, prepared metadata, playback-status agreement, invalid-file rejection, and the truthful supported-format list. For a small accepted fixture it also waits for `audioStatus().observed == true`, so the manual pass proves that the client decoder accepted the prepared asset rather than merely proving server metadata analysis.
 
 Source/CI success is not Minecraft runtime proof. The Lua contract must still be run in-game before M1D is called runtime-accepted.
