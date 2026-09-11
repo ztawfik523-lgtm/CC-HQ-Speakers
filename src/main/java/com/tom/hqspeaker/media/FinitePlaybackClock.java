@@ -32,6 +32,11 @@ public final class FinitePlaybackClock {
         return normalize(value, looping);
     }
 
+    /** True only when a non-looping finite clock has naturally reached its known duration. */
+    public boolean reachedEnd(long now) {
+        return !looping && duration > 0.0 && position(now) >= duration;
+    }
+
     public void start(long now) {
         anchorNanos = now;
         playing = true;
