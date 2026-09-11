@@ -17,7 +17,8 @@ import java.util.List;
 public final class FiniteMediaAnalyzer {
     private static final int WINDOW_BYTES = 64 * 1024;
     private static final long MP3_SYNC_SEARCH_BYTES = 1024L * 1024L;
-    private static final double SEEK_INTERVAL_SECONDS = 5.0;
+    private static final double INITIAL_SEEK_INTERVAL_SECONDS = 5.0;
+    static final int MAX_SEEK_POINTS = 4096;
 
     private FiniteMediaAnalyzer() {}
 
@@ -37,6 +38,8 @@ public final class FiniteMediaAnalyzer {
             MediaMetadata mp3 = tryAnalyzeMp3(r);
             if (mp3 != null) return mp3;
             throw new IOException("unsupported finite media format");
+        } catch (ArithmeticException e) {
+            throw new IOException("media metadata exceeds supported numeric bounds", e);
         } finally {
             channel.position(0L);
         }
@@ -44,7 +47,7 @@ public final class FiniteMediaAnalyzer {
 
     private static MediaMetadata analyzeOggVorbis(Reader r) throws IOException {
         OggPage first = readOggPage(r, 0L);
-        if (!isVorbisIdentification(r, first)) {
+        if ((first.headerType & 0x02) == 0 || !isVorbisIdentification(r, first)) {
             throw new IOException("OGG file is not Vorbis audio");
         }
 
@@ -56,11 +59,19 @@ public final class FiniteMediaAnalyzer {
         if (channels <= 0 || channels > 8 || sampleRateLong <= 0L || sampleRateLong > Integer.MAX_VALUE) {
             throw new IOException("invalid OGG Vorbis channel/rate metadata");
         }
+        int blockSizes = r.u8(packet + 28L);
+        int shortBlockExponent = blockSizes & 0x0F;
+        int longBlockExponent = (blockSizes >>> 4) & 0x0F;
+        if (shortBlockExponent < 6 || shortBlockExponent > 13
+                || longBlockExponent < shortBlockExponent || longBlockExponent > 13
+                || (r.u8(packet + 29L) & 0x01) == 0) {
+            throw new IOException("invalid OGG Vorbis identification header");
+        }
+
         int sampleRate = (int) sampleRateLong;
         long serial = first.serial;
         long lastGranule = -1L;
-        double nextSeek = 0.0;
-        List<MediaSeekPoint> seekPoints = new ArrayList<>();
+        SeekIndexBuilder seek = new SeekIndexBuilder(0.0, 0L);
 
         long pos = 0L;
         while (pos < r.size) {
@@ -68,11 +79,7 @@ public final class FiniteMediaAnalyzer {
             if (page.serial == serial) {
                 if (page.granule >= 0L) {
                     lastGranule = Math.max(lastGranule, page.granule);
-                    double seconds = page.granule / (double) sampleRate;
-                    if (seekPoints.isEmpty() || seconds >= nextSeek) {
-                        seekPoints.add(new MediaSeekPoint(Math.max(0.0, seconds), page.offset));
-                        nextSeek = seconds + SEEK_INTERVAL_SECONDS;
-                    }
+                    seek.consider(page.granule / (double) sampleRate, page.offset);
                 }
             } else if ((page.headerType & 0x02) != 0 && isVorbisIdentification(r, page)) {
                 throw new IOException("chained OGG Vorbis streams are not supported");
@@ -82,14 +89,11 @@ public final class FiniteMediaAnalyzer {
 
         if (lastGranule <= 0L) throw new IOException("OGG Vorbis duration is unavailable");
         double duration = lastGranule / (double) sampleRate;
-        if (seekPoints.isEmpty() || seekPoints.get(0).seconds() > 0.0) {
-            seekPoints.add(0, new MediaSeekPoint(0.0, 0L));
-        }
-        return new MediaMetadata(FiniteMediaFormat.OGG_VORBIS, duration, sampleRate, channels, 0, seekPoints);
+        return new MediaMetadata(FiniteMediaFormat.OGG_VORBIS, duration, sampleRate, channels, 0, seek.snapshot());
     }
 
     private static OggPage readOggPage(Reader r, long offset) throws IOException {
-        if (offset < 0L || offset + 27L > r.size || !r.matches(offset, "OggS")) {
+        if (offset < 0L || r.size < 27L || offset > r.size - 27L || !r.matches(offset, "OggS")) {
             throw new IOException("invalid OGG page at byte " + offset);
         }
         if (r.u8(offset + 4L) != 0) throw new IOException("unsupported OGG bitstream version");
@@ -99,13 +103,15 @@ public final class FiniteMediaAnalyzer {
         long serial = r.u32le(offset + 14L);
         int segments = r.u8(offset + 26L);
         long headerSize = 27L + segments;
-        if (offset + headerSize > r.size) throw new EOFException("truncated OGG segment table");
+        if (headerSize > r.size - offset) throw new EOFException("truncated OGG segment table");
 
         long bodySize = 0L;
         for (int i = 0; i < segments; i++) bodySize += r.u8(offset + 27L + i);
-        long next = offset + headerSize + bodySize;
-        if (next <= offset || next > r.size) throw new EOFException("truncated OGG page body");
-        return new OggPage(offset, headerType, granule, serial, offset + headerSize, segments, next);
+        long bodyStart = offset + headerSize;
+        if (bodySize > r.size - bodyStart) throw new EOFException("truncated OGG page body");
+        long next = bodyStart + bodySize;
+        if (next <= offset) throw new IOException("invalid OGG page size");
+        return new OggPage(offset, headerType, granule, serial, bodyStart, segments, next);
     }
 
     private static boolean isVorbisIdentification(Reader r, OggPage page) throws IOException {
@@ -116,7 +122,7 @@ public final class FiniteMediaAnalyzer {
             packetLength += lace;
             if (lace < 255) break;
         }
-        if (packetLength < 16 || page.bodyStart + 16L > page.nextOffset) return false;
+        if (packetLength < 30 || page.nextOffset - page.bodyStart < 30L) return false;
         return r.u8(page.bodyStart) == 1 && r.matches(page.bodyStart + 1L, "vorbis");
     }
 
@@ -126,8 +132,9 @@ public final class FiniteMediaAnalyzer {
         int sampleRate = -1;
         int blockAlign = -1;
         int bitsPerSample = 0;
-        long totalDataBytes = 0L;
-        long firstDataOffset = -1L;
+        long dataBytes = -1L;
+        long dataOffset = -1L;
+        boolean fmtSeen = false;
 
         long pos = 12L;
         while (pos + 8L <= r.size) {
@@ -137,6 +144,7 @@ public final class FiniteMediaAnalyzer {
             long next = checkedChunkEnd(data, chunkSize, true, r.size, "WAV");
 
             if ("fmt ".equals(id)) {
+                if (fmtSeen) throw new IOException("WAV contains multiple fmt chunks");
                 if (chunkSize < 16L) throw new IOException("invalid WAV fmt chunk");
                 formatTag = r.u16le(data);
                 channels = r.u16le(data + 2L);
@@ -145,32 +153,43 @@ public final class FiniteMediaAnalyzer {
                 sampleRate = (int) sr;
                 blockAlign = r.u16le(data + 12L);
                 bitsPerSample = r.u16le(data + 14L);
+                fmtSeen = true;
             } else if ("data".equals(id)) {
-                if (firstDataOffset < 0L) firstDataOffset = data;
-                totalDataBytes = Math.addExact(totalDataBytes, chunkSize);
+                if (!fmtSeen) throw new IOException("WAV data chunk precedes fmt chunk");
+                dataOffset = data;
+                dataBytes = chunkSize;
+                break; // JavaSound decodes the first data chunk after fmt.
             }
             pos = next;
         }
 
-        if (formatTag < 0 || totalDataBytes <= 0L) throw new IOException("WAV is missing fmt/data chunks");
+        if (!fmtSeen || dataBytes <= 0L) throw new IOException("WAV is missing fmt/data chunks");
         if (channels <= 0 || channels > 8 || sampleRate <= 0 || blockAlign <= 0) {
             throw new IOException("invalid WAV channel/rate/frame metadata");
         }
         if (formatTag != 1 && formatTag != 3 && formatTag != 6 && formatTag != 7) {
             throw new IOException("unsupported WAV encoding tag " + formatTag);
         }
-        if ((formatTag == 6 || formatTag == 7) && bitsPerSample != 8) {
-            throw new IOException("invalid companded WAV sample size");
-        }
-        if ((formatTag == 1 || formatTag == 3) && bitsPerSample <= 0) {
-            throw new IOException("invalid WAV sample size");
+        if (formatTag == 3) {
+            if (bitsPerSample != 32 && bitsPerSample != 64) {
+                throw new IOException("unsupported floating-point WAV sample size " + bitsPerSample);
+            }
+        } else if (formatTag == 6 || formatTag == 7) {
+            if (bitsPerSample != 8) throw new IOException("invalid companded WAV sample size");
+        } else if (bitsPerSample <= 0 || bitsPerSample > 64) {
+            throw new IOException("unsupported PCM WAV sample size " + bitsPerSample);
         }
 
-        double duration = totalDataBytes / (sampleRate * (double) blockAlign);
-        if (!Double.isFinite(duration) || duration <= 0.0) throw new IOException("invalid WAV duration");
-        List<MediaSeekPoint> seek = firstDataOffset >= 0L
-            ? List.of(new MediaSeekPoint(0.0, firstDataOffset)) : List.of();
-        return new MediaMetadata(FiniteMediaFormat.WAV, duration, sampleRate, channels, bitsPerSample, seek);
+        int bytesPerSample = (bitsPerSample + 7) / 8;
+        int expectedBlockAlign = Math.multiplyExact(bytesPerSample, channels);
+        if (blockAlign != expectedBlockAlign) {
+            throw new IOException("WAV block alignment does not match the client decoder frame size");
+        }
+        long frames = dataBytes / blockAlign;
+        if (frames <= 0L) throw new IOException("WAV contains no complete audio frames");
+        double duration = frames / (double) sampleRate;
+        return new MediaMetadata(FiniteMediaFormat.WAV, duration, sampleRate, channels, bitsPerSample,
+            List.of(new MediaSeekPoint(0.0, dataOffset)));
     }
 
     private static MediaMetadata analyzeAiff(Reader r) throws IOException {
@@ -184,6 +203,8 @@ public final class FiniteMediaAnalyzer {
         int bitsPerSample = 0;
         int sampleRate = -1;
         long soundDataOffset = -1L;
+        long soundDataBytes = -1L;
+        boolean commSeen = false;
 
         long pos = 12L;
         while (pos + 8L <= r.size) {
@@ -202,20 +223,29 @@ public final class FiniteMediaAnalyzer {
                     throw new IOException("invalid AIFF sample rate");
                 }
                 sampleRate = (int) Math.round(rate);
+                commSeen = true;
             } else if ("SSND".equals(id)) {
+                if (!commSeen) throw new IOException("AIFF SSND chunk precedes COMM chunk");
                 if (chunkSize < 8L) throw new IOException("invalid AIFF SSND chunk");
                 long offset = r.u32be(data);
-                long candidate = data + 8L + offset;
-                if (candidate > data + chunkSize) throw new IOException("invalid AIFF sound-data offset");
-                soundDataOffset = candidate;
+                if (offset != 0L) {
+                    throw new IOException("AIFF SSND offsets are not supported by the JavaSound client decoder");
+                }
+                soundDataOffset = data + 8L;
+                soundDataBytes = chunkSize - 8L;
+                break; // JavaSound stops at the first SSND chunk.
             }
             pos = next;
         }
 
-        if (channels <= 0 || channels > 8 || sampleFrames <= 0L || sampleRate <= 0 || bitsPerSample <= 0
-                || soundDataOffset < 0L) {
+        if (channels <= 0 || channels > 8 || sampleFrames <= 0L || sampleRate <= 0
+                || bitsPerSample <= 0 || bitsPerSample > 32 || soundDataOffset < 0L) {
             throw new IOException("AIFF is missing valid COMM/SSND metadata");
         }
+        int bytesPerSample = (bitsPerSample + 7) / 8;
+        long frameBytes = Math.multiplyExact((long) bytesPerSample, channels);
+        long requiredBytes = Math.multiplyExact(sampleFrames, frameBytes);
+        if (requiredBytes > soundDataBytes) throw new IOException("truncated AIFF sound data");
         double duration = sampleFrames / (double) sampleRate;
         return new MediaMetadata(FiniteMediaFormat.AIFF, duration, sampleRate, channels, bitsPerSample,
             List.of(new MediaSeekPoint(0.0, soundDataOffset)));
@@ -229,7 +259,9 @@ public final class FiniteMediaAnalyzer {
         long sampleRateLong = r.u32be(16L);
         long channelsLong = r.u32be(20L);
 
-        if (dataOffset < 24L || dataOffset > r.size) throw new IOException("invalid AU data offset");
+        if (dataOffset < 24L || dataOffset > Integer.MAX_VALUE || dataOffset > r.size) {
+            throw new IOException("invalid AU data offset");
+        }
         if (sampleRateLong <= 0L || sampleRateLong > Integer.MAX_VALUE
                 || channelsLong <= 0L || channelsLong > 8L) {
             throw new IOException("invalid AU channel/rate metadata");
@@ -249,8 +281,9 @@ public final class FiniteMediaAnalyzer {
         int sampleRate = (int) sampleRateLong;
         int channels = (int) channelsLong;
         long frameBytes = Math.multiplyExact((long) bytesPerSample, channels);
-        double duration = dataBytes / (sampleRate * (double) frameBytes);
-        if (!Double.isFinite(duration) || duration <= 0.0) throw new IOException("invalid AU duration");
+        long frames = dataBytes / frameBytes;
+        if (frames <= 0L) throw new IOException("AU contains no complete audio frames");
+        double duration = frames / (double) sampleRate;
         return new MediaMetadata(FiniteMediaFormat.AU, duration, sampleRate, channels, bytesPerSample * 8,
             List.of(new MediaSeekPoint(0.0, dataOffset)));
     }
@@ -267,20 +300,15 @@ public final class FiniteMediaAnalyzer {
         long samples = 0L;
         long frames = 0L;
         long offset = firstFrame;
-        long nextSeekSample = 0L;
-        long seekIntervalSamples = Math.max(1L, Math.round(SEEK_INTERVAL_SECONDS * sampleRate));
-        List<MediaSeekPoint> seekPoints = new ArrayList<>();
+        SeekIndexBuilder seek = new SeekIndexBuilder(0.0, firstFrame);
 
         while (offset + 4L <= r.size) {
             Mp3Header header = parseMp3Header(r, offset);
-            if (header == null || offset + header.frameBytes > r.size) break;
+            if (header == null || header.frameBytes > r.size - offset) break;
             if (header.sampleRate != sampleRate || header.channels != channels) {
                 throw new IOException("MP3 changes sample rate or channel layout mid-stream");
             }
-            if (samples >= nextSeekSample) {
-                seekPoints.add(new MediaSeekPoint(samples / (double) sampleRate, offset));
-                nextSeekSample = samples + seekIntervalSamples;
-            }
+            if (frames > 0L) seek.consider(samples / (double) sampleRate, offset);
             samples = Math.addExact(samples, header.samplesPerFrame);
             frames++;
             offset += header.frameBytes;
@@ -288,7 +316,7 @@ public final class FiniteMediaAnalyzer {
 
         if (frames == 0L || samples <= 0L) return null;
         double duration = samples / (double) sampleRate;
-        return new MediaMetadata(FiniteMediaFormat.MP3, duration, sampleRate, channels, 0, seekPoints);
+        return new MediaMetadata(FiniteMediaFormat.MP3, duration, sampleRate, channels, 0, seek.snapshot());
     }
 
     private static long id3v2End(Reader r) throws IOException {
@@ -306,11 +334,12 @@ public final class FiniteMediaAnalyzer {
         long limit = Math.min(r.size - 4L, start + MP3_SYNC_SEARCH_BYTES);
         for (long pos = Math.max(0L, start); pos <= limit; pos++) {
             Mp3Header header = parseMp3Header(r, pos);
-            if (header == null || pos + header.frameBytes > r.size) continue;
+            if (header == null || header.frameBytes > r.size - pos) continue;
             long next = pos + header.frameBytes;
             if (next + 4L <= r.size) {
                 Mp3Header nextHeader = parseMp3Header(r, next);
-                if (nextHeader == null || nextHeader.sampleRate != header.sampleRate) continue;
+                if (nextHeader == null || nextHeader.sampleRate != header.sampleRate
+                        || nextHeader.channels != header.channels) continue;
             }
             return pos;
         }
@@ -372,7 +401,40 @@ public final class FiniteMediaAnalyzer {
                            long bodyStart, int segments, long nextOffset) {}
     private record Mp3Header(int sampleRate, int channels, int frameBytes, int samplesPerFrame) {}
 
+    private static final class SeekIndexBuilder {
+        private final List<MediaSeekPoint> points = new ArrayList<>();
+        private double intervalSeconds = INITIAL_SEEK_INTERVAL_SECONDS;
+        private double nextSeconds;
+
+        SeekIndexBuilder(double firstSeconds, long firstOffset) {
+            points.add(new MediaSeekPoint(firstSeconds, firstOffset));
+            nextSeconds = firstSeconds + intervalSeconds;
+        }
+
+        void consider(double seconds, long byteOffset) {
+            if (!Double.isFinite(seconds) || seconds < nextSeconds) return;
+            points.add(new MediaSeekPoint(seconds, byteOffset));
+            if (points.size() > MAX_SEEK_POINTS) thin();
+            MediaSeekPoint last = points.get(points.size() - 1);
+            nextSeconds = last.seconds() + intervalSeconds;
+        }
+
+        List<MediaSeekPoint> snapshot() {
+            return List.copyOf(points);
+        }
+
+        private void thin() {
+            ArrayList<MediaSeekPoint> compacted = new ArrayList<>((points.size() + 1) / 2);
+            for (int i = 0; i < points.size(); i += 2) compacted.add(points.get(i));
+            points.clear();
+            points.addAll(compacted);
+            intervalSeconds *= 2.0;
+        }
+    }
+
     private static final class Reader {
+        private static final int MAX_ZERO_READS = 16;
+
         private final SeekableByteChannel channel;
         private final ByteBuffer window = ByteBuffer.allocate(WINDOW_BYTES);
         final long size;
@@ -426,7 +488,7 @@ public final class FiniteMediaAnalyzer {
 
         boolean matches(long offset, String ascii) throws IOException {
             byte[] bytes = ascii.getBytes(StandardCharsets.US_ASCII);
-            if (offset < 0L || offset + bytes.length > size) return false;
+            if (offset < 0L || bytes.length > size || offset > size - bytes.length) return false;
             for (int i = 0; i < bytes.length; i++) if (u8(offset + i) != (bytes[i] & 0xFF)) return false;
             return true;
         }
@@ -458,13 +520,18 @@ public final class FiniteMediaAnalyzer {
             channel.position(newBase);
             window.clear();
             int total = 0;
+            int zeroReads = 0;
             while (window.hasRemaining()) {
                 int read = channel.read(window);
                 if (read < 0) break;
                 if (read == 0) {
+                    if (++zeroReads >= MAX_ZERO_READS) {
+                        throw new IOException("media source made no read progress");
+                    }
                     Thread.onSpinWait();
                     continue;
                 }
+                zeroReads = 0;
                 total += read;
             }
             window.flip();
