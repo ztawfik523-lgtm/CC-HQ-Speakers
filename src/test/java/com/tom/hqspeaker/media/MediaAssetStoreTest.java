@@ -9,7 +9,6 @@ import java.nio.channels.Channels;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -130,6 +129,20 @@ class MediaAssetStoreTest {
             assertFalse(Files.exists(temp.resolve(completeId + ".media")));
             assertTrue(Files.exists(temp.resolve("keep.txt")));
             assertTrue(Files.exists(temp.resolve("not-a-uuid.media")));
+        }
+    }
+
+    @Test
+    void secondLiveStoreCannotPruneFirstStoreDirectory() throws Exception {
+        try (MediaAssetStore first = new MediaAssetStore(temp, 1024, 4096)) {
+            MediaAsset asset = importBytes(first, "owned.ogg", bytes(16), 16);
+            Path media = temp.resolve(asset.id() + ".media");
+            assertTrue(Files.exists(media));
+
+            IOException failure = assertThrows(IOException.class,
+                () -> new MediaAssetStore(temp, 1024, 4096));
+            assertTrue(failure.getMessage().contains("already in use"));
+            assertTrue(Files.exists(media), "second store must not prune the live store's asset");
         }
     }
 
