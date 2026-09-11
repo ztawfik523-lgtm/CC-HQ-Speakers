@@ -109,16 +109,14 @@ public final class HQMediaStaging {
             throw new LuaException("cannot prepare staged media: " + safeMessage(e));
         }
 
+        // The shared asset is already valid at this point. A temporary staging-delete failure must not destroy or hide
+        // that valid asset. The bundled Lua helper also retries deletion from the mounted filesystem.
         if (consume) {
             try {
                 mount.delete(staged.path());
             } catch (IOException deleteFailure) {
-                try {
-                    store.release(asset.id());
-                } catch (IOException releaseFailure) {
-                    deleteFailure.addSuppressed(releaseFailure);
-                }
-                throw new LuaException("prepared media but could not remove staging file: " + safeMessage(deleteFailure));
+                HQSpeakerMod.warn("prepared media but could not remove staging file " + staged.path()
+                    + ": " + safeMessage(deleteFailure));
             }
         }
 
