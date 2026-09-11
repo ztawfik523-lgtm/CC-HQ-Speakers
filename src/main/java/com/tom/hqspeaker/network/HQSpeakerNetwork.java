@@ -9,7 +9,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class HQSpeakerNetwork {
 
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "4";
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
@@ -24,9 +24,10 @@ public class HQSpeakerNetwork {
         registrar.playToClient(HQFiniteMediaChunkPacket.TYPE, HQFiniteMediaChunkPacket.STREAM_CODEC, HQFiniteMediaChunkPacket::handle);
         registrar.playToClient(HQFiniteMediaEndPacket.TYPE, HQFiniteMediaEndPacket.STREAM_CODEC, HQFiniteMediaEndPacket::handle);
         registrar.playToClient(HQFiniteMediaControlPacket.TYPE, HQFiniteMediaControlPacket.STREAM_CODEC, HQFiniteMediaControlPacket::handle);
+        registrar.playToClient(HQFiniteMediaStatePacket.TYPE, HQFiniteMediaStatePacket.STREAM_CODEC, HQFiniteMediaStatePacket::handle);
         registrar.playToServer(HQFiniteMediaStatusPacket.TYPE, HQFiniteMediaStatusPacket.STREAM_CODEC, HQFiniteMediaStatusPacket::handle);
 
-        HQSpeakerMod.log("Network registered with 10 payloads.");
+        HQSpeakerMod.log("Network registered with 11 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {
