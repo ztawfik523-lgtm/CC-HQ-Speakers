@@ -8,29 +8,16 @@ When behavior changed after the reviewed M1 reference, historical facts are expl
 
 ### FACT-REPO-001
 
-Repository:
+Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
-`ztawfik523-lgtm/CC-HQ-Speakers`
+References:
 
-Untouched fork baseline:
-
-`d1a592351c866f9a28ceef00b59e591ee773f3d5`
-
-Reviewed historical M1 reference:
-
-`fba84a33a94d451af09b983bcb04416c97ff64cf`
-
-Frozen staged/local-file prototype reference:
-
-`69e34a5346f6ce47580f49ed867c9951bfd338bc`
-
-Completed M0.5 preparation reference:
-
-`ad38412a2173f849a0fc8e867030da8a78965c9c`
-
-Current implementation branch:
-
-`codex/m1a-compat-output`
+- untouched fork baseline: `d1a592351c866f9a28ceef00b59e591ee773f3d5`;
+- reviewed historical M1: `fba84a33a94d451af09b983bcb04416c97ff64cf`;
+- frozen staged/local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc`;
+- completed M0.5 preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
+- completed M1B asset-store foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
+- current implementation branch: `codex/m1c-local-import`.
 
 ### FACT-PLATFORM-001
 
@@ -42,41 +29,21 @@ Target stack:
 - NeoForge 21.1.247 baseline
 - NeoForge 21.1.248 compatibility
 
-Build dependency:
-
-`cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
+Build dependency: `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`.
 
 ### FACT-PLATFORM-002
 
-The exact M0.5 HEAD completed GitHub Actions successfully on NeoForge 21.1.247 and 21.1.248. The workflow runs `clean build` on Java 21 and verifies required packaged mod resources, including the bundled ComputerCraft ROM module.
+The exact M1B head `40091ee32f412c1208e9016fca288b8d4f902dfa` completed the Java 21 GitHub Actions matrix successfully on NeoForge 21.1.247 and 21.1.248, including tests, package verification, and candidate-JAR upload.
 
-Current M1A source changes continue to run through the same two-version matrix. A green CI build is build/test/package evidence, not Minecraft runtime proof.
+During M1C, source head `c29db04b4c5ae38a0b06fca747100dd2b5f48a0a` also completed both target-version jobs successfully after the initial checked-exception compile error was corrected. Later documentation/lifecycle commits require their own exact-head CI before being called final.
+
+A green CI build is build/test/package evidence, not Minecraft runtime proof.
 
 ### FACT-PLATFORM-003
 
-Current `HQSpeakerNetwork` registers ten custom payload types:
-
-Client-bound:
-
-- legacy/HQ audio;
-- legacy/HQ stop;
-- legacy finite/player control;
-- staged finite begin;
-- staged finite chunk;
-- staged finite end;
-- staged finite control.
-
-Server-bound:
-
-- ICY metadata;
-- legacy finite/player status;
-- staged finite status.
-
-The staged finite payload family belongs to the frozen/prototype architecture and is scheduled for later replacement by the asset/range design.
+Current `HQSpeakerNetwork` still registers the existing ten custom payload types. M1C does not replace the prototype begin/chunk/end/status packet family; client-pulled asset ranges are M1F work.
 
 ## CC:T 1.120.0 base speaker contract
-
-Source basis: exact CC:Tweaked 1.120.0 for Minecraft 1.21.1, tag `v1.21.1-1.120.0`, plus official speaker documentation.
 
 ### FACT-CCT-001
 
@@ -86,7 +53,7 @@ The normal peripheral type is `speaker`.
 
 `playNote(instrument [, volume [, pitch]])` accepts optional volume/pitch, resolves a real note-block instrument, validates the instrument, and is subject to the configured per-tick note limit.
 
-The official documentation says omitted pitch defaults to `12`, while exact 1.120.0 source uses `pitchA.orElse(1.0)`. This is an upstream source/documentation discrepancy.
+Official documentation says omitted pitch defaults to `12`, while exact 1.120.0 source uses `pitchA.orElse(1.0)`. This is an upstream source/documentation discrepancy.
 
 ### FACT-CCT-003
 
@@ -96,29 +63,23 @@ The official documentation says omitted pitch defaults to `12`, while exact 1.12
 
 `playAudio(audio [, volume])` accepts signed 8-bit samples, maximum `128 * 1024` samples per call, at 48 kHz. It has one pending DFPWM buffer and returns false when another cannot be accepted.
 
-If volume is omitted, native DFPWM state retains the previous `playAudio` volume.
-
 ### FACT-CCT-005
 
 `speaker_audio_empty` is emitted after native pending audio is pulled/freed and another standard `playAudio` buffer may be accepted.
 
 ### FACT-CCT-006
 
-`stop()` is a standard speaker method. Exact source sets a `shouldStop` flag; `SpeakerPeripheral.update()` processes that flag on a later server tick, clears native DFPWM/latest arbitrary sound state, and sends native stop when appropriate.
-
-Pending note events are stored separately and are not cleared by `SpeakerPeripheral.stop()`.
+`stop()` sets a native stop flag processed by `SpeakerPeripheral.update()` on a later server tick. It clears native DFPWM/latest arbitrary sound state; pending note events are stored separately and are not cleared by `SpeakerPeripheral.stop()`.
 
 ### FACT-CCT-007
 
-`IDynamicPeripheral.callMethod` may be called from ComputerCraft computer/Lua threads, and a single peripheral may be used by more than one computer. Main-thread Lua functions are wrapped by CC:T into a queued main-thread task/result rather than ordinary dynamic `callMethod` execution.
+`IDynamicPeripheral.callMethod` may run from ComputerCraft computer/Lua threads and one peripheral may be used by more than one computer. Main-thread Lua functions are queued to the main thread by CC:T.
 
 ## Historical reviewed-M1 HQ facts
 
-These facts describe the reviewed `fba84a3` lineage and explain the defects M1A is replacing. They are not claims about the current composite surface.
-
 ### FACT-HIST-001
 
-The inherited `HQSpeakerPeripheral.playNote` ignored its instrument argument and synthesized a sine wave into the HQ PCM queue. Its inherited `playSound` ignored the requested sound identifier and reused that generated-note path.
+The inherited `HQSpeakerPeripheral.playNote` ignored its instrument argument and synthesized PCM; inherited `playSound` reused that generated-note path.
 
 ### FACT-HIST-002
 
@@ -126,9 +87,7 @@ The inherited `HQSpeakerPeripheral` exposed `speakStop()` / `audioStop()` but di
 
 ### FACT-HIST-003
 
-The inherited server queue is an `ArrayBlockingQueue` of 16 `SpeakerChunk`s, and `speakerTick()` polls one chunk per server tick.
-
-Its inherited synthetic `speaker_audio_empty` scheduling is based on the HQ packet queue threshold rather than CC:T native DFPWM capacity.
+The inherited single-speaker server audio queue is an `ArrayBlockingQueue` of 16 `SpeakerChunk`s and `speakerTick()` polls one chunk per server tick.
 
 ### FACT-HIST-004
 
@@ -136,212 +95,200 @@ Legacy finite byte input is capped at 8 MiB and enters the inherited whole-packe
 
 ### FACT-HIST-005
 
-Legacy `HQAudioStream` finite decode uses a single-thread decoder executor. OGG retained decode uses STB Vorbis memory decode; JavaSound-supported finite media uses whole converted reads. The retained decoded PCM path has a 64 MiB post-decode cap.
+Legacy `HQAudioStream` finite decode uses a single-thread decoder executor. Retained finite decode may hold complete converted PCM and has a 64 MiB post-decode cap.
 
 ## Current M1A compatibility/output facts
 
 ### FACT-M1A-001
 
-`ComputerCraftSpeakerBlockEntityMixin` exposes an `HQSpeakerCompositePeripheral` for the normal CC:T speaker while retaining the original CC:T `SpeakerPeripheral` owned by `SpeakerBlockEntity`.
-
-The exposed peripheral type remains `speaker`.
+`ComputerCraftSpeakerBlockEntityMixin` exposes an `HQSpeakerCompositePeripheral` for the normal CC:T speaker while retaining the original CC:T `SpeakerPeripheral`; the exposed type remains `speaker`.
 
 ### FACT-M1A-002
 
-For exposed standard method names, the composite calls the original CC:T `SpeakerPeripheral` for:
-
-- `playNote`;
-- `playSound`;
-- `playAudio`;
-- `stop`.
-
-The inherited fake HQ methods with overlapping names remain present inside the legacy object but are not the composite's standard-method dispatch target.
+The composite dispatches exposed standard `playNote`, `playSound`, `playAudio`, and `stop` to the original CC:T `SpeakerPeripheral`.
 
 ### FACT-M1A-003
 
-The legacy HQ object is attached through an `IComputerAccess` proxy which suppresses its synthetic `speaker_audio_empty`. The original CC:T peripheral is attached to the real computer access, so native `speaker_audio_empty` remains sourced by CC:T.
+The legacy HQ object is attached through an `IComputerAccess` proxy which suppresses its synthetic `speaker_audio_empty`, leaving standard `speaker_audio_empty` sourced by CC:T.
 
 ### FACT-M1A-004
 
-The normal single-speaker composite tracks one HQ continuous owner from these technical categories:
-
-- RAW;
-- legacy finite;
-- staged finite prototype;
-- stream intent;
-- none.
-
-Starting a new incompatible HQ source stops the prior HQ source. Repeated accepted `speakPCM` calls while RAW owns the output continue the same RAW feed.
+The normal single-speaker composite tracks one HQ continuous owner: RAW, legacy finite, staged/prepared finite bridge, stream intent, or none. Starting a new incompatible HQ source stops the prior HQ source. Repeated accepted `speakPCM` calls while RAW owns output continue the same raw feed.
 
 ### FACT-M1A-005
 
-An HQ continuous-source start also calls native CC:T `stop()`. Exact CC:T notes are stored separately from native sound/DFPWM state, so this does not clear pending note events.
-
-While an HQ continuous source reports active, the composite returns false for exposed standard `playSound` / `playAudio` instead of dispatching them into overlapping native continuous audio.
+An HQ continuous-source start also calls native CC:T `stop()`. Native pending notes remain separate. While HQ continuous output is active, exposed standard `playSound` / `playAudio` return false instead of overlapping it.
 
 ### FACT-M1A-006
 
 The composite exposes `speakMaxSamples()` as `131072`, matching the inherited contiguous table conversion ceiling.
 
-Legacy source still contains the older `SPEAKER_MAX_PCM = 192000` constant, but the actual table converter rejects lengths above `131072`.
-
 ### FACT-M1A-007
 
-M1A uses a separate `hqspeaker_audio_empty` event for HQ `speakPCM` admission.
-
-The composite checks both:
-
-- the inherited 16-entry server packet queue; and
-- a duration-based outstanding RAW allowance.
-
-The current duration allowance is `135872` samples: one maximum legal `131072`-sample call plus `4800` samples/100 ms of headroom.
-
-For a valid-sized `speakPCM` call rejected for capacity, the composite remembers that computer's requested sample count. It emits `hqspeaker_audio_empty` only once both the packet queue and the duration allowance can fit that requested count again.
-
-Empty and over-limit table lengths go through inherited validation and throw. Individual sample values are validated by the inherited converter only once a call reaches conversion, so a valid-sized call can be rejected for capacity before value-level validation runs.
+HQ RAW uses separate `hqspeaker_audio_empty` admission. Admission checks both the inherited 16-entry packet queue and a duration allowance of `135872` outstanding samples. Accepted outstanding samples drain by `2400` samples per server tick.
 
 ### FACT-M1A-008
 
-`RawFeedLifetime` is a pure Java server-tick state model which tracks exact outstanding accepted RAW samples.
-
-At 48 kHz and 20 server ticks/s it subtracts `2400` outstanding samples per server tick. Its derived `drainTicks()` is the ceiling of outstanding samples divided by `2400`.
-
-It does not request source closure while the inherited outbound packet queue still has data, and after outstanding samples reach zero it requires a 20-tick idle grace before closure.
-
-`RawFeedLifetimeTest` covers exact outstanding-sample accounting, tiny-chunk accumulation without per-call tick rounding, capacity checks, drain timing, queue gating, idle-grace reset, clear, and invalid capacity/sample arguments.
+`RawFeedLifetime` is a pure Java state model for exact outstanding RAW samples, capacity, server-tick drain, packet-queue gating, and idle release. `RawFeedLifetimeTest` covers these behaviors.
 
 ### FACT-M1A-009
 
-The legacy client `HQAudioStream` RAW path has a bounded 64-chunk queue and drops a newly received RAW PCM chunk if that queue is already full.
-
-M1A server-side sample-duration admission is intended to prevent normal producers from sending multi-second accepted chunks every server tick and building an unbounded delay. It is not a per-client acknowledgement protocol; pathological client/network conditions can still cause bounded client-side dropping.
+The legacy client RAW path has a bounded 64-chunk queue and may drop newly received RAW PCM when full. M1A admission is producer/server pacing, not a per-listener acknowledgement protocol.
 
 ### FACT-M1A-010
 
-M1A makes calls which can change the composite's current owner run one at a time on the same physical speaker. This prevents two connected ComputerCraft computers from interleaving `stop previous`, `start requested`, and `set owner` operations.
+Calls which change the composite's current owner run one at a time on the same physical speaker, preventing two ComputerCraft computers from interleaving source replacement.
 
 ### FACT-M1A-011
 
-`audioStatus()` is routed by current composite owner. RAW status is reported as RAW and does not claim finite seek/loop capabilities. `audioStop()` ends whichever HQ continuous owner is current; standard `stop()` additionally requests native CC:T stop.
+`audioStatus()` follows the current composite owner. RAW does not claim finite seek/loop capabilities. `audioStop()` stops the current HQ source; standard `stop()` also requests native CC:T stop.
 
 ### FACT-M1A-012
 
-The inherited `*All` / `*At` helpers still call legacy `HQSpeakerPeripheral` instances directly and therefore bypass the new single-speaker composite ownership boundary. Their old expected-group/tap architecture has not been migrated in M1A.
+Inherited `*All` / `*At` helpers still call legacy speaker instances directly and have not been migrated to the modern ownership/sync architecture.
 
 ### FACT-M1A-013
 
-The inherited HQ stop packet contains only a source UUID and its current legacy broadcast helper sends it to players within the 32-block HQ radius. Dynamic leave-range/re-enter-range renderer ownership is not yet implemented; that is later M1I work.
+The inherited HQ stop helper remains radius-local; dynamic leave/re-enter renderer ownership remains later M1I work.
 
-## Frozen staged finite prototype facts
+## M1B reusable media-asset facts
+
+### FACT-M1B-001
+
+`MediaAsset` gives one encoded finite-media asset a UUID, positive byte size, and diagnostic source name. The store, not the speaker, owns the filesystem path.
+
+### FACT-M1B-002
+
+`MediaAssetStore.importAsset` reserves the declared bytes before copying, writes a UUID `.part` using a bounded 64 KiB direct buffer, rejects short/long sources, forces the completed file, atomically renames it to `.media`, and only then publishes the asset.
+
+### FACT-M1B-003
+
+A successful import starts with one reference. `retain` adds a reference; `release` removes one. Final release deletes the `.media` file and reduces committed-byte accounting. If deletion fails, the store keeps bookkeeping rather than claiming the bytes were freed.
+
+### FACT-M1B-004
+
+The store separately tracks committed and reserved bytes, enforces caller-supplied per-asset and total limits, and reserves before copying so concurrent imports cannot overcommit the configured total.
+
+### FACT-M1B-005
+
+The store prunes UUID-named `.part`/`.media` process leftovers on construction and uses an OS file lock so a second live store cannot prune the first store's directory.
+
+### FACT-M1B-006
+
+If shutdown races an active import, the root lock stays held until the unpublished import cleans up. Close cleanup is retryable.
+
+### FACT-M1B-007
+
+`openRead(assetId)` returns a seekable encoded-file channel for a live asset. Media analysis, transfer, and decode are separate later layers.
+
+## Current M1C local-import facts
+
+### FACT-M1C-001
+
+`HQMediaStaging` now owns the ComputerCraft writable staging mount. `HQFiniteMediaServer` no longer owns or mounts staging storage.
+
+### FACT-M1C-002
+
+`ServerMediaAssets` keeps one shared `MediaAssetStore` per running `MinecraftServer`, under the server/world root `hqspeaker/media-assets` directory.
+
+The current per-asset/staging ceiling is 512 MiB. The current total-store value is an explicitly interim 2 GiB implementation value and is not recorded as a settled product-policy decision.
+
+### FACT-M1C-003
+
+The composite exposes `audioPrepareStaged`, `audioPlayPrepared`, and `audioReleasePrepared` in addition to the retained staging mount methods.
+
+`audioPrepareStaged` imports a staged file into the shared asset store and returns the asset UUID. Prepared ownership is tracked by ComputerCraft computer ID.
+
+### FACT-M1C-004
+
+Detaching a preparing ComputerCraft computer releases prepared references still owned through that speaker. `audioReleasePrepared` only releases a prepared reference owned by that calling computer ID.
+
+### FACT-M1C-005
+
+`HQFiniteMediaServer.playPrepared` looks up the server-wide asset, retains a separate playback reference, opens the encoded asset, and uses the asset UUID as the transitional session/media ID. It releases that playback reference on stop or terminal/error paths guarded against duplicate release.
+
+### FACT-M1C-006
+
+A prepared asset UUID may be deliberately passed to another speaker on the same server because the encoded asset store is server-wide. Releasing the original preparation reference does not remove the encoded file while another playback reference remains.
+
+### FACT-M1C-007
+
+The bundled `hqspeaker.lua` now provides `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile`. `playFile` performs prepare -> play -> release of the temporary preparation reference.
+
+The helper checks source size before `fs.copy`, deletes a partial staged destination when copy fails, and retries staged cleanup after successful prepare.
+
+### FACT-M1C-008
+
+Once asset import has succeeded, a failure to remove the temporary staging file does not invalidate the shared asset. Java logs the staging cleanup failure and returns the prepared asset ID.
+
+### FACT-M1C-009
+
+On server shutdown, provider/speaker cleanup runs before `ServerMediaAssets.closeServer`, so prepared/playback references are released before final shared-store close. If shared-store close throws, the server-store wrapper remains in the map so cleanup may be retried.
+
+### FACT-M1C-010
+
+M1C prepared playback still bridges into the old finite sender. Fixed recipient capture, server-pushed whole-file transfer, client READY/STARTED/ENDED authority, and the renderer-observation timeout remain present until later milestones.
+
+### FACT-M1C-011
+
+`audioStatus()` includes `assetId` for a prepared-asset transitional finite session.
+
+## Frozen/prototype finite facts
 
 ### FACT-PROTO-001
 
-The frozen prototype added a writable ComputerCraft mount and bundled `hqspeaker.lua` helper capable of copying a CC filesystem file into server-owned staging without Lua `readAll()`.
+The frozen prototype proved writable ComputerCraft staging, 256 KiB chunked client transfer, disk-backed client encoded files, and file-backed incremental decode paths.
 
 ### FACT-PROTO-002
 
-The prototype finite transfer uses begin/chunk/end client-bound payloads with 256 KiB chunks and a fixed recipient set captured for that session.
+The current transitional finite sender still uses fixed recipients and prototype begin/chunk/end packets.
 
 ### FACT-PROTO-003
 
-The prototype client stores encoded finite media on disk and has file-backed incremental finite decode paths instead of requiring complete decoded PCM retention for that staged path.
+The current transitional finite status path still accepts client READY/STARTED/ENDED/error transitions and therefore is not yet the final server-authoritative finite state model.
 
-### FACT-PROTO-004
-
-The prototype still uses client READY/STARTED/ENDED-style reports, renderer observation, fixed recipients, and per-speaker staged-media ownership. Those facts describe existing code, not the accepted final finite architecture.
-
-## Retained finite facts
+## Retained finite/stream/multispeaker facts
 
 ### FACT-FINITE-001
 
-`FiniteAudioTrack` retains complete mono signed-16-bit PCM, exact sample rate, and frame-aligned cursor state. Renderer forks share retained PCM with independent cursors.
-
-### FACT-FINITE-002
-
-Legacy finite controls include PAUSE, RESUME, SEEK, SET_VOLUME, and SET_LOOP, and legacy status transitions include READY, STARTED, PAUSED, RESUMED, SEEKED, ENDED, and ERROR.
-
-### FACT-FINITE-003
-
-The retained/prototype lineage contains client-renderer authority concepts including anchor/successful renderer state and generation promotion. These remain in source until M1E replaces them with server-authoritative finite state.
-
-## Stream facts
+`FiniteAudioTrack` retains complete mono signed-16-bit PCM with frame-aligned cursor state. Legacy finite controls/status transitions remain in source until migration.
 
 ### FACT-STREAM-001
 
-`StreamingAudioSource` has MP3_STREAM, HLS_STREAM, and TS_STREAM paths and a bounded PCM queue.
-
-### FACT-STREAM-002
-
-Stream volume is currently applied inside `StreamingAudioSource.queuePCM()` by scaling PCM samples, while the Minecraft HQ renderer also applies packet volume.
-
-### FACT-STREAM-003
-
-Live HLS parsing records `EXT-X-MEDIA-SEQUENCE`, while current stream progression uses a persistent segment index across refreshed playlists.
-
-### FACT-STREAM-004
-
-Direct TS obtains a complete `List<AudioFrame>` from `TSDemuxer.demux(InputStream)` before iterating playback output.
-
-### FACT-STREAM-005
-
-The existing TS decode path can return compressed frame data unchanged after unsupported JavaSound decode failure.
-
-## Multi-speaker facts
+`StreamingAudioSource` still has MP3_STREAM, HLS_STREAM, and TS_STREAM paths. Known retained issues include double volume application, HLS progression based on persistent segment index, whole-list TS demux, and an unsupported-decode path which may return compressed frame bytes unchanged.
 
 ### FACT-SYNC-001
 
-Inherited All/At calls can assign a shared future start tick, sync-group UUID, and expected group size.
-
-### FACT-SYNC-002
-
-Legacy audio packet delivery is per physical speaker/radius while expected group size can be based on the full server-side member set.
-
-### FACT-SYNC-003
-
-`SharedStreamingGroup` waits for the expected tap count before beginning shared decode.
+Inherited multi-speaker All/At behavior still uses expected group/tap concepts. `SharedStreamingGroup` waits for expected tap count before shared decode.
 
 ## Lifecycle facts
 
 ### FACT-LIFE-001
 
-Current `HQSpeakerPeripheralProvider` keys its cache by concrete `Level` and block position and explicitly documents that weak keys alone are insufficient because cached composite values retain their Level.
+The provider cache is explicitly cleared on speaker removal, server Level unload, and server shutdown; weak Level keys are only a fallback because cached values retain their Level.
 
 ### FACT-LIFE-002
 
-M0.5 added deterministic provider eviction on:
-
-- CC speaker block removal through the exact `SpeakerBlockEntity.setRemoved()` injection;
-- server Level unload;
-- server shutdown.
-
-Composite cleanup also removes the M1A composite from its static active set.
+M1C adds a server-wide asset-store lifecycle. Speaker/prepared ownership is cleaned before shared store close on `ServerStoppedEvent`.
 
 ## Test facts
 
 ### FACT-TEST-001
 
-Current pure Java tests include:
-
-- `FiniteAudioTrackTest`;
-- `HLSPlaylistParserTest`;
-- `FinitePlaybackClockTest`;
-- `FiniteMediaPathTest`;
-- `RawFeedLifetimeTest`.
+Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, and `MediaAssetStoreTest` covering exact import, reference lifetime, quota reservation, concurrent imports, crash cleanup, directory locking, and shutdown/import behavior.
 
 ### FACT-TEST-002
 
-`scripts/p0_cc_speaker_contract.lua` is the standard CC:T runtime contract. It includes one short tick separation after native `stop()` because exact CC:T `stop()` sets a flag consumed by `SpeakerPeripheral.update()`.
+`scripts/p0_cc_speaker_contract.lua` is the standard CC:T runtime contract. `scripts/m1a_output_contract.lua` checks M1A single-speaker HQ ownership and RAW admission behavior.
 
 ### FACT-TEST-003
 
-`scripts/m1a_output_contract.lua` is the M1A single-speaker runtime contract for HQ RAW ownership, packet-capacity and duration-capacity backpressure, stop/replacement, and native-method recovery.
+`scripts/m1c_local_import_test.lua` is the M1C prepared-asset runtime contract. It checks unused prepare/release, released-asset rejection, prepared playback, separate playback-reference lifetime, `audioStatus().assetId`, and the `hqspeaker.playFile` convenience path.
 
-Neither script should be reported as a runtime pass until it has actually been run successfully in Minecraft on the target stack.
+None of these scripts should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
 
 ## License
 
 ### FACT-LICENSE-001
 
-Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0.
-
-No source change in M0.5/M1A resolves that provenance mismatch.
+Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. Current M0.5-M1C source changes do not resolve that provenance mismatch.
