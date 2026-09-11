@@ -19,8 +19,9 @@ Do not add application roles or a Java playlist manager.
 - frozen local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc` on `codex/m1a-local-finite-media`;
 - completed M0.5 cleanup/preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
 - M1A compatibility/output branch: `codex/m1a-compat-output`;
-- completed M1B media-asset storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa` on `codex/m1b-media-assets`;
-- active local-import implementation: `codex/m1c-local-import`.
+- completed M1B media-asset storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
+- verified M1C + configurable-storage base: `33bcc6e04a2734500b7b15b84bee884562539216`;
+- active M1D media-analysis branch: `codex/m1d-media-analysis`.
 
 The frozen prototype proved that writable CC staging, chunked client transfer, disk-backed client encoded files, and incremental finite decoding are viable. Its fixed-recipient, renderer-authority, observation-timeout, and per-speaker media ownership models are prototypes scheduled for replacement, not architecture to polish.
 
@@ -34,13 +35,12 @@ The frozen prototype proved that writable CC staging, chunked client transfer, d
 6. **Multispeaker finite playback shares media/timeline, not physical source position.** Transfer/cache/decode should be shared when possible; each audible physical speaker still has its own positional Minecraft/OpenAL renderer for spatial audio and future SPR processing.
 7. **Finite sync has no expected-member barrier.** Synchronized playbacks reference a shared sync clock. A client may render whichever physical speakers are currently relevant without waiting for a global group count.
 8. **Large-file local playback is the priority.** Internet MP3/HLS/TS work is deferred until finite/local media is solid.
+9. **Storage safety limits are server configuration, not speaker semantics.** HQ Speaker only limits disk space allocated by the mod itself. Safe defaults are configurable, and `0` may disable either HQ-specific quota. ComputerCraft's own filesystem limits remain ComputerCraft/server policy.
 
 Two later implementation choices remain deliberately open:
 
 - first-play timing: immediately advance the server clock vs wait for initial nearby readiness;
 - progressive finite playback: M1 starts with complete encoded cache before playback; progressive download/play is a later milestone, but the range protocol must not prevent it.
-
-The **total server media-asset disk cap** is also not yet a settled product-policy number. M1C currently centralizes an interim implementation value so it can be replaced/configured without changing the asset-store primitive.
 
 ## M0.5 — cleanup and redesign preparation
 
@@ -96,11 +96,11 @@ Completed reusable encoded-media storage:
 - unit coverage for import/lifetime/quota/concurrency/failure paths;
 - exact `.247` / `.248` CI pass.
 
-## M1C — local CC file import
+## M1C — local CC file import and configurable storage safety
 
-**Status: source/CI implementation active on `codex/m1c-local-import`; Minecraft runtime acceptance pending.**
+**Status: source/CI implemented; verified base `33bcc6e04a2734500b7b15b84bee884562539216`; Minecraft runtime acceptance pending.**
 
-Implemented/current scope:
+Implemented:
 
 - separate writable staging from finite playback (`HQMediaStaging`);
 - one server-wide `MediaAssetStore` service (`ServerMediaAssets`);
@@ -108,34 +108,51 @@ Implemented/current scope:
 - partial staging cleanup when `fs.copy` fails;
 - import staged encoded bytes into a reusable asset UUID;
 - lower-level peripheral prepare/play/release capabilities;
-- bundled Lua helpers `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile` convenience behavior;
+- bundled Lua helpers `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile`;
 - prepared ownership tied to ComputerCraft computer ID and released on detach;
 - playback takes a separate asset reference so releasing a prepared handle does not stop playback;
-- an asset UUID can deliberately be played by another physical speaker because the encoded file is server-wide;
+- one asset UUID may be played by another physical speaker because encoded media is server-wide;
 - server shutdown releases speaker ownership before closing the shared store;
-- failed store close remains reachable for cleanup retry;
-- current transitional finite status includes `assetId`;
+- failed store close remains reachable for retry;
 - dedicated `scripts/m1c_local_import_test.lua` runtime contract.
 
-Current safety values:
+Server-owned storage settings:
 
-- per-asset/staging ceiling: 512 MiB;
-- total shared store: interim 2 GiB value, **not yet a settled product-policy choice**.
+- `mediaStorage.maxAssetMiB`, safe default 512 MiB;
+- `mediaStorage.maxTotalMiB`, safe default 2048 MiB;
+- `0` disables the corresponding HQ Speaker-specific quota;
+- both are world/server-restart settings;
+- the same per-asset setting controls temporary HQ staging so there is no second hidden staging limit;
+- ComputerCraft filesystem capacity is not modified by HQ Speaker.
+
+The old prototype packet's 512 MiB policy check was removed so configured limits are actually authoritative.
 
 M1C deliberately still bridges prepared assets into the prototype finite sender. Fixed recipients, server-push whole-file transfer, client STARTED/ENDED authority, and renderer observation timeout remain temporary until M1E/M1F.
 
 ## M1D — server media analysis
 
-Determine finite facts without whole-track PCM decode:
+**Status: source/unit-test implemented on `codex/m1d-media-analysis`; Minecraft runtime acceptance pending.**
 
-- actual supported format;
-- duration;
-- sample rate/container facts where useful;
-- MP3 frame/coarse seek information as practical;
-- OGG/WAV/AIFF/AU metadata;
-- explicit unsupported-format failure.
+Implemented:
 
-Stop advertising AAC/M4A/MP4 unless exact decoder/runtime evidence exists.
+- identify files from encoded bytes rather than filename extension;
+- bounded 64 KiB analysis window; no whole-track PCM decode;
+- MP3 Layer III frame scan, ID3v2 skip, duration from frame sample counts, and coarse byte seek hints;
+- OGG Vorbis identification, channel/rate metadata, final-granule duration, and coarse page seek hints;
+- WAV RIFF `fmt `/`data` metadata;
+- uncompressed AIFF `COMM`/`SSND` metadata including 80-bit sample rate;
+- AU/SND header/encoding/rate/channel metadata;
+- reject non-Vorbis OGG, compressed AIFC, unsupported containers/encodings, and arbitrary bytes renamed to a supported extension;
+- attach analyzed metadata to prepared assets before their UUID is returned to Lua;
+- `audioPreparedInfo` / `hqspeaker.preparedInfo` for format/duration/rate/channel facts;
+- prepared playback status uses the same server-derived metadata immediately;
+- finite advertised list narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, `snd`;
+- MP2/MP4/M4A/AAC no longer advertised without exact decoder evidence;
+- synthetic pure-Java analyzer tests and `scripts/m1d_media_analysis_test.lua` runtime contract.
+
+Current MP3 duration is encoded-frame duration. Gapless encoder delay/padding correction may be added if exact timeline tests show it is needed.
+
+M1D changes finite file truth, not the old transport/state architecture. M1E/M1F still replace renderer authority and fixed-recipient push.
 
 ## M1E — server-authoritative finite playback
 
@@ -242,7 +259,7 @@ Keep Java 21 builds green on NeoForge 21.1.247 and 21.1.248. Verify packaged met
 
 ## M1R — consolidated Minecraft acceptance
 
-Only after the architecture above is coherent, run one batched runtime pass covering standard CC speaker compatibility; HQ raw feed; MP3/OGG/WAV; >8 MiB and 50-100+ MiB local files; pause/resume/seek/loop/EOF/volume; replacement; late range entry; leave/return; stop while away; dimension change; F3+T; speaker replacement; disconnect/rejoin; asset reuse; synchronized multispeaker playback; independent speaker desync; memory/network usage; and tick stalls.
+Only after the architecture above is coherent, run one batched runtime pass covering standard CC speaker compatibility; HQ raw feed; MP3/OGG/WAV/AIFF/AU; >8 MiB and 50-100+ MiB local files; pause/resume/seek/loop/EOF/volume; replacement; late range entry; leave/return; stop while away; dimension change; F3+T; speaker replacement; disconnect/rejoin; asset reuse; synchronized multispeaker playback; independent speaker desync; memory/network usage; and tick stalls.
 
 ## M2 — progressive finite playback
 
