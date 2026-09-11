@@ -27,7 +27,9 @@ public class HQSpeakerPeripheralProvider {
             levelCache = CACHE.computeIfAbsent(world, ignored -> new ConcurrentHashMap<>());
         }
         BlockPos key = pos.immutable();
-        return levelCache.computeIfAbsent(key, ignored -> {
+        return levelCache.compute(key, (ignored, current) -> {
+            if (current != null && current.usesVanilla(vanilla)) return current;
+            if (current != null) current.cleanup();
             HQSpeakerPeripheral legacy = new HQSpeakerPeripheral(key, world);
             HQFiniteMediaServer finite = new HQFiniteMediaServer(world, key);
             return new HQSpeakerCompositePeripheral(legacy, vanilla, finite);
