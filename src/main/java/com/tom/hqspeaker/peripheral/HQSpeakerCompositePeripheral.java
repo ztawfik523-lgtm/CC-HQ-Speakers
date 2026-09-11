@@ -47,8 +47,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /** Exact inherited single-speaker RAW limits. */
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
     private static final int HQ_RAW_QUEUE_LIMIT = 16;
-    /** Keep at most one maximum speakPCM call worth of not-yet-played RAW audio outstanding. */
-    private static final long HQ_RAW_BUFFER_SAMPLES = HQ_RAW_MAX_SAMPLES;
+    /** One maximum speakPCM call plus 100 ms so the next packet can arrive before the previous chunk runs dry. */
+    private static final long HQ_RAW_BUFFER_SAMPLES = HQ_RAW_MAX_SAMPLES + 2L * RawFeedLifetime.SAMPLES_PER_TICK;
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
 
