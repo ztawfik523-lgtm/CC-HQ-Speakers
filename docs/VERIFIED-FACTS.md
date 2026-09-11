@@ -17,7 +17,8 @@ References:
 - frozen staged/local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc`;
 - completed M0.5 preparation: `ad38412a2173f849a0fc8e867030da8a78965c9c`;
 - completed M1B asset-store foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
-- current implementation branch: `codex/m1c-local-import`.
+- verified M1C + server-storage-config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
+- current implementation branch: `codex/m1d-media-analysis`.
 
 ### FACT-PLATFORM-001
 
@@ -35,13 +36,13 @@ Build dependency: `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`.
 
 The exact M1B head `40091ee32f412c1208e9016fca288b8d4f902dfa` completed the Java 21 GitHub Actions matrix successfully on NeoForge 21.1.247 and 21.1.248, including tests, package verification, and candidate-JAR upload.
 
-During M1C, source head `c29db04b4c5ae38a0b06fca747100dd2b5f48a0a` also completed both target-version jobs successfully after the initial checked-exception compile error was corrected. Later documentation/lifecycle commits require their own exact-head CI before being called final.
+The exact M1C + server-storage-config base `33bcc6e04a2734500b7b15b84bee884562539216` also completed both target-version jobs successfully after a pure-HLS-test dependency was corrected and the old prototype packet's hard-coded 512 MiB policy check was removed.
 
 A green CI build is build/test/package evidence, not Minecraft runtime proof.
 
 ### FACT-PLATFORM-003
 
-Current `HQSpeakerNetwork` still registers the existing ten custom payload types. M1C does not replace the prototype begin/chunk/end/status packet family; client-pulled asset ranges are M1F work.
+Current `HQSpeakerNetwork` still registers the existing ten custom payload types. M1D does not replace the prototype begin/chunk/end/status packet family; client-pulled asset ranges are M1F work.
 
 ## CC:T 1.120.0 base speaker contract
 
@@ -155,15 +156,15 @@ The inherited HQ stop helper remains radius-local; dynamic leave/re-enter render
 
 ### FACT-M1B-001
 
-`MediaAsset` gives one encoded finite-media asset a UUID, positive byte size, and diagnostic source name. The store, not the speaker, owns the filesystem path.
+`MediaAssetStore` owns UUID-named encoded files independently of physical speakers. The store, not a speaker, owns the filesystem path.
 
 ### FACT-M1B-002
 
-`MediaAssetStore.importAsset` reserves the declared bytes before copying, writes a UUID `.part` using a bounded 64 KiB direct buffer, rejects short/long sources, forces the completed file, atomically renames it to `.media`, and only then publishes the asset.
+`MediaAssetStore.importAsset` reserves declared bytes before copying, writes a UUID `.part` using a bounded 64 KiB direct buffer, rejects short/long sources, forces the completed file, atomically renames it to `.media`, and only then publishes the asset.
 
 ### FACT-M1B-003
 
-A successful import starts with one reference. `retain` adds a reference; `release` removes one. Final release deletes the `.media` file and reduces committed-byte accounting. If deletion fails, the store keeps bookkeeping rather than claiming the bytes were freed.
+A successful import starts with one reference. `retain` adds a reference; `release` removes one. Final release deletes the `.media` file and reduces committed-byte accounting. If deletion fails, bookkeeping remains instead of pretending the bytes were freed.
 
 ### FACT-M1B-004
 
@@ -179,59 +180,112 @@ If shutdown races an active import, the root lock stays held until the unpublish
 
 ### FACT-M1B-007
 
-`openRead(assetId)` returns a seekable encoded-file channel for a live asset. Media analysis, transfer, and decode are separate later layers.
+`openRead(assetId)` returns a seekable encoded-file channel for a live asset.
 
-## Current M1C local-import facts
+## M1C local-import and server-storage facts
 
 ### FACT-M1C-001
 
-`HQMediaStaging` now owns the ComputerCraft writable staging mount. `HQFiniteMediaServer` no longer owns or mounts staging storage.
+`HQMediaStaging` owns the ComputerCraft writable staging mount. `HQFiniteMediaServer` no longer owns or mounts staging storage.
 
 ### FACT-M1C-002
 
 `ServerMediaAssets` keeps one shared `MediaAssetStore` per running `MinecraftServer`, under the server/world root `hqspeaker/media-assets` directory.
 
-The current per-asset/staging ceiling is 512 MiB. The current total-store value is an explicitly interim 2 GiB implementation value and is not recorded as a settled product-policy decision.
-
 ### FACT-M1C-003
 
-The composite exposes `audioPrepareStaged`, `audioPlayPrepared`, and `audioReleasePrepared` in addition to the retained staging mount methods.
+HQ Speaker registers NeoForge `SERVER` configuration for its own media storage only:
 
-`audioPrepareStaged` imports a staged file into the shared asset store and returns the asset UUID. Prepared ownership is tracked by ComputerCraft computer ID.
+- `mediaStorage.maxAssetMiB`, default `512`;
+- `mediaStorage.maxTotalMiB`, default `2048`.
+
+Both are world/server-restart settings. A value of `0` disables that HQ Speaker-specific quota by using an effectively unbounded internal limit. These settings do not change ComputerCraft filesystem capacity.
 
 ### FACT-M1C-004
 
-Detaching a preparing ComputerCraft computer releases prepared references still owned through that speaker. `audioReleasePrepared` only releases a prepared reference owned by that calling computer ID.
+The temporary writable staging mount uses the same configured per-asset limit as the shared prepared-media store, so there is no second hidden staging-size policy.
 
 ### FACT-M1C-005
 
-`HQFiniteMediaServer.playPrepared` looks up the server-wide asset, retains a separate playback reference, opens the encoded asset, and uses the asset UUID as the transitional session/media ID. It releases that playback reference on stop or terminal/error paths guarded against duplicate release.
+The old staged-finite begin packet no longer imposes its previous hard-coded 512 MiB policy check; it validates positive wire size while server-side config/store enforce file-size policy.
 
 ### FACT-M1C-006
 
-A prepared asset UUID may be deliberately passed to another speaker on the same server because the encoded asset store is server-wide. Releasing the original preparation reference does not remove the encoded file while another playback reference remains.
+The composite exposes `audioPrepareStaged`, `audioPlayPrepared`, and `audioReleasePrepared`. Prepared ownership is tracked by ComputerCraft computer ID.
 
 ### FACT-M1C-007
 
-The bundled `hqspeaker.lua` now provides `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile`. `playFile` performs prepare -> play -> release of the temporary preparation reference.
-
-The helper checks source size before `fs.copy`, deletes a partial staged destination when copy fails, and retries staged cleanup after successful prepare.
+Detaching a preparing ComputerCraft computer releases prepared references still owned through that speaker. `audioReleasePrepared` only releases a prepared reference owned by that calling computer ID.
 
 ### FACT-M1C-008
 
-Once asset import has succeeded, a failure to remove the temporary staging file does not invalidate the shared asset. Java logs the staging cleanup failure and returns the prepared asset ID.
+Prepared playback retains a separate playback reference. A prepared asset UUID may be passed to another speaker on the same server because media identity is server-wide.
 
 ### FACT-M1C-009
 
-On server shutdown, provider/speaker cleanup runs before `ServerMediaAssets.closeServer`, so prepared/playback references are released before final shared-store close. If shared-store close throws, the server-store wrapper remains in the map so cleanup may be retried.
+The bundled `hqspeaker.lua` provides `prepareFile`, `playPrepared`, `releasePrepared`, and `playFile`. The helper checks source size before copy, removes partial staging when copy fails, and retries staged cleanup after successful prepare.
 
 ### FACT-M1C-010
 
-M1C prepared playback still bridges into the old finite sender. Fixed recipient capture, server-pushed whole-file transfer, client READY/STARTED/ENDED authority, and the renderer-observation timeout remain present until later milestones.
+Once asset import succeeds, failure to remove the temporary staging file does not invalidate the shared asset.
 
 ### FACT-M1C-011
 
-`audioStatus()` includes `assetId` for a prepared-asset transitional finite session.
+On server shutdown, speaker/prepared/playback references are cleaned before shared-store close. Failed store close remains reachable so cleanup may be retried.
+
+## M1D server media-analysis facts
+
+### FACT-M1D-001
+
+`FiniteMediaAnalyzer` identifies finite media from encoded bytes rather than filename extension and uses a single 64 KiB read window. It does not decode the complete track to PCM.
+
+### FACT-M1D-002
+
+The current analyzed prepared/local finite set is:
+
+- MP3 / MPEG Layer III;
+- OGG Vorbis;
+- WAV;
+- uncompressed AIFF/AIF;
+- AU/SND.
+
+OGG using another codec such as Opus and compressed AIFC are explicitly rejected by M1D.
+
+### FACT-M1D-003
+
+`MediaMetadata` records actual format, positive duration, sample rate, channel count, bits-per-sample where meaningful, and coarse encoded-file seek hints.
+
+`MediaAsset` holds this server-derived metadata after staged analysis and before its UUID is returned to Lua.
+
+### FACT-M1D-004
+
+MP3 analysis skips an ID3v2 prefix, scans for MPEG Layer III frame sync, walks frame headers, derives duration from encoded frame sample counts, and records coarse byte offsets. It supports MPEG-1/2/2.5 Layer III timing and rejects a stream which changes sample rate or channel layout mid-stream.
+
+M1D MP3 duration is encoded-frame duration; encoder-delay/padding correction is not yet implemented.
+
+### FACT-M1D-005
+
+OGG Vorbis analysis verifies the Vorbis identification packet, reads sample rate/channels, walks Ogg pages to the final granule position for duration, records coarse page offsets, and rejects chained Vorbis logical streams.
+
+### FACT-M1D-006
+
+WAV analysis reads RIFF/WAVE `fmt ` and `data` chunks. AIFF analysis reads `COMM` and `SSND` including 80-bit extended sample rate. AU analysis reads the `.snd` header and encoded data-size/rate/channel facts.
+
+### FACT-M1D-007
+
+Prepared files are analyzed before publication. Invalid or unsupported bytes therefore do not get a usable prepared asset UUID merely because their filename has a supported extension.
+
+### FACT-M1D-008
+
+The composite exposes `audioPreparedInfo(assetId)` and the bundled Lua module exposes `preparedInfo(speaker, assetId)`. Prepared playback status uses the same server-derived format/duration/sample-rate/channel facts immediately.
+
+### FACT-M1D-009
+
+The exposed `speakSupportedFiles()` list is narrowed to `wav`, `ogg`, `mp3`, `aiff`, `aif`, `au`, and `snd`. MP2, MP4, M4A, and AAC are no longer advertised by the composite without exact finite-decoder evidence.
+
+### FACT-M1D-010
+
+The transitional finite sender still uses fixed recipients and client STARTED/ENDED-style authority. M1D changes file truth/duration source, not the transport/state architecture scheduled for M1E/M1F.
 
 ## Frozen/prototype finite facts
 
@@ -245,7 +299,7 @@ The current transitional finite sender still uses fixed recipients and prototype
 
 ### FACT-PROTO-003
 
-The current transitional finite status path still accepts client READY/STARTED/ENDED/error transitions and therefore is not yet the final server-authoritative finite state model.
+The current transitional finite status path still accepts client STARTED/ENDED/error transitions and therefore is not yet the final server-authoritative finite state model.
 
 ## Retained finite/stream/multispeaker facts
 
@@ -269,26 +323,22 @@ The provider cache is explicitly cleared on speaker removal, server Level unload
 
 ### FACT-LIFE-002
 
-M1C adds a server-wide asset-store lifecycle. Speaker/prepared ownership is cleaned before shared store close on `ServerStoppedEvent`.
+Speaker/prepared ownership is cleaned before shared media-store close on `ServerStoppedEvent`.
 
 ## Test facts
 
 ### FACT-TEST-001
 
-Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, and `MediaAssetStoreTest` covering exact import, reference lifetime, quota reservation, concurrent imports, crash cleanup, directory locking, and shutdown/import behavior.
+Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, and `FiniteMediaAnalyzerTest`.
+
+`FiniteMediaAnalyzerTest` uses synthetic valid container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3 and also covers ID3v2 handling and invalid/non-Vorbis rejection.
 
 ### FACT-TEST-002
 
-`scripts/p0_cc_speaker_contract.lua` is the standard CC:T runtime contract. `scripts/m1a_output_contract.lua` checks M1A single-speaker HQ ownership and RAW admission behavior.
-
-### FACT-TEST-003
-
-`scripts/m1c_local_import_test.lua` is the M1C prepared-asset runtime contract. It checks unused prepare/release, released-asset rejection, prepared playback, separate playback-reference lifetime, `audioStatus().assetId`, and the `hqspeaker.playFile` convenience path.
-
-None of these scripts should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
+`scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, and `scripts/m1d_media_analysis_test.lua` are runtime contracts. None should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
 
 ## License
 
 ### FACT-LICENSE-001
 
-Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. Current M0.5-M1C source changes do not resolve that provenance mismatch.
+Top-level repository `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. Current M0.5-M1D source changes do not resolve that provenance mismatch.
