@@ -1,5 +1,6 @@
 package com.tom.hqspeaker;
 
+import com.mojang.logging.LogUtils;
 import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
@@ -20,6 +21,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 
@@ -27,6 +29,7 @@ import java.io.IOException;
 public class HQSpeakerMod {
 
     public static final String MOD_ID = "hqspeaker";
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public HQSpeakerMod(IEventBus modEventBus, ModContainer modContainer) {
         HQSpeakerRegistry.register(modEventBus);
@@ -85,7 +88,7 @@ public class HQSpeakerMod {
         com.tom.hqspeaker.client.HQFiniteMediaClient.tick();
     }
 
-    public static void log(String msg)   { System.out.println("[HQSpeaker] " + msg); }
-    public static void warn(String msg)  { System.err.println("[HQSpeaker WARN] " + msg); }
-    public static void error(String msg) { System.err.println("[HQSpeaker ERROR] " + msg); }
+    public static void log(String msg)   { LOGGER.info("[HQSpeaker] {}", msg); }
+    public static void warn(String msg)  { LOGGER.warn("[HQSpeaker] {}", msg); }
+    public static void error(String msg) { LOGGER.error("[HQSpeaker] {}", msg); }
 }
