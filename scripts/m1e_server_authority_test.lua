@@ -1,5 +1,6 @@
 local args = {...}
-local path = assert(args[1], "usage: m1e_server_authority_test <small-mp3-or-wav>")
+local path = assert(args[1], "usage: m1e_server_authority_test <small-mp3-or-wav> [result-file]")
+local resultPath = args[2] or "m1e_server_authority_result.txt"
 local speaker = assert(peripheral.find("speaker"), "attach an HQ speaker")
 local hq = require("hqspeaker")
 
@@ -15,6 +16,19 @@ local function approx(a, b, tolerance)
     return math.abs(a - b) <= tolerance
 end
 
+local function writeResult(status, detail)
+    pcall(function()
+        local handle = fs.open(resultPath, "w")
+        if not handle then return end
+        handle.writeLine(status)
+        handle.writeLine("fixture=" .. path)
+        if detail and detail ~= "" then handle.writeLine(detail) end
+        handle.close()
+    end)
+end
+
+pcall(fs.delete, resultPath)
+
 local ok, err = xpcall(function()
     asset = hq.prepareFile(speaker, path)
     local info = hq.preparedInfo(speaker, asset)
@@ -26,6 +40,7 @@ local ok, err = xpcall(function()
     assert(initial.state == "playing", "finite play did not become server PLAYING immediately: " .. tostring(initial.state))
     assert(initial.assetId == asset, "active status lost prepared asset ID")
     assert(approx(initial.duration, info.duration, 0.001), "server playback duration changed from prepared metadata")
+    local firstGeneration = initial.generation
 
     local p0 = initial.position
     sleep(0.30)
@@ -54,6 +69,12 @@ local ok, err = xpcall(function()
 
     -- The prepared owner still exists even though the first playback reference ended, so replay is legal.
     assert(hq.playPrepared(speaker, asset, { volume = 0.4 }), "replay after terminal state was rejected")
+    local replay = speaker.audioStatus()
+    assert(replay.state == "playing", "replay did not create a fresh PLAYING session")
+    assert(replay.assetId == asset, "replay changed prepared asset identity")
+    assert(type(replay.generation) == "number" and replay.generation > firstGeneration,
+        "replay did not advance finite generation")
+
     assert(speaker.audioSetLooping(true), "loop enable was rejected")
     assert(speaker.audioSeek(info.duration), "looping exact-duration seek was rejected")
     local looped = speaker.audioStatus()
@@ -61,10 +82,19 @@ local ok, err = xpcall(function()
     assert(looped.position < 0.10, "looping exact-duration seek did not wrap to the start")
 
     speaker.audioStop()
+    local idle = speaker.audioStatus()
+    assert(idle.state == "idle", "audioStop did not return finite status to idle: " .. tostring(idle.state))
+
     assert(hq.releasePrepared(speaker, asset), "prepared asset release failed")
     asset = nil
 end, debug.traceback)
 
 cleanup()
-if not ok then error(err, 0) end
+if not ok then
+    writeResult("FAIL", tostring(err))
+    error(err, 0)
+end
+
+writeResult("PASS", "M1E server-authority contract passed")
 print("M1E server-authority contract passed")
+print("result saved to " .. resultPath)
