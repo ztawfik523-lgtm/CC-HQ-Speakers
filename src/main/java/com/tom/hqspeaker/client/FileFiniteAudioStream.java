@@ -1,5 +1,6 @@
 package com.tom.hqspeaker.client;
 
+import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import net.minecraft.client.sounds.AudioStream;
 import org.lwjgl.stb.STBVorbis;
@@ -34,6 +35,7 @@ public final class FileFiniteAudioStream implements AudioStream {
     }
 
     private final Decoder decoder;
+    private boolean firstReadLogged;
 
     public FileFiniteAudioStream(Path file, HQFiniteMediaBeginPacket.MediaFormat declaredFormat, boolean looping) throws IOException {
         boolean ogg = declaredFormat == HQFiniteMediaBeginPacket.MediaFormat.OGG
@@ -47,7 +49,27 @@ public final class FileFiniteAudioStream implements AudioStream {
     public boolean ended() { return decoder.ended(); }
 
     @Override public javax.sound.sampled.AudioFormat getFormat() { return decoder.format(); }
-    @Override public ByteBuffer read(int maxBytes) throws IOException { return decoder.read(maxBytes); }
+
+    @Override
+    public ByteBuffer read(int maxBytes) throws IOException {
+        try {
+            ByteBuffer out = decoder.read(maxBytes);
+            if (!firstReadLogged) {
+                firstReadLogged = true;
+                HQSpeakerMod.log("M1E finite decoder first PCM read maxBytes=" + maxBytes
+                    + " returned=" + (out == null ? "null" : out.remaining())
+                    + " format=" + decoder.format());
+            }
+            return out;
+        } catch (IOException e) {
+            HQSpeakerMod.error("M1E finite decoder PCM read failed: " + safeMessage(e));
+            throw e;
+        } catch (RuntimeException e) {
+            HQSpeakerMod.error("M1E finite decoder PCM read runtime failure: " + safeMessage(e));
+            throw e;
+        }
+    }
+
     @Override public void close() { decoder.close(); }
 
     private static boolean hasMagic(Path file, byte[] magic) throws IOException {
@@ -57,6 +79,11 @@ public final class FileFiniteAudioStream implements AudioStream {
             for (int i = 0; i < magic.length; i++) if (head[i] != magic[i]) return false;
             return true;
         }
+    }
+
+    private static String safeMessage(Exception e) {
+        String message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
     }
 
     private static final class VorbisDecoder implements Decoder {
