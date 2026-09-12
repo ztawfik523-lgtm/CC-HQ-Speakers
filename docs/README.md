@@ -1,7 +1,38 @@
 # Documentation index
 
+## Start here
+
+For a new chat or implementation handoff, read these in order:
+
+1. `CHAT-HANDOFF-2026-09-12.md` — complete continuation context and settled decisions;
+2. `CURRENT-STATE.md` — current implementation truth and immediate next work;
+3. `VERIFIED-FACTS.md` — source/CI facts only;
+4. `ARCHITECTURE.md` — accepted target architecture;
+5. `M1E-FINITE-STREAMING-DESIGN.md` — concrete finite-streaming implementation contract;
+6. `ROADMAP.md` — milestone order and acceptance boundaries;
+7. `KNOWN-ISSUES.md` — unresolved defects and where they are scheduled.
+
+Always re-read the current branch source before changing implementation. The handoff records the state at the time it was written; source on the active branch wins if the branch later moves.
+
+## Documentation authority
+
+Use this precedence when documents overlap:
+
+1. exact current source / current CI evidence;
+2. `VERIFIED-FACTS.md` for facts already recorded from source/CI/runtime;
+3. `CURRENT-STATE.md` for the current implementation snapshot;
+4. `ARCHITECTURE.md` and `M1E-FINITE-STREAMING-DESIGN.md` for accepted design;
+5. `ROADMAP.md` for future milestone ordering;
+6. milestone-specific historical docs for the code they describe;
+7. older P0/prototype docs as historical evidence only.
+
+A green build is not audible Minecraft runtime proof. Any milestone marked runtime-pending remains runtime-pending until its focused Minecraft contract is actually executed successfully.
+
+## Index
+
 | Need | File |
 |---|---|
+| Complete new-chat handoff | `CHAT-HANDOFF-2026-09-12.md` |
 | What exists now? | `CURRENT-STATE.md` |
 | What do we build next? | `ROADMAP.md` |
 | What is the target architecture? | `ARCHITECTURE.md` |
@@ -26,6 +57,4 @@
 | Transferable HighAudio work | `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md` |
 | Existing SPR baseline | `research/SPR-INTEGRATION-BASELINE.md` |
 
-The documentation is deliberately split between current implementation truth, verified facts, accepted architecture/design, future roadmap, and historical/prototype evidence.
-
-Do not treat an old milestone document as the current product contract. For finite media after M1D, start with `CURRENT-STATE.md`, `M1E-SERVER-AUTHORITY.md`, `M1E-FINITE-STREAMING-DESIGN.md`, and `ROADMAP.md`.
+The documentation is deliberately split between current implementation truth, verified facts, accepted architecture/design, future roadmap, and historical/prototype evidence. Do not treat an old milestone document as the current product contract.
