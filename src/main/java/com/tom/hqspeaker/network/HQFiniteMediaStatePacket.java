@@ -53,6 +53,16 @@ public record HQFiniteMediaStatePacket(
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
     public static void handle(HQFiniteMediaStatePacket packet, IPayloadContext context) {
-        if (packet.sensible()) HQFiniteMediaClient.state(packet);
+        if (!packet.sensible()) {
+            HQSpeakerMod.warn("M1E finite STATE rejected as nonsensical source=" + packet.source()
+                + " generation=" + packet.generation() + " state=" + packet.state()
+                + " position=" + packet.position() + " duration=" + packet.duration());
+            return;
+        }
+        HQSpeakerMod.log("M1E finite wire STATE received source=" + packet.source()
+            + " generation=" + packet.generation() + " state=" + packet.state()
+            + " position=" + packet.position() + " duration=" + packet.duration()
+            + " volume=" + packet.volume() + " looping=" + packet.looping());
+        HQFiniteMediaClient.state(packet);
     }
 }
