@@ -2,19 +2,25 @@
 
 ## Status
 
-M1E source/test/CI implementation is complete on `codex/m1e-server-authoritative-finite`.
+M1E server-authority source/test/CI semantics are implemented on `codex/m1e-server-authoritative-finite`.
 
-Exact code-bearing head:
+Exact original semantic implementation checkpoint:
 
 `d0e66ab9135359627086c13647d5241ad778643f`
 
-Exact GitHub Actions run:
+Exact GitHub Actions run for that checkpoint:
 
 `34658958488` — successful on NeoForge 21.1.247 and 21.1.248 with tests/package verification.
 
-Minecraft runtime acceptance is still pending until `scripts/m1e_server_authority_test.lua` is executed successfully on the target stack.
+The branch later gained Java-only runtime diagnostics without intentionally changing the M1E authority architecture. The pre-preparation diagnostic head is:
 
-This milestone deliberately leaves the old whole-file transfer in place as a temporary bridge. M1F replaces transport; M1G replaces complete-file client decoding.
+`c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`
+
+CI run `34686003774` is green on both target NeoForge versions for that diagnostic head.
+
+Minecraft runtime acceptance is still pending until `scripts/m1e_server_authority_test.lua` is actually observed to print its success line on the target stack.
+
+This milestone deliberately leaves the old whole-file transfer/decoder in place only as a temporary bridge. M1F replaces transport; M1G replaces complete-file client decoding.
 
 ## What M1E changed
 
@@ -37,7 +43,7 @@ No client is required for semantic playback to begin.
 
 ## Server semantic states
 
-`HQFiniteMediaServer` now uses only:
+`HQFiniteMediaServer` uses only:
 
 - `PLAYING`
 - `PAUSED`
@@ -87,7 +93,7 @@ The existing transitional `HQFiniteMediaBeginPacket` still carries immutable/set
 
 ### STATE
 
-New `HQFiniteMediaStatePacket` carries mutable authoritative semantic truth:
+`HQFiniteMediaStatePacket` carries mutable authoritative semantic truth:
 
 - source/media/generation;
 - `PLAYING` / `PAUSED` / `ENDED` / `ERROR`;
@@ -106,7 +112,7 @@ The packet intentionally does not duplicate immutable format/size/position setup
 - `READY`
 - `ERROR`
 
-READY means the temporary full-file client has constructed its decoder and wants fresh canonical server state. ERROR is diagnostic telemetry only.
+READY means the temporary full-file client has constructed its old decoder and wants fresh canonical server state. ERROR is diagnostic telemetry only.
 
 The prototype renderer-authority transitions `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` are removed.
 
@@ -123,12 +129,61 @@ full transfer completes -> client starts at 0 -> client tells server STARTED
 M1E behavior:
 full transfer completes -> client reports READY
                       -> server sends fresh STATE
-                      -> client seeks/starts at current server position
+                      -> client attempts to seek/start at current server position
 ```
 
 If the server is paused when READY arrives, the client prepares at the authoritative paused position without starting sound. If the server already ended/errored, the STATE packet destroys the stale local bridge instead of starting it.
 
 The client's local `FinitePlaybackClock` remains only a renderer projection for local restart/resource behavior. It is not canonical server truth.
+
+## 2026-09-12 runtime diagnostic
+
+The latest diagnostic run repeatedly reached this sequence:
+
+```text
+BEGIN
+-> authoritative PLAYING STATE
+-> complete old whole-file transfer
+-> JavaSound/mp3spi decoder open
+-> READY
+-> fresh authoritative STATE near current server position
+-> SoundManager submission
+-> first PCM read returns no data
+-> client diagnostic ERROR
+```
+
+The client decoder failure did **not** rewrite canonical server state. Server-side PLAYING/PAUSED/resume/end/loop-related state traffic continued independently, which is consistent with the authority separation M1E is designed to provide.
+
+However, the captured logs do not include the ComputerCraft terminal line:
+
+```text
+M1E server-authority contract passed
+```
+
+Therefore this run is diagnostic evidence only. It does not complete M1E runtime acceptance.
+
+Full diagnostic notes: `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`.
+
+## Decoder/duration boundary
+
+The temporary JavaSound/mp3spi bridge is not an authority source.
+
+For the tested MP3:
+
+- server analyzer reported `161.304 s`;
+- JavaSound/mp3spi reported `322.584 s`;
+- the runtime operator confirmed the source is roughly 2:45 (~165 s).
+
+The MP3SPI duration is therefore clearly wrong and must remain diagnostic only. The server analyzer remains canonical for M1E timeline/EOF semantics.
+
+The current `FileFiniteAudioStream` MP3 seek path is also known to misuse mp3spi skip semantics and may report a requested target after incomplete positioning. The renderer restart path performs a redundant second seek as well.
+
+These are temporary bridge defects. They do **not** change the milestone split:
+
+- do not polish/fix the decoder solely to finish M1E;
+- do not require it to work correctly for M1F;
+- keep its future needs in mind so M1F does not block M1G;
+- M1G owns the replacement progressive decoder and audible path.
 
 ## Intentionally deferred to M1F/M1G
 
@@ -140,7 +195,8 @@ M1E does **not** claim to solve:
 - server file reads during `tick()`;
 - client disk `.part/.media` writes;
 - complete-file-before-decoder requirement;
-- bounded progressive MP3/WAV decoding.
+- correct progressive MP3/WAV decoding;
+- audible finite playback through the final engine.
 
 M1F removes the transport problems. M1G replaces the complete-file decoder path.
 
@@ -154,8 +210,15 @@ Pure/unit:
 
 Source/test/package CI:
 
-- code-bearing head `d0e66ab9135359627086c13647d5241ad778643f`
+- semantic checkpoint `d0e66ab9135359627086c13647d5241ad778643f`
 - run `34658958488`
+- NeoForge 21.1.247: success
+- NeoForge 21.1.248: success
+
+Latest diagnostic-head CI:
+
+- diagnostic head `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`
+- run `34686003774`
 - NeoForge 21.1.247: success
 - NeoForge 21.1.248: success
 
@@ -174,8 +237,10 @@ It verifies:
 - non-looping exact-duration seek ends immediately;
 - looping exact-duration seek wraps near zero and stays playing.
 
-The runtime script has not yet been executed successfully in Minecraft, so do not report M1E runtime PASS.
+The success line has not yet been captured, so do not report M1E runtime PASS.
 
-## Next milestone
+## Preparation checkpoint
 
-M1F replaces the bridge with client-requested bounded encoded ranges, off-thread server reads, safe async asset lifetime, relevance/generation validation, bounded outstanding work, and no client disk song cache.
+Implementation is intentionally paused before the next acceptance/implementation work.
+
+Read `PRE-M1F-PREPARATION.md` before resuming. M1F is planned as a **clean break** from the modern whole-file prepared bridge, but M1F implementation has not started yet.
