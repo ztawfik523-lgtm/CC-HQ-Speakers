@@ -8,6 +8,17 @@ class FinitePlaybackClockTest {
     private static final long SECOND = 1_000_000_000L;
 
     @Test
+    void startedClockAdvancesWithoutRendererHandshake() {
+        FinitePlaybackClock clock = new FinitePlaybackClock(false);
+        clock.setDuration(10.0, 0L);
+        clock.start(0L);
+
+        assertTrue(clock.playing());
+        assertEquals(0.25, clock.position(SECOND / 4), 1e-6);
+        assertEquals(1.0, clock.position(SECOND), 1e-6);
+    }
+
+    @Test
     void disablingLoopRebasesWrappedPosition() {
         FinitePlaybackClock clock = new FinitePlaybackClock(true);
         clock.setDuration(10.0, 0L);
