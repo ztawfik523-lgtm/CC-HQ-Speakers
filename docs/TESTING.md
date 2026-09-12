@@ -8,7 +8,7 @@ A green Gradle build proves compilation/tests/package structure. It does **not**
 
 Tests are not a late roadmap milestone. **Every implementation milestone must add the deterministic tests needed to prove its own contract.**
 
-For the current project checkpoint and continuation context, see `CHAT-HANDOFF-2026-09-12.md`.
+For the current project checkpoint and continuation context, see `CHAT-HANDOFF.md`. The dated `CHAT-HANDOFF-2026-09-12.md` remains deeper historical context.
 
 ## Target matrix
 
