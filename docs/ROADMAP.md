@@ -22,7 +22,10 @@ Do not add application roles or a Java playlist manager.
 - completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
 - verified M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
+- M1E code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`;
 - active branch: `codex/m1e-server-authoritative-finite`.
+
+M1E source/test/package CI run `34658958488` passed both NeoForge targets at the exact code-bearing head. Minecraft M1E runtime acceptance is still pending.
 
 Detailed completed-milestone evidence lives in the milestone docs and `VERIFIED-FACTS.md`. This file defines what to build next.
 
@@ -66,7 +69,9 @@ Frozen at `4a2cd5de96228fc091226c7e72fb669b82be258c`, final CI run `34635484316`
 
 ## M1E — server-authoritative finite state + snapshots
 
-**Status: source implemented; dual-version CI verification/final documentation freeze in progress; Minecraft runtime acceptance pending.**
+**Status: source/test/CI complete at `d0e66ab9135359627086c13647d5241ad778643f`; Minecraft runtime acceptance pending.**
+
+CI run `34658958488` passed NeoForge 21.1.247 and 21.1.248 with tests/package verification at that exact code-bearing head.
 
 M1E makes finite playback semantically server-owned before replacing the old transport:
 
@@ -103,7 +108,7 @@ Do not duplicate immutable setup into every state update.
 - volume and loop state;
 - optional server error detail.
 
-M1E unit coverage includes deterministic natural-EOF/loop behavior in `FinitePlaybackClockTest`. `scripts/m1e_server_authority_test.lua` is the Minecraft runtime contract for immediate server progression, pause/resume, exact-end seek, and looping exact-end wrap. Do **not** call M1E Minecraft-runtime PASS until that script is actually executed successfully.
+M1E unit coverage includes deterministic natural-EOF/loop behavior in `FinitePlaybackClockTest`. `scripts/m1e_server_authority_test.lua` is the focused Minecraft runtime contract for immediate server progression, pause/resume, exact-end seek, and looping exact-end wrap. Do **not** call M1E Minecraft-runtime PASS until that script is actually executed successfully.
 
 The remaining whole-file server push, fixed recipient set, server-tick file reads, client `.part/.media` bridge, and complete-file decoder requirement are intentionally **not M1E**. They are the next transport/decoder milestones.
 
@@ -136,7 +141,7 @@ Do **not** require clients to own the server's whole seek index. Stream setup/st
 
 For a late join or seek, the server chooses an anchor at/before the desired canonical position. The client requests forward from that anchor and performs codec-specific pre-roll. This keeps authoritative seek metadata on the server while retaining a generic byte-range transport.
 
-M1F tests cover request bounds, stale generation, relevance, cancellation, in-flight asset lifetime, async completion after replacement, packet sizing, and bounded outstanding work.
+M1F tests must cover request bounds, stale generation, relevance, cancellation, in-flight asset lifetime, async completion after replacement, packet sizing, bounded outstanding work, and no game-tick file reads.
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
