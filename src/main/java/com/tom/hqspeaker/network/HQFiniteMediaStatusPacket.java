@@ -42,10 +42,20 @@ public record HQFiniteMediaStatusPacket(
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
     public static void handle(HQFiniteMediaStatusPacket packet, IPayloadContext context) {
-        if (!packet.sensible()) return;
+        if (!packet.sensible()) {
+            HQSpeakerMod.warn("M1E finite STATUS rejected as nonsensical");
+            return;
+        }
         context.enqueueWork(() -> {
             if (context.player() instanceof net.minecraft.server.level.ServerPlayer player) {
+                HQSpeakerMod.log("M1E finite server STATUS received player=" + player.getGameProfile().getName()
+                    + " source=" + packet.source() + " generation=" + packet.generation()
+                    + " transition=" + packet.transition() + " position=" + packet.position()
+                    + " duration=" + packet.duration()
+                    + (packet.error() == null || packet.error().isBlank() ? "" : " error=" + packet.error()));
                 HQFiniteMediaServer.acceptStatus(player, packet);
+            } else {
+                HQSpeakerMod.warn("M1E finite STATUS arrived without ServerPlayer context");
             }
         });
     }
