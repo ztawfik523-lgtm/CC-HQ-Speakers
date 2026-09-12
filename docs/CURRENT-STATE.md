@@ -11,14 +11,14 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`
 - verified M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`
-- M1E code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`
+- M1E exact code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`
 - active branch: `codex/m1e-server-authoritative-finite`
 
 M1D final CI run: `34635484316` — success on NeoForge 21.1.247 and 21.1.248.
 
 M1E code-bearing CI run: `34658958488` — success on NeoForge 21.1.247 and 21.1.248.
 
-M1E documentation head `2d56c089aa7c09ec19bb3bf1be4ebcb8aa0913f5` also passed run `34659384866`. Later documentation-only commits may move the active branch again; the M1E code-bearing checkpoint above remains the useful implementation anchor.
+The active branch may contain later documentation-only commits. Do not use the latest docs commit as the M1E implementation proof point; `d0e66ab9135359627086c13647d5241ad778643f` is the exact code-bearing checkpoint verified by run `34658958488`.
 
 Target stack:
 
@@ -29,7 +29,7 @@ Target stack:
 - NeoForge 21.1.248 compatibility
 - future SPR 1.21.1-1.5.1 compatibility
 
-For a new chat, start with `CHAT-HANDOFF-2026-09-12.md`, then re-read the current branch source before making changes.
+For a new chat, start with `CHAT-HANDOFF-2026-09-12.md`, then re-read the current branch source and current CI before making changes.
 
 ## Product identity
 
@@ -210,7 +210,7 @@ After M1F:
 
 After M1: M2 SPR, M3 live/open-ended network streams, M4 release cleanup.
 
-See `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, and `M1E-FINITE-STREAMING-DESIGN.md` for the exact implementation boundaries.
+See `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, `M1E-FINITE-STREAMING-DESIGN.md`, and `CHAT-HANDOFF-2026-09-12.md` for exact continuation boundaries.
 
 ## Other retained issues
 
