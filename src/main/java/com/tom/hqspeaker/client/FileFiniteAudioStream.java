@@ -58,7 +58,8 @@ public final class FileFiniteAudioStream implements AudioStream {
                 firstReadLogged = true;
                 HQSpeakerMod.log("M1E finite decoder first PCM read maxBytes=" + maxBytes
                     + " returned=" + (out == null ? "null" : out.remaining())
-                    + " format=" + decoder.format());
+                    + " format=" + decoder.format()
+                    + " stats=" + pcmStats(out));
             }
             return out;
         } catch (IOException e) {
@@ -79,6 +80,30 @@ public final class FileFiniteAudioStream implements AudioStream {
             for (int i = 0; i < magic.length; i++) if (head[i] != magic[i]) return false;
             return true;
         }
+    }
+
+    private static String pcmStats(ByteBuffer out) {
+        if (out == null) return "null";
+        ByteBuffer probe = out.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        int availableSamples = probe.remaining() / 2;
+        int samples = Math.min(availableSamples, 4096);
+        if (samples <= 0) return "empty";
+
+        int min = Short.MAX_VALUE;
+        int max = Short.MIN_VALUE;
+        int nonZero = 0;
+        long sumAbs = 0L;
+        for (int i = 0; i < samples; i++) {
+            short sample = probe.getShort();
+            int value = sample;
+            if (value < min) min = value;
+            if (value > max) max = value;
+            if (value != 0) nonZero++;
+            sumAbs += Math.abs((long) value);
+        }
+        double meanAbs = sumAbs / (double) samples;
+        return "samplesChecked=" + samples + "/" + availableSamples
+            + ",nonZero=" + nonZero + ",min=" + min + ",max=" + max + ",meanAbs=" + meanAbs;
     }
 
     private static String safeMessage(Exception e) {
