@@ -11,7 +11,14 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`
 - verified M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`
+- M1E code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`
 - active branch: `codex/m1e-server-authoritative-finite`
+
+M1D final CI run: `34635484316` — success on NeoForge 21.1.247 and 21.1.248.
+
+M1E code-bearing CI run: `34658958488` — success on NeoForge 21.1.247 and 21.1.248.
+
+M1E documentation head `2d56c089aa7c09ec19bb3bf1be4ebcb8aa0913f5` also passed run `34659384866`. Later documentation-only commits may move the active branch again; the M1E code-bearing checkpoint above remains the useful implementation anchor.
 
 Target stack:
 
@@ -21,6 +28,8 @@ Target stack:
 - NeoForge 21.1.247 baseline
 - NeoForge 21.1.248 compatibility
 - future SPR 1.21.1-1.5.1 compatibility
+
+For a new chat, start with `CHAT-HANDOFF-2026-09-12.md`, then re-read the current branch source before making changes.
 
 ## Product identity
 
@@ -95,7 +104,7 @@ MP3 duration is still encoded-frame duration; gapless delay/padding correction i
 
 ## M1E — server-authoritative finite playback
 
-**Source implementation has landed on the active branch. Minecraft runtime acceptance remains pending.**
+**Source/test/CI complete at code-bearing head `d0e66ab9135359627086c13647d5241ad778643f`; Minecraft runtime acceptance remains pending.**
 
 The server-side finite model is no longer renderer-authoritative:
 
@@ -127,16 +136,16 @@ STATE (authoritative mutable truth)
 - server error detail if any
 ```
 
-Client -> server finite telemetry has been narrowed to only:
+Client -> server finite telemetry is only:
 
 - `READY` — asks for a fresh authoritative state after the temporary complete-file bridge becomes decoder-ready;
 - `ERROR` — diagnostic only.
 
-The old renderer `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` status transitions are removed from protocol v4 and can no longer rewrite the server clock.
+The old renderer `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` transitions are gone from protocol v4 and cannot rewrite the server clock.
 
-The temporary M1E client still downloads the complete encoded asset to `hqspeaker-cache` because transport replacement is M1F. However it no longer starts at `0` merely because transfer completed. It opens the old file decoder, reports READY, receives a fresh STATE packet, then starts/seeks at the server's **current** canonical position. Pause/seek/loop/volume changes that happened while downloading are therefore resolved by server truth instead of stale client state.
+The temporary M1E client still downloads the complete encoded asset to `hqspeaker-cache` because transport replacement is M1F. However it no longer starts at `0` merely because transfer completed. It opens the old file decoder, reports READY, receives a fresh STATE packet, then starts/seeks at the server's **current** canonical position. Pause/seek/loop/volume changes which happened while downloading are therefore resolved from server truth instead of stale client state.
 
-The client still has a local `FinitePlaybackClock`, but it is now only a projection used for renderer/resource-reload behavior; it is not canonical authority.
+The client still has a local `FinitePlaybackClock`, but it is only a renderer projection for local restart/resource behavior; it is not canonical authority.
 
 ## What is still transitional after M1E
 
@@ -149,13 +158,15 @@ The following are intentionally still old architecture and are the M1F/M1G bound
 - the decoder still requires a complete local encoded file;
 - no new listener can dynamically join after play start.
 
-These are not regressions or hidden final requirements. They are the next replacement slices.
+These are not final requirements. They are the next replacement slices.
 
 ## M1E testing/evidence state
 
-Pure Java coverage now includes deterministic `FinitePlaybackClock.reachedEnd()` behavior for non-looping and looping tracks in addition to the earlier pause/resume/loop/seek tests.
+Pure Java coverage includes deterministic `FinitePlaybackClock.reachedEnd()` behavior for non-looping and looping tracks in addition to earlier pause/resume/loop/seek tests.
 
-New runtime contract:
+Source/test/package CI is green at M1E code-bearing head via run `34658958488`.
+
+Focused runtime contract:
 
 - `scripts/m1e_server_authority_test.lua <small-mp3-or-wav>`
 
@@ -163,7 +174,7 @@ It checks immediate server `PLAYING`, position advancement independent of render
 
 This script has **not** yet been executed successfully in Minecraft, so M1E is not a Minecraft runtime PASS.
 
-The old `m1d_media_analysis_test.lua` includes renderer-`observed` assumptions from frozen M1D and should be treated as frozen-M1D runtime evidence, not as the active M1E semantic contract.
+The old `m1d_media_analysis_test.lua` contains renderer-`observed` assumptions from frozen M1D and is historical M1D evidence, not the active M1E semantic contract.
 
 ## Streaming evidence/constraints already established
 
@@ -199,7 +210,7 @@ After M1F:
 
 After M1: M2 SPR, M3 live/open-ended network streams, M4 release cleanup.
 
-See `ROADMAP.md` and `M1E-FINITE-STREAMING-DESIGN.md` for the exact implementation contract.
+See `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, and `M1E-FINITE-STREAMING-DESIGN.md` for the exact implementation boundaries.
 
 ## Other retained issues
 
