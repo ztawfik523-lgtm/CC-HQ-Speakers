@@ -206,7 +206,7 @@ Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old 
 
 ### KI-024 — documentation/testing can become stale during redesign
 
-**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `CHAT-HANDOFF-2026-09-12.md` is the new-chat continuation document; exact current source still takes precedence if the branch later moves.
+**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `CHAT-HANDOFF.md` is the canonical new-chat continuation document; `CHAT-HANDOFF-2026-09-12.md` is retained for deeper dated context. Exact current source and CI still take precedence if the branch later moves.
 
 ### KI-025 — license metadata mismatch
 
