@@ -50,7 +50,7 @@ Frozen M1D source/test/CI head:
 
 `4a2cd5de96228fc091226c7e72fb669b82be258c`
 
-M1E code-bearing head:
+M1E exact code-bearing head:
 
 `d0e66ab9135359627086c13647d5241ad778643f`
 
@@ -70,7 +70,7 @@ The old whole-file sender/client is intentionally still present only as a bridge
 - **M1I:** optional/gated native FLAC extension;
 - **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
 
-For a new chat or implementation handoff, start with `docs/CHAT-HANDOFF-2026-09-12.md` once present, then verify the current branch source before changing anything.
+For a new chat or implementation handoff, start with `docs/CHAT-HANDOFF-2026-09-12.md`, then verify the current branch source and CI before changing anything.
 
 ## Main finite controls
 
@@ -96,13 +96,15 @@ CI targets both supported NeoForge versions with Java 21 and verifies packaged m
 
 ## Documentation
 
-Start with:
+Read in this order for continuation work:
 
-- `docs/CHAT-HANDOFF-2026-09-12.md` — complete continuation context for a new chat
-- `docs/CURRENT-STATE.md` — what exists now
-- `docs/M1E-SERVER-AUTHORITY.md` — what M1E implemented
-- `docs/ROADMAP.md` — what to build next
-- `docs/ARCHITECTURE.md` — accepted architecture
-- `docs/M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ finite-streaming contract
-- `docs/VERIFIED-FACTS.md` — source/CI facts only
-- `docs/KNOWN-ISSUES.md` — unresolved problems
+1. `docs/CHAT-HANDOFF-2026-09-12.md` — complete new-chat continuation context
+2. `docs/CURRENT-STATE.md` — current implementation truth
+3. `docs/VERIFIED-FACTS.md` — source/CI/runtime facts only
+4. `docs/ARCHITECTURE.md` — accepted architecture
+5. `docs/M1E-SERVER-AUTHORITY.md` — exact completed M1E behavior
+6. `docs/M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ streaming contract
+7. `docs/ROADMAP.md` — milestone order
+8. `docs/KNOWN-ISSUES.md` — unresolved problems
+
+Historical milestone docs remain evidence for the commits they describe, but they do not override current source or the current accepted architecture.
