@@ -78,8 +78,8 @@ Code/test candidate head before documentation-only finalization commits:
 
 This finalization pass intentionally changes only acceptance coverage:
 
-1. `FinitePlaybackClockTest` now explicitly proves that a started finite clock advances immediately without any renderer handshake.
-2. `scripts/m1e_server_authority_test.lua` now:
+1. `FinitePlaybackClockTest` explicitly proves that a started finite clock advances immediately without any renderer handshake.
+2. `scripts/m1e_server_authority_test.lua`:
    - retains the original immediate PLAYING / progression / pause / resume / exact-end / loop-wrap checks;
    - verifies replay creates a newer generation for the same prepared asset;
    - verifies STOP returns finite status to `idle`;
@@ -102,6 +102,35 @@ M1E server-authority contract passed
 ```
 
 A failed run begins with `FAIL` and records the Lua traceback.
+
+## Candidate CI/package proof
+
+Exact finalization code/test candidate:
+
+`38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+
+GitHub Actions run:
+
+`34725651930`
+
+Both matrix jobs completed successfully:
+
+- NeoForge 21.1.247 — build/tests, packaged-mod verification, and candidate-JAR upload passed;
+- NeoForge 21.1.248 — build/tests, packaged-mod verification, and candidate-JAR upload passed.
+
+Baseline 21.1.247 artifact:
+
+`hqspeaker-neoforge-21.1.247`
+
+Extracted JAR:
+
+`hqspeaker-1.1.4-1.21.1-neoforge.jar`
+
+SHA-256:
+
+`cb661c4a9a132f236edb3a526c16b887f853f283af80db062ba6a84adfc33b21`
+
+The 21.1.247 artifact is the preferred candidate for the final baseline Minecraft acceptance run. NeoForge 21.1.248 remains CI/package compatibility evidence.
 
 ## Final runtime acceptance command
 
@@ -135,16 +164,19 @@ M1E — server authority
 
 M1F does not need the current decoder to work and must not preserve the modern whole-file `.part/.media` bridge merely to keep temporary audible playback.
 
-## After-review checklist
+## After-review result
 
-Before calling the M1E source/test candidate final, verify:
+The implementation-side after-review for candidate `38cb2a4c...` confirms:
 
-- Java 21 CI passes NeoForge 21.1.247;
-- Java 21 CI passes NeoForge 21.1.248;
-- package verification succeeds on both;
-- the final diff contains no M1F implementation;
-- the final diff contains no decoder repair;
-- the final diff does not alter server-authority semantics;
-- the focused runtime script/result-file contract is documented consistently across active docs.
+- CI passed NeoForge 21.1.247 and 21.1.248;
+- packaged-mod verification passed on both;
+- both candidate artifacts were uploaded;
+- compared with the preparation head, the candidate changes only `scripts/m1e_server_authority_test.lua` and `FinitePlaybackClockTest.java`;
+- no `HQFiniteMediaServer` semantic code changed;
+- no finite packet semantic code changed;
+- no M1F range transport was added;
+- no decoder repair was added.
 
-After the Minecraft PASS, record the exact commit, candidate JAR SHA-256, runtime stack, fixture details, and PASS result before starting M1F.
+The remaining M1E gate is therefore runtime evidence only: execute the focused script using the exact 21.1.247 candidate above and preserve its PASS/FAIL result.
+
+After a Minecraft PASS, record the runtime stack, fixture details, result file, and candidate JAR identity before starting M1F.
