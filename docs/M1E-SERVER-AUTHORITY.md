@@ -2,7 +2,17 @@
 
 ## Status
 
-M1E source implementation is complete on `codex/m1e-server-authoritative-finite`. Minecraft runtime acceptance is still pending until `scripts/m1e_server_authority_test.lua` is executed successfully on the target stack.
+M1E source/test/CI implementation is complete on `codex/m1e-server-authoritative-finite`.
+
+Exact code-bearing head:
+
+`d0e66ab9135359627086c13647d5241ad778643f`
+
+Exact GitHub Actions run:
+
+`34658958488` — successful on NeoForge 21.1.247 and 21.1.248 with tests/package verification.
+
+Minecraft runtime acceptance is still pending until `scripts/m1e_server_authority_test.lua` is executed successfully on the target stack.
 
 This milestone deliberately leaves the old whole-file transfer in place as a temporary bridge. M1F replaces transport; M1G replaces complete-file client decoding.
 
@@ -40,7 +50,7 @@ There is no server `LOADING` state for client buffering.
 
 ## Natural EOF
 
-`FinitePlaybackClock` now exposes deterministic non-looping `reachedEnd(now)` behavior.
+`FinitePlaybackClock` exposes deterministic non-looping `reachedEnd(now)` behavior.
 
 When a PLAYING non-looping session reaches duration:
 
@@ -134,13 +144,20 @@ M1E does **not** claim to solve:
 
 M1F removes the transport problems. M1G replaces the complete-file decoder path.
 
-## Tests
+## Tests and evidence
 
 Pure/unit:
 
 - `FinitePlaybackClockTest.nonLoopingClockReportsNaturalEndAtDuration`
 - `FinitePlaybackClockTest.loopingClockNeverReportsNaturalEnd`
 - retained exact-end seek, pause/resume, and loop-rebase tests.
+
+Source/test/package CI:
+
+- code-bearing head `d0e66ab9135359627086c13647d5241ad778643f`
+- run `34658958488`
+- NeoForge 21.1.247: success
+- NeoForge 21.1.248: success
 
 Minecraft runtime contract:
 
@@ -157,7 +174,7 @@ It verifies:
 - non-looping exact-duration seek ends immediately;
 - looping exact-duration seek wraps near zero and stays playing.
 
-The runtime script has not yet been executed in Minecraft, so do not report M1E runtime PASS.
+The runtime script has not yet been executed successfully in Minecraft, so do not report M1E runtime PASS.
 
 ## Next milestone
 
