@@ -70,7 +70,7 @@ The old whole-file sender/client is intentionally still present only as a bridge
 - **M1I:** optional/gated native FLAC extension;
 - **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
 
-For a new chat or implementation handoff, start with `docs/CHAT-HANDOFF-2026-09-12.md`, then verify the current branch source and CI before changing anything.
+For a new chat or implementation handoff, start with `docs/CHAT-HANDOFF.md`, then verify the current branch source and CI before changing anything. The dated `docs/CHAT-HANDOFF-2026-09-12.md` remains as deeper historical context.
 
 ## Main finite controls
 
@@ -98,7 +98,7 @@ CI targets both supported NeoForge versions with Java 21 and verifies packaged m
 
 Read in this order for continuation work:
 
-1. `docs/CHAT-HANDOFF-2026-09-12.md` — complete new-chat continuation context
+1. `docs/CHAT-HANDOFF.md` — canonical standalone continuation handoff
 2. `docs/CURRENT-STATE.md` — current implementation truth
 3. `docs/VERIFIED-FACTS.md` — source/CI/runtime facts only
 4. `docs/ARCHITECTURE.md` — accepted architecture
@@ -106,5 +106,6 @@ Read in this order for continuation work:
 6. `docs/M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ streaming contract
 7. `docs/ROADMAP.md` — milestone order
 8. `docs/KNOWN-ISSUES.md` — unresolved problems
+9. `docs/CHAT-HANDOFF-2026-09-12.md` — longer dated deep-context handoff
 
 Historical milestone docs remain evidence for the commits they describe, but they do not override current source or the current accepted architecture.
