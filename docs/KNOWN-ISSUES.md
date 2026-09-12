@@ -2,6 +2,8 @@
 
 Severity here is project priority, not a claim of exploitability. Source/CI work is not Minecraft runtime proof until the relevant runtime contract passes.
 
+M1E server-authority source/test/CI is complete at code-bearing head `d0e66ab9135359627086c13647d5241ad778643f` (run `34658958488`). Minecraft M1E runtime acceptance is still pending. M1F demand-driven finite transport is the next implementation milestone.
+
 ## Source-implemented / runtime pending
 
 ### KI-001 — standard CC:T contract was historically replaced instead of preserved
@@ -98,7 +100,7 @@ The old server bridge still reads chunks from its open file channel during `tick
 
 ### KI-030 — no final demand-driven finite protocol yet
 
-M1E still captures recipients once and pushes the complete file. The new STATE packet fixes semantic authority but intentionally does not pretend this is final transport.
+M1E still captures recipients once and pushes the complete file. The STATE packet fixes semantic authority but intentionally does not pretend this is final transport.
 
 **Target:** M1F adds bounded client-requested encoded ranges, generation/relevance validation, async reads, stale-work discard, and per-player outstanding/rate limits.
 
@@ -204,7 +206,7 @@ Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old 
 
 ### KI-024 — documentation/testing can become stale during redesign
 
-**Status:** active docs are being kept aligned milestone-by-milestone. M1E docs distinguish source implementation from Minecraft runtime proof and explicitly retain frozen M1D as historical evidence.
+**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `CHAT-HANDOFF-2026-09-12.md` is the new-chat continuation document; exact current source still takes precedence if the branch later moves.
 
 ### KI-025 — license metadata mismatch
 
