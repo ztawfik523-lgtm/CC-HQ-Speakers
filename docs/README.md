@@ -4,7 +4,7 @@
 
 For a new chat or implementation handoff, read these in order:
 
-1. `NEXT-CHAT-HANDOFF.md` — complete standalone continuation context: exact checkpoints, settled decisions, completed milestones, current M1E implementation boundary, unresolved issues, and the M1F+ roadmap;
+1. `NEXT-CHAT-HANDOFF.md` — **primary standalone handoff**. It explains the project in plain Minecraft/user-visible terms first, defines technical words, then provides the exact classes/packets/commits/tests needed by the next coding chat;
 2. `CURRENT-STATE.md` — current implementation truth and immediate next work;
 3. `VERIFIED-FACTS.md` — source/CI/runtime facts only;
 4. `ARCHITECTURE.md` — accepted target architecture;
@@ -15,6 +15,8 @@ For a new chat or implementation handoff, read these in order:
 9. `TESTING.md` — evidence and testing rules;
 10. `CHAT-HANDOFF.md` — previous canonical continuation handoff;
 11. `CHAT-HANDOFF-2026-09-12.md` — longer dated deep-context handoff retained for historical detail.
+
+`NEXT-CHAT-HANDOFF.md` is intentionally written so the user does not need to know Java/network/audio terminology. A new chat should explain **what happens in Minecraft first**, then put class/method/packet details underneath as implementation notes. Do not make the user decode implementation jargon just to understand a design decision.
 
 Always re-read the current branch source and current CI before changing implementation. The handoffs record the project state at the time they were written; source on the active branch wins if the branch later moves.
 
@@ -38,18 +40,17 @@ A green build is not audible Minecraft runtime proof. Any milestone marked runti
 
 - frozen M1D implementation: `4a2cd5de96228fc091226c7e72fb669b82be258c`, run `34635484316` green on both target NeoForge versions;
 - M1E exact code-bearing implementation: `d0e66ab9135359627086c13647d5241ad778643f`, run `34658958488` green on both target NeoForge versions;
-- reviewed documentation base before `NEXT-CHAT-HANDOFF.md`: `0aba08f70f15eb30830ef053f557103558a24e9b`;
 - active branch: `codex/m1e-server-authoritative-finite`;
 - M1E Minecraft runtime acceptance: still pending;
 - next implementation milestone: **M1F demand-driven finite transport**.
 
-Later documentation-only commits may move the branch head. Keep the exact code-bearing milestone commit above as the implementation proof anchor.
+Later documentation-only commits move the branch head. Keep the exact code-bearing milestone commit above as the implementation proof anchor.
 
 ## Index
 
 | Need | File |
 |---|---|
-| Complete fresh-chat handoff | `NEXT-CHAT-HANDOFF.md` |
+| Complete plain-language-first fresh-chat handoff | `NEXT-CHAT-HANDOFF.md` |
 | Previous canonical handoff | `CHAT-HANDOFF.md` |
 | Longer dated handoff / deep context | `CHAT-HANDOFF-2026-09-12.md` |
 | What exists now? | `CURRENT-STATE.md` |
