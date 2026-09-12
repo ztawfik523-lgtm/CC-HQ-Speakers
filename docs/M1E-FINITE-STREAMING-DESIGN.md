@@ -2,7 +2,7 @@
 
 This is the implementation contract for finite media after frozen M1D.
 
-Historical M1D behavior remains documented in `M1D-MEDIA-ANALYSIS.md` and `VERIFIED-FACTS.md`. This file defines the **replacement architecture**.
+Historical M1D behavior remains documented in `M1D-MEDIA-ANALYSIS.md` and `VERIFIED-FACTS.md`. M1E server-authority behavior is documented in `M1E-SERVER-AUTHORITY.md`. This file defines the **replacement streaming architecture from M1F onward**.
 
 ## Goal
 
@@ -54,9 +54,13 @@ Core WAV target:
 
 The final WAV advertisement must match the converter actually implemented.
 
-## M1E implementation status
+## M1E implementation checkpoint
 
-M1E source implementation has landed on `codex/m1e-server-authoritative-finite`; Minecraft runtime acceptance remains pending.
+M1E source/test/CI is complete at code-bearing head:
+
+`d0e66ab9135359627086c13647d5241ad778643f`
+
+GitHub Actions run `34658958488` passed NeoForge 21.1.247 and 21.1.248. Minecraft runtime acceptance remains pending.
 
 Implemented M1E semantics:
 
@@ -149,7 +153,7 @@ It is not the canonical moving clock.
 
 ### STATE
 
-The new `finite_state` packet carries authoritative mutable truth:
+The `finite_state` packet carries authoritative mutable truth:
 
 ```text
 sourceId
@@ -344,7 +348,7 @@ Do not reintroduce wait-for-READY server start, server `LOADING` based on client
 
 ## Milestone mapping
 
-- **M1E:** source implemented — server-authoritative state/EOF + real STATE packet; old transfer remains only as bridge; runtime acceptance pending.
+- **M1E:** source/test/CI complete — server-authoritative state/EOF + real STATE packet; old transfer remains only as bridge; Minecraft runtime acceptance pending.
 - **M1F:** client-requested encoded range transport + off-thread server IO + seek-anchor/stream descriptors.
 - **M1G:** progressive MP3 + common WAV + bounded RAM/mono output + final format narrowing.
 - **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin and stale-generation hardening.
