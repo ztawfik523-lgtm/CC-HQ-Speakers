@@ -55,6 +55,15 @@ public record HQFiniteMediaBeginPacket(
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
     public static void handle(HQFiniteMediaBeginPacket packet, IPayloadContext context) {
-        if (packet.sensible()) HQFiniteMediaClient.begin(packet);
+        if (!packet.sensible()) {
+            HQSpeakerMod.warn("M1E finite BEGIN rejected as nonsensical");
+            return;
+        }
+        HQSpeakerMod.log("M1E finite wire BEGIN received source=" + packet.source()
+            + " generation=" + packet.generation() + " format=" + packet.format()
+            + " bytes=" + packet.totalBytes() + " volume=" + packet.volume()
+            + " worldPos=" + packet.x() + "," + packet.y() + "," + packet.z()
+            + " blockPos=" + packet.blockX() + "," + packet.blockY() + "," + packet.blockZ());
+        HQFiniteMediaClient.begin(packet);
     }
 }
