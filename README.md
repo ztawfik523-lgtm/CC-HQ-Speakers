@@ -23,11 +23,14 @@ HQ `speakPCM` is an open-ended producer feed with bounded backpressure. It does 
 
 ### Finite media
 
-Final finite product target:
+Core finite product target:
 
 - MP3 / MPEG Layer III
 - common WAV
-- normal native FLAC only after its exact implementation is proven
+
+Wanted but separately gated:
+
+- normal native FLAC, only after its exact analyzer/decoder/seek/package path is proven
 
 Finite files have truthful server-owned duration, position, pause/resume, seek, loop, volume, and EOF.
 
@@ -47,11 +50,17 @@ Frozen M1D source/test/CI head:
 
 `4a2cd5de96228fc091226c7e72fb669b82be258c`
 
+M1E code-bearing head:
+
+`d0e66ab9135359627086c13647d5241ad778643f`
+
 Active branch:
 
 `codex/m1e-server-authoritative-finite`
 
-M1E source implementation has landed: finite playback now starts/advances on the server immediately, renderer status no longer owns the server clock/EOF, the no-renderer timeout is gone, and protocol v4 adds an authoritative server->client finite STATE packet. Minecraft M1E runtime acceptance is still pending.
+M1E is **source/test/CI complete**. GitHub Actions run `34658958488` passed both target NeoForge versions at the exact M1E code-bearing head. Minecraft M1E runtime acceptance is still pending.
+
+M1E finite playback now starts/advances on the server immediately, renderer status no longer owns the server clock/EOF, the no-renderer timeout is gone, and protocol v4 adds an authoritative server -> client finite STATE packet.
 
 The old whole-file sender/client is intentionally still present only as a bridge. The next implementation milestones are:
 
@@ -61,7 +70,7 @@ The old whole-file sender/client is intentionally still present only as a bridge
 - **M1I:** optional/gated native FLAC extension;
 - **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
 
-See `docs/M1E-SERVER-AUTHORITY.md`, `docs/ROADMAP.md`, and `docs/M1E-FINITE-STREAMING-DESIGN.md`.
+For a new chat or implementation handoff, start with `docs/CHAT-HANDOFF-2026-09-12.md` once present, then verify the current branch source before changing anything.
 
 ## Main finite controls
 
@@ -89,10 +98,11 @@ CI targets both supported NeoForge versions with Java 21 and verifies packaged m
 
 Start with:
 
-- `docs/CURRENT-STATE.md`
-- `docs/M1E-SERVER-AUTHORITY.md`
-- `docs/ROADMAP.md`
-- `docs/ARCHITECTURE.md`
-- `docs/M1E-FINITE-STREAMING-DESIGN.md`
-- `docs/VERIFIED-FACTS.md`
-- `docs/KNOWN-ISSUES.md`
+- `docs/CHAT-HANDOFF-2026-09-12.md` — complete continuation context for a new chat
+- `docs/CURRENT-STATE.md` — what exists now
+- `docs/M1E-SERVER-AUTHORITY.md` — what M1E implemented
+- `docs/ROADMAP.md` — what to build next
+- `docs/ARCHITECTURE.md` — accepted architecture
+- `docs/M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ finite-streaming contract
+- `docs/VERIFIED-FACTS.md` — source/CI facts only
+- `docs/KNOWN-ISSUES.md` — unresolved problems
