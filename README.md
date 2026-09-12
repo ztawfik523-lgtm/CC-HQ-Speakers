@@ -70,7 +70,7 @@ The old whole-file sender/client is intentionally still present only as a bridge
 - **M1I:** optional/gated native FLAC extension;
 - **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
 
-For a fresh implementation chat, start with **`docs/NEXT-CHAT-HANDOFF.md`**. It is the current standalone handoff containing the exact stack, checkpoints, settled decisions, completed milestones, M1E implementation facts, current transitional code boundary, known issues, and the M1F+ roadmap. `docs/CHAT-HANDOFF.md` and `docs/CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper historical context.
+For a fresh implementation chat, start with **`docs/NEXT-CHAT-HANDOFF.md`**. It is deliberately written **plain-language first**: it explains what the player/server/client should actually do in Minecraft, defines the technical words, and only then gives class/packet/code notes for the implementation chat. `docs/CHAT-HANDOFF.md` and `docs/CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper historical context.
 
 ## Main finite controls
 
@@ -98,7 +98,7 @@ CI targets both supported NeoForge versions with Java 21 and verifies packaged m
 
 Read in this order for continuation work:
 
-1. `docs/NEXT-CHAT-HANDOFF.md` — complete standalone handoff for a fresh chat
+1. `docs/NEXT-CHAT-HANDOFF.md` — complete plain-language-first standalone handoff for a fresh chat
 2. `docs/CURRENT-STATE.md` — current implementation truth
 3. `docs/VERIFIED-FACTS.md` — source/CI/runtime facts only
 4. `docs/ARCHITECTURE.md` — accepted architecture
