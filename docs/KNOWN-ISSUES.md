@@ -2,9 +2,9 @@
 
 Severity here is project priority, not a claim of exploitability. Source/CI work is not Minecraft runtime proof until the relevant runtime contract passes.
 
-M1E server-authority source/test/CI is complete at code-bearing head `d0e66ab9135359627086c13647d5241ad778643f` (run `34658958488`). Minecraft M1E runtime acceptance is still pending. M1F demand-driven finite transport is the next implementation milestone.
+Current checkpoint: preparation only. M1E server-authority semantics are implemented, but Minecraft runtime acceptance is still pending. M1F implementation has not started. Read `PRE-M1F-PREPARATION.md` and `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md` before resuming work.
 
-For a fresh chat, `NEXT-CHAT-HANDOFF.md` is the complete standalone continuation handoff. Exact current source and CI still take precedence if the branch later moves.
+The active branch contains Java runtime-diagnostic commits after the original M1E semantic checkpoint. Do not describe all post-`d0e66ab...` commits as documentation-only.
 
 ## Source-implemented / runtime pending
 
@@ -72,13 +72,35 @@ Composite entries are explicitly evicted on speaker removal, server Level unload
 
 **Status: source-resolved in M1E.**
 
-Canonical EOF now closes the old transfer channel before releasing the playback asset reference, so a short song cannot release/delete the asset while the transitional transfer still reads it.
+Canonical EOF closes the old transfer channel before releasing the playback asset reference.
 
 ### KI-029 — old BEGIN/CONTROL packets lacked current canonical state
 
 **Status: source-resolved in M1E.**
 
-Protocol v4 adds `HQFiniteMediaStatePacket`. BEGIN remains immutable/setup information for the temporary bridge; STATE carries current canonical state/position/duration/loop/volume. A READY client explicitly receives fresh server truth before it starts/reseeks.
+Protocol v4 adds `HQFiniteMediaStatePacket`. BEGIN remains immutable/setup information for the temporary bridge; STATE carries current canonical state/position/duration/loop/volume. A READY client receives fresh server truth before it attempts to start/reseek.
+
+## Current preparation findings
+
+### KI-035 — temporary JavaSound/mp3spi bridge is not a correct MP3 seek/duration oracle
+
+**Status: diagnosed; intentionally deferred to M1G replacement.**
+
+The 2026-09-12 runtime diagnostic showed the old prepared client reaching full transfer, decoder open, READY, fresh authoritative state, and renderer submission, then ending on the first PCM read.
+
+The bridge also reported `322.584 s` for an MP3 the runtime operator identifies as roughly 2:45 (~165 s), while the server analyzer reported `161.304 s`. MP3SPI client duration is therefore not authoritative.
+
+Source review found the current MP3 seek path treats `decoded.skip(...)` as decoded PCM-byte progress, while the shipped mp3spi converted stream uses compressed-stream/frame semantics and returns encoded bytes skipped. The helper can also report the requested seek target after an incomplete EOF seek, and the renderer restart path redundantly seeks the same new stream again.
+
+**Decision:** remember these defects, but do not spend M1E/M1F repairing the disposable bridge. M1G owns the progressive replacement decoder. See `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`.
+
+### KI-036 — M1E diagnostic run is not a recorded runtime PASS
+
+**Status: runtime evidence improved; acceptance still pending.**
+
+The captured logs show server-authoritative state/control behavior continuing despite client decoder failure, but they do not contain the ComputerCraft terminal line `M1E server-authority contract passed`.
+
+**Target:** when explicitly resuming M1E acceptance work, capture the focused script success line on the exact target stack. Do not infer PASS from logs alone.
 
 ## Active high priority — M1F/M1G finite engine replacement
 
@@ -90,33 +112,35 @@ Current inherited stop/control delivery is range-local and the temporary finite 
 
 ### KI-026 — transitional client still requires a complete local file
 
-Current M1E `HQFiniteMediaClient` still creates `hqspeaker-cache`, writes the whole encoded file, renames `.part` -> `.media`, and opens `FileFiniteAudioStream` only after complete transfer. The important M1E change is that READY then requests current server state instead of starting from 0.
+Current M1E `HQFiniteMediaClient` creates `hqspeaker-cache`, writes the whole encoded file, renames `.part` -> `.media`, and opens `FileFiniteAudioStream` only after complete transfer.
 
-**Target:** M1F/M1G replace this bridge with bounded in-memory encoded streaming and progressive decoding. No persistent client song cache remains in the final path.
+**Target:** M1F uses a clean break for the modern prepared path: bounded in-memory client-requested encoded ranges, no `.part/.media` requirement. M1G consumes that range/window layer progressively.
 
 ### KI-027 — transitional finite file IO still runs on game threads
 
-The old server bridge still reads chunks from its open file channel during `tick()`. The old client bridge writes received chunks after scheduling onto the Minecraft client thread.
+The old server bridge reads chunks from its open file channel during `tick()`. The old client bridge writes received chunks after scheduling onto the Minecraft client thread.
 
-**Target:** M1F moves server asset reads to a bounded IO executor and removes client disk transfer. M1G decode/conversion runs on workers; the sound thread consumes ready PCM only.
+**Target:** M1F moves server asset reads to a bounded IO executor and removes modern prepared-path client disk transfer. M1G decode/conversion runs on workers; the sound thread consumes ready PCM only.
 
 ### KI-030 — no final demand-driven finite protocol yet
 
 M1E still captures recipients once and pushes the complete file. The STATE packet fixes semantic authority but intentionally does not pretend this is final transport.
 
-**Target:** M1F adds bounded client-requested encoded ranges, generation/relevance validation, async reads, stale-work discard, and per-player outstanding/rate limits.
+**Target:** M1F adds bounded client-requested encoded ranges, generation/relevance validation, async reads, stale-work discard, per-player outstanding/rate limits, and a bounded codec-agnostic client encoded window.
+
+M1F implementation has not started at the current preparation checkpoint.
 
 ### KI-031 — MP3 temporary starvation can be mistaken for EOF
 
 The final progressive MP3 path must not return permanent EOF to JLayer just because a requested network range has not arrived yet.
 
-**Target:** M1G decoder input waits/refills on a decoder worker until bytes arrive or true asset EOF is reached.
+**Target:** M1F's encoded-window contract must distinguish temporary missing data from true asset EOF. M1G's decoder worker then waits/refills rather than terminating.
 
 ### KI-032 — MP3 seek/rejoin needs bit-reservoir pre-roll
 
 Opening Layer III exactly at the audible target frame may produce incorrect initial frames because compressed main-data can depend on earlier frames.
 
-**Target:** server-selected earlier frame anchor + silent decode/discard pre-roll in M1G.
+**Target:** M1F makes earlier server-selected anchors/range requests possible; M1G performs silent decode/discard pre-roll.
 
 ### KI-033 — historical WAV acceptance is broader than the final converter target
 
@@ -198,7 +222,7 @@ Frozen M1D correctly narrowed earlier unsupported MP4/M4A/AAC claims, but its hi
 
 The repo registers `hqspeaker:hq_speaker` while the actual product path upgrades normal CC speakers.
 
-**Target:** decide/remove/quarantine before release (M4).
+**Target:** decide/remove/quarantine before release (M4), with world/registry compatibility considered.
 
 ### KI-023 — inherited 8 MiB finite byte API remains
 
@@ -208,10 +232,14 @@ Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old 
 
 ### KI-024 — documentation/testing can become stale during redesign
 
-**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `NEXT-CHAT-HANDOFF.md` is the complete fresh-chat continuation document. `CHAT-HANDOFF.md` is now only a pointer, and `CHAT-HANDOFF-2026-09-12.md` remains deeper dated context. Exact current source and CI always take precedence if the branch later moves.
+**Status:** active entry-point docs now reference the pre-M1F preparation checkpoint and runtime diagnostic. Older handoffs remain historical/deep context. Exact current source and CI always take precedence.
 
 ### KI-025 — license metadata mismatch
 
 Top-level `LICENSE` is MPL-2.0 while NeoForge metadata declares LGPL-3.0.
 
 **Target:** resolve provenance before public release (M4). Do not silently relicense.
+
+## Dedicated cleanup inventory
+
+See `FUTURE-CLEANUP.md` for obsolete/legacy items that should be remembered without expanding the active milestone: temporary decoder/cache code, transitional packets/status, legacy finite engine/APIs, multispeaker bypasses, old format surfaces, decoder dependency review, diagnostic instrumentation, custom block, live/HLS/TS code, Sound/OpenAL cleanup, historical tests/docs, packaging metadata, and licensing.
