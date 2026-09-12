@@ -1,5 +1,13 @@
 # Current state
 
+## Preparation-only checkpoint
+
+The project is currently paused **before** finishing M1E Minecraft runtime acceptance and **before** starting M1F implementation.
+
+Do not implement M1F, change M1E semantics, or repair the temporary decoder from this checkpoint unless explicitly requested.
+
+Read `PRE-M1F-PREPARATION.md` first. It records the current sequencing decisions, clean-break choice for M1F, decoder boundary, and exact acceptance split. `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md` records the latest runtime evidence. `FUTURE-CLEANUP.md` parks obsolete/legacy cleanup work so it does not expand M1E/M1F scope.
+
 ## Active references
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
@@ -11,15 +19,17 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - completed M1B storage foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`
 - verified M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`
-- M1E exact code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`
-- reviewed documentation base before the complete next-chat handoff: `0aba08f70f15eb30830ef053f557103558a24e9b`
+- M1E semantic implementation checkpoint: `d0e66ab9135359627086c13647d5241ad778643f`
+- pre-preparation diagnostic Java head: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`
 - active branch: `codex/m1e-server-authoritative-finite`
 
 M1D final CI run: `34635484316` — success on NeoForge 21.1.247 and 21.1.248.
 
-M1E code-bearing CI run: `34658958488` — success on NeoForge 21.1.247 and 21.1.248.
+M1E semantic implementation CI run: `34658958488` — success on NeoForge 21.1.247 and 21.1.248.
 
-The active branch contains later documentation-only commits after the M1E code-bearing head. Do not use a docs-only branch head as the M1E implementation proof point; `d0e66ab9135359627086c13647d5241ad778643f` is the exact code-bearing checkpoint verified by run `34658958488`.
+Latest diagnostic-head CI run: `34686003774` — success on NeoForge 21.1.247 and 21.1.248.
+
+Important history correction: commits after `d0e66ab...` are **not all documentation-only**. The branch received several Java changes used solely for runtime diagnostics. Those commits did not intentionally change the M1E server-authority architecture, but they make the active branch head code-bearing.
 
 Target stack:
 
@@ -30,13 +40,18 @@ Target stack:
 - NeoForge 21.1.248 compatibility
 - future SPR 1.21.1-1.5.1 compatibility
 
-For a new chat, start with `NEXT-CHAT-HANDOFF.md`, then re-read the current branch source and current CI before making changes. `CHAT-HANDOFF.md` and `CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper context.
-
 ## Product identity
 
-CC:HQ Speakers upgrades the normal CC:T speaker into a programmable audio peripheral. Lua owns application policy such as playlists, alarms, notifications, speech, ambience, and sequencing. Java exposes truthful source capabilities.
+CC:HQ Speakers upgrades the normal CC:T speaker into a programmable audio peripheral. Lua owns application policy such as playlists, alarms, notifications, speech, ambience, and sequencing. Java exposes truthful technical source capabilities.
 
-Source categories remain standard CC:T speaker behavior, HQ raw/feed PCM, finite encoded media with a server-owned timeline, and live/open-ended network streams later.
+Technical source categories remain:
+
+- standard CC:T speaker behavior;
+- HQ raw/feed PCM;
+- finite encoded media with a server-owned timeline;
+- live/open-ended network streams later.
+
+Do not add Java concepts such as music/effect/notification roles or a playlist manager.
 
 ## Final finite direction
 
@@ -58,11 +73,22 @@ Not final product requirements:
 - exotic/compressed/telephony WAV variants;
 - >2-channel finite input.
 
-One physical speaker renders one **mono positional** source. Mono stays mono; stereo is downmixed; >2 channels are rejected.
+One physical speaker renders one mono positional source. Mono stays mono; stereo is downmixed; >2 channels are rejected.
 
-Finite data is streamed progressively from the authoritative server asset into bounded temporary client RAM in the final engine. There is no final persistent client song cache, `.part` library, LRU database, sparse cache file, or cross-restart download resume.
+The final finite path is:
 
-The target preserves large files, progressive audible start, duration/position, pause/resume, seek while streaming, loop, volume, natural EOF, late join, leave/re-enter recovery, and bounded memory.
+```text
+ComputerCraft file
+    -> immutable server MediaAsset
+    -> authoritative server timeline/state
+    -> bounded client-requested encoded ranges
+    -> bounded temporary client encoded RAM
+    -> progressive decoder/converter worker
+    -> bounded mono PCM
+    -> positional Minecraft/OpenAL renderer
+```
+
+There is no final persistent client song cache, `.part` library, completed media library, sparse cache, LRU database, or cross-restart resume.
 
 ## M1A retained behavior
 
@@ -75,11 +101,11 @@ The active branch retains the M1A single-speaker compatibility/output work:
 - `speakMaxSamples()` reports 131072;
 - ownership-changing calls on one physical speaker are serialized.
 
-M1A Minecraft acceptance remains pending until its runtime contract is actually executed successfully.
+M1A Minecraft acceptance remains pending until its focused runtime contract is actually executed successfully.
 
 ## M1B/M1C server asset foundation
 
-`MediaAssetStore` provides server-side UUID media identity, exact disk-backed import, quotas, retain/release lifetime, final-reference deletion, and seekable reads. This is **server storage**, not a client cache.
+`MediaAssetStore` provides server-side UUID media identity, exact disk-backed import, quotas, retain/release lifetime, final-reference deletion, and seekable reads. This is server storage, not a client cache.
 
 The local-file path is:
 
@@ -91,128 +117,137 @@ ComputerCraft file
     -> separate playback reference
 ```
 
-Current server-owned storage defaults are 512 MiB per asset and 2048 MiB total; `0` removes the corresponding HQ-specific quota. ComputerCraft filesystem capacity is not changed. The unlimited staging path already clamps around CC:T's internal `MINIMUM_FILE_SIZE` accounting so `Long.MAX_VALUE` does not overflow.
+Current server-owned storage defaults are 512 MiB per asset and 2048 MiB total; `0` removes the corresponding HQ-specific quota. ComputerCraft filesystem capacity is not changed.
 
 ## M1D — frozen historical media analysis
 
 M1D is frozen at `4a2cd5de96228fc091226c7e72fb669b82be258c`. Final GitHub Actions run `34635484316` passed both target NeoForge versions.
 
-M1D moved format/duration truth onto the server and analyzes the exact immutable committed asset with one 64 KiB window. Historical M1D analysis includes MP3, OGG Vorbis, WAV, uncompressed AIFF, and AU. That is historical code truth, **not the final format promise**.
+M1D moved format/duration truth onto the server and analyzes the exact immutable committed asset with bounded reads. Historical M1D analysis includes MP3, OGG Vorbis, WAV, uncompressed AIFF, and AU. That is historical code truth, not the final format promise.
 
-Useful M1D facts retained by the new design include scanned MP3 duration, real MP3 frame-offset seek points, server-known duration/sample-rate/channels/size, bounded seek metadata, and immutable committed-byte analysis before Lua receives the asset UUID.
+Useful retained facts include scanned MP3 duration, real MP3 frame-offset seek points, server-known duration/sample-rate/channels/size, bounded seek metadata, and immutable committed-byte analysis before Lua receives the asset UUID.
 
-MP3 duration is still encoded-frame duration; gapless delay/padding correction is optional later accuracy work.
+MP3 duration is encoded-frame duration. Optional gapless delay/padding correction remains later accuracy work.
 
 ## M1E — server-authoritative finite playback
 
-**Source/test/CI complete at code-bearing head `d0e66ab9135359627086c13647d5241ad778643f`; Minecraft runtime acceptance remains pending.**
+**Source/test/CI semantics implemented; Minecraft runtime acceptance remains pending.**
 
 The server-side finite model is no longer renderer-authoritative:
 
 - semantic states are `PLAYING`, `PAUSED`, `ENDED`, `ERROR`;
 - there is no server `LOADING` state for client buffering;
-- a successful finite play starts the canonical clock immediately at position 0;
+- successful finite play starts the canonical clock immediately at position 0;
 - the clock advances even with zero listeners;
 - `successfulRenderers`, canonical `observed`, and the 15-second no-renderer failure were removed;
 - natural non-looping EOF is determined from the known server duration/clock;
 - looping uses wrapped server position;
 - non-looping `seek(duration)` ends immediately;
 - status/control paths finalize elapsed EOF before returning/applying state;
-- canonical EOF closes the temporary old transfer before releasing the playback asset reference.
+- canonical EOF closes the temporary transfer before releasing the playback asset reference.
 
-Protocol v4 adds `HQFiniteMediaStatePacket`. The packet responsibilities are deliberately split:
+Protocol v4 adds `HQFiniteMediaStatePacket`. Client -> server finite telemetry is only READY plus diagnostic ERROR. Client decode/render failure cannot rewrite canonical server truth.
+
+The current M1E bridge still pushes the complete encoded asset to a client `.part/.media` file and then uses `FileFiniteAudioStream`. That bridge is deliberately temporary.
+
+## Latest M1E runtime evidence
+
+The 2026-09-12 diagnostic run repeatedly reached:
 
 ```text
-BEGIN/setup (temporary old bridge)
-- source/media/generation
-- format + total encoded bytes
-- speaker world/block position
-- initial volume/loop/pause setup
-
-STATE (authoritative mutable truth)
-- source/media/generation
-- playing/paused/ended/error
-- canonical position + duration
-- volume + loop
-- server error detail if any
+BEGIN
+-> authoritative PLAYING state
+-> full old transfer complete
+-> JavaSound/mp3spi decoder open
+-> READY
+-> fresh authoritative state
+-> renderer submission
+-> first PCM read returns no data
+-> client diagnostic ERROR
 ```
 
-Client -> server finite telemetry is only:
+Despite the local decoder failure, server state/control traffic continued independently, including transitions consistent with pause/resume/end/loop behavior. This supports the intended authority separation.
 
-- `READY` — asks for a fresh authoritative state after the temporary complete-file bridge becomes decoder-ready;
-- `ERROR` — diagnostic only.
+However the captured logs do **not** contain:
 
-The old renderer `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` transitions are gone from protocol v4 and cannot rewrite the server clock.
+```text
+M1E server-authority contract passed
+```
 
-The temporary M1E client still downloads the complete encoded asset to `hqspeaker-cache` because transport replacement is M1F. However it no longer starts at `0` merely because transfer completed. It opens the old file decoder, reports READY, receives a fresh STATE packet, then starts/seeks at the server's **current** canonical position. Pause/seek/loop/volume changes which happened while downloading are therefore resolved from server truth instead of stale client state.
+Therefore M1E remains Minecraft-runtime pending. Do not promote it to PASS from the diagnostic logs alone.
 
-The client still has a local `FinitePlaybackClock`, but it is only a renderer projection for local restart/resource behavior; it is not canonical authority.
+See `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`.
 
-## What is still transitional after M1E
+## MP3 duration/decoder finding
 
-The following are intentionally still old architecture and are the M1F/M1G boundary:
+For the runtime fixture:
 
-- recipients are captured once at finite play start;
-- the server blindly pushes the whole encoded file;
-- server file reads happen during the server tick;
-- the client writes `.part/.media` files on the client thread;
-- the decoder still requires a complete local encoded file;
-- no new listener can dynamically join after play start.
+- server analyzer: `161.304 s`;
+- JavaSound/mp3spi client: `322.584 s`;
+- runtime operator reports the source is roughly 2:45 (~165 s).
 
-These are not final requirements. They are the next replacement slices.
+The MP3SPI duration is clearly wrong and is not authoritative. The server analyzer remains canonical.
 
-## M1E testing/evidence state
+The temporary MP3 seek path is also known to misuse mp3spi skip semantics and can report a requested seek target after incomplete positioning. This is a bridge defect to remember, not a reason to pull decoder repair into M1E/M1F.
 
-Pure Java coverage includes deterministic `FinitePlaybackClock.reachedEnd()` behavior for non-looping and looping tracks in addition to earlier pause/resume/loop/seek tests.
+Decision:
 
-Source/test/package CI is green at M1E code-bearing head via run `34658958488`.
+**keep decoder requirements in mind while designing transport, but do not expect the current decoder to work or work correctly before M1G.**
 
-Focused runtime contract:
+## M1F boundary — agreed clean break
 
-- `scripts/m1e_server_authority_test.lua <small-mp3-or-wav>`
+M1F remains the next implementation milestone, but implementation has **not started** at this preparation checkpoint.
 
-It checks immediate server `PLAYING`, position advancement independent of renderer readiness, pause freeze, resume progression, non-looping exact-duration END, and looping exact-duration wrap.
+When explicitly started, M1F should make a clean break for the modern prepared finite path rather than keeping the old whole-file prepared bridge alive in parallel.
 
-This script has **not** yet been executed successfully in Minecraft, so M1E is not a Minecraft runtime PASS.
+M1F owns:
 
-The old `m1d_media_analysis_test.lua` contains renderer-`observed` assumptions from frozen M1D and is historical M1D evidence, not the active M1E semantic contract.
-
-## Streaming evidence/constraints already established
-
-- temporary absence of encoded bytes is **not EOF**;
-- the exact shipped JLayer family can decode progressively when its input waits for missing bytes instead of reporting EOF;
-- MP3 seek/rejoin needs earlier-frame pre-roll because Layer III bit-reservoir state can depend on previous frames;
-- sound/game threads must consume ready bounded data and never block on network or file IO;
-- server/client `System.nanoTime()` values cannot be compared directly across JVMs;
-- no persistent client cache is required for seek or late join because the server can serve fresh ranges;
-- FLAC remains a target, not a proven implementation fact.
-
-## Next: M1F demand-driven finite transport
-
-M1F is the next implementation milestone:
-
-- client-requested encoded byte ranges;
+- client-requested bounded encoded byte ranges;
 - server-selected stream/seek anchors;
 - generation/asset/range/relevance validation;
 - bounded outstanding work/rate controls;
-- off-thread server asset reads with safe retained lifetime;
-- stale async work discarded after replacement/leave;
-- bounded temporary client encoded RAM;
-- no final client disk song files/cache.
+- bounded off-thread server asset reads with safe retained lifetime;
+- stale async completion discard;
+- bounded temporary client encoded RAM/window;
+- arbitrary encoded offsets;
+- no persistent client song files/cache.
 
-After M1F:
+M1F does **not** require audible finite playback, PCM decoding, MP3 pre-roll, WAV conversion, or a final renderer. Those are M1G.
 
-- **M1G:** progressive MP3 + common WAV, bounded encoded/PCM RAM, mono output, active-branch format narrowing;
-- **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin, stale-generation hardening;
-- **M1I:** optional/gated native FLAC extension;
-- **M1J:** functional multispeaker shared clocks and one positional renderer per block;
-- **M1K:** active-session transfer/decode fan-out optimization;
-- **M1L+:** legacy finite migration, RAW finalization, OpenAL cleanup, lifecycle/performance hardening, package verification, and consolidated runtime acceptance.
+The M1F client encoded-data layer must nevertheless distinguish temporary missing data from true asset EOF so M1G can consume it progressively without redesigning the transport boundary.
 
-After M1: M2 SPR, M3 live/open-ended network streams, M4 release cleanup.
+## M1G boundary
 
-See `NEXT-CHAT-HANDOFF.md`, `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, and `M1E-FINITE-STREAMING-DESIGN.md` for exact continuation boundaries. `CHAT-HANDOFF.md` and `CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper context.
+M1G owns:
 
-## Other retained issues
+- progressive MP3 via the shipped JLayer family unless a better decoder is proven;
+- common WAV conversion;
+- temporary-starvation-vs-real-EOF handling;
+- MP3 earlier-anchor pre-roll for Layer III reservoir state;
+- bounded mono PCM queues;
+- decoder cancellation;
+- actual Minecraft/OpenAL audible finite rendering;
+- final active-branch MP3/common-WAV format narrowing.
 
-Later work still includes inherited `*All` / `*At` bypasses, legacy finite byte APIs, stream/HLS/TS defects, sound-category/gain cleanup, F3+T/resource lifecycle, SPR integration, the separate custom HQ block decision, and the repository license/metadata mismatch.
+## Transitional/legacy code
+
+Do not clean unrelated legacy code during preparation or M1F unless it directly blocks the milestone.
+
+A dedicated inventory now lives in `FUTURE-CLEANUP.md`, including the old file decoder/cache, transitional packets, legacy finite engine, old byte APIs, multispeaker bypasses, old format surfaces, dependency review, custom HQ block, live/HLS/TS issues, diagnostics cleanup, tests/docs, packaging, and license metadata.
+
+## Read order before implementation resumes
+
+1. `PRE-M1F-PREPARATION.md`
+2. `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
+3. `CURRENT-STATE.md`
+4. `VERIFIED-FACTS.md`
+5. `ARCHITECTURE.md`
+6. `M1E-SERVER-AUTHORITY.md`
+7. `M1E-FINITE-STREAMING-DESIGN.md`
+8. `ROADMAP.md`
+9. `KNOWN-ISSUES.md`
+10. `TESTING.md`
+11. `FUTURE-CLEANUP.md`
+12. exact current branch source and current CI
+
+Older handoffs remain useful historical/deep context but must not override exact current source or this preparation checkpoint when their branch-history wording is stale.
