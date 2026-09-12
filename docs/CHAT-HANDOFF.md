@@ -2,13 +2,27 @@
 
 Date: 2026-09-12
 
-The complete current fresh-chat handoff is now:
+The current continuation entry point is now:
+
+`PRE-M1F-PREPARATION.md`
+
+Read that file first. It records the current **preparation-only** checkpoint, the M1E runtime evidence boundary, the decision not to repair/require the temporary decoder before M1G, the M1F clean-break decision, and the exact M1F/M1G acceptance split.
+
+Then read:
+
+- `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
+- `CURRENT-STATE.md`
+- `M1E-SERVER-AUTHORITY.md`
+- `M1E-FINITE-STREAMING-DESIGN.md`
+- `TESTING.md`
+- `KNOWN-ISSUES.md`
+- `FUTURE-CLEANUP.md`
+
+The previous large standalone handoff remains:
 
 `NEXT-CHAT-HANDOFF.md`
 
-Use that file first for continuation work. It is deliberately **plain-language first**: it explains what the player/server/client should actually do in Minecraft, defines the technical words, and then gives the exact code/class/packet details as implementation notes for the coding chat.
-
-It also contains the exact target stack, evidence hierarchy, frozen/completed milestone checkpoints, M1E implementation facts, current transitional code boundary, settled format/cache/channel decisions, decoder evidence, known issues, and the M1F+ roadmap.
+It is still useful for broad/deep context, but some branch-history wording predates the later Java diagnostic commits. Current source plus the preparation/runtime-diagnostic docs above take precedence.
 
 For deeper dated historical context, use:
 
