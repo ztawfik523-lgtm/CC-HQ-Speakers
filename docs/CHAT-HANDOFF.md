@@ -1,31 +1,26 @@
 # CC:HQ Speakers — handoff pointer
 
-Date: 2026-09-12
+Date: 2026-09-13
 
-The current continuation entry point is now:
+The current continuation entry point is:
 
-`PRE-M1F-PREPARATION.md`
+`M1E-FINALIZATION-2026-09-13.md`
 
-Read that file first. It records the current **preparation-only** checkpoint, the M1E runtime evidence boundary, the decision not to repair/require the temporary decoder before M1G, the M1F clean-break decision, and the exact M1F/M1G acceptance split.
+M1E server-authority semantics have been rechecked. The implementation/test candidate only strengthens acceptance coverage; it does not start M1F or repair the temporary decoder. The remaining gate is one final focused Minecraft run which must actually report PASS before M1F begins.
 
 Then read:
 
-- `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
 - `CURRENT-STATE.md`
+- `VERIFIED-FACTS.md`
+- `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
 - `M1E-SERVER-AUTHORITY.md`
 - `M1E-FINITE-STREAMING-DESIGN.md`
 - `TESTING.md`
 - `KNOWN-ISSUES.md`
 - `FUTURE-CLEANUP.md`
 
-The previous large standalone handoff remains:
+`PRE-M1F-PREPARATION.md` remains useful for the previously settled clean-break and decoder decisions, but its preparation-only status wording has been superseded by the finalization checkpoint.
 
-`NEXT-CHAT-HANDOFF.md`
+The previous large standalone handoff remains `NEXT-CHAT-HANDOFF.md`. It is useful for broad context, but exact current source, CI, and the finalization document take precedence.
 
-It is still useful for broad/deep context, but some branch-history wording predates the later Java diagnostic commits. Current source plus the preparation/runtime-diagnostic docs above take precedence.
-
-For deeper dated historical context, use:
-
-`CHAT-HANDOFF-2026-09-12.md`
-
-Current source and current CI always override handoff text if the branch moves after the handoff was written.
+Current source and current CI always override older handoff text if the branch moves.
