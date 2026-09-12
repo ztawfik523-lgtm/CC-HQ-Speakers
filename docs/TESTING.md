@@ -8,6 +8,8 @@ A green Gradle build proves compilation/tests/package structure. It does **not**
 
 Tests are not a late roadmap milestone. **Every implementation milestone must add the deterministic tests needed to prove its own contract.**
 
+For the current project checkpoint and continuation context, see `CHAT-HANDOFF-2026-09-12.md`.
+
 ## Target matrix
 
 Every source change intended for release must build/test on:
@@ -41,6 +43,14 @@ M1Q combines the already-tested pieces into one end-to-end pass with large files
 
 ## M1E proof
 
+Exact M1E code-bearing head:
+
+`d0e66ab9135359627086c13647d5241ad778643f`
+
+Exact source/test/package CI run:
+
+`34658958488` — success on NeoForge 21.1.247 and 21.1.248.
+
 Pure Java M1E coverage includes deterministic natural EOF through `FinitePlaybackClock.reachedEnd()`, loop/non-loop end behavior, exact-end seek, pause/resume, and loop rebase.
 
 Focused M1E runtime contract:
@@ -52,6 +62,24 @@ scripts/m1e_server_authority_test.lua <small-mp3-or-wav>
 It checks immediate server `PLAYING`, position advancement without renderer authority, pause/resume, non-looping exact-duration END, and looping exact-duration wrap. Do not report M1E Minecraft runtime PASS until this script actually passes in-game on the target stack.
 
 The older `scripts/m1d_media_analysis_test.lua` includes frozen-M1D renderer-`observed` assumptions and should not be treated as the active M1E semantic contract.
+
+## M1F proof requirements
+
+M1F is the next implementation milestone. Its deterministic tests must prove at least:
+
+- request offset/length bounds;
+- active source/generation/asset validation;
+- same-dimension/current-relevance validation;
+- maximum outstanding request/byte accounting;
+- safe in-flight asset lifetime while async IO runs;
+- stale completion after replacement is discarded;
+- stale completion after player leaves/disconnects is discarded;
+- cancellation does not leak retained asset references;
+- large asset reads do not run on the server tick;
+- response packet size stays within the chosen bounded cap;
+- final M1F path does not require persistent client song files/cache.
+
+M1F need not prove the final MP3/WAV decoder yet; progressive decoder correctness is M1G. But M1F must expose bounded in-memory range delivery which M1G can consume without reconstructing a persistent local file.
 
 ## Finite-streaming-specific proof
 
