@@ -118,7 +118,10 @@ public final class HQFiniteMediaClient {
             Files.deleteIfExists(file);
             FileChannel channel = FileChannel.open(part,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            SESSIONS.put(packet.source(), new Session(packet, part, file, channel));
+            Session session = new Session(packet, part, file, channel);
+            SESSIONS.put(packet.source(), session);
+            diag(session, "BEGIN accepted format=" + packet.format() + " bytes=" + packet.totalBytes()
+                + " volume=" + packet.volume() + " paused=" + packet.paused());
         } catch (IOException e) {
             reportError(packet.source(), packet.generation(), "cannot create finite media cache: " + safeMessage(e));
         }
@@ -149,9 +152,11 @@ public final class HQFiniteMediaClient {
             } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
                 Files.move(s.partPath, s.finalPath, StandardCopyOption.REPLACE_EXISTING);
             }
+            diag(s, "transfer complete bytes=" + s.received + " file=" + s.finalPath.getFileName());
             s.stream = new FileFiniteAudioStream(s.finalPath, s.begin.format(), s.clock.looping());
             double decoderDuration = s.stream.durationSeconds();
             s.ready = true;
+            diag(s, "decoder opened duration=" + decoderDuration + " format=" + s.stream.getFormat());
             // READY requests a fresh canonical snapshot. The client must not start from 0 merely because transfer ended.
             report(s, HQFiniteMediaStatusPacket.Transition.READY, 0.0, decoderDuration, "");
         } catch (Exception e) {
@@ -162,6 +167,8 @@ public final class HQFiniteMediaClient {
     private static void state0(HQFiniteMediaStatePacket packet) {
         Session s = SESSIONS.get(packet.source());
         if (!matches(s, packet.mediaId(), packet.generation()) || s.terminal) return;
+        diag(s, "STATE received state=" + packet.state() + " position=" + packet.position()
+            + " duration=" + packet.duration() + " ready=" + s.ready);
 
         if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
                 || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
@@ -199,6 +206,8 @@ public final class HQFiniteMediaClient {
 
             boolean active = s.sound != null && Minecraft.getInstance().getSoundManager().isActive(s.sound);
             if (!active || wasPaused || Math.abs(oldPosition - packet.position()) > 0.5) {
+                diag(s, "renderer restart requested active=" + active + " wasPaused=" + wasPaused
+                    + " oldPosition=" + oldPosition + " target=" + packet.position());
                 restartRenderer(s, packet.position());
             }
         } catch (IOException e) {
@@ -218,17 +227,23 @@ public final class HQFiniteMediaClient {
                     if (SESSIONS.get(source) != s || s.sound != expected || s.terminal) return;
                     s.started = true;
                     s.startConfirmationQueued = false;
+                    diag(s, "OpenAL/Minecraft sound channel confirmed");
                 });
             });
-            if (found) s.startConfirmationQueued = true;
+            if (found) {
+                s.startConfirmationQueued = true;
+                diag(s, "sound channel handle found; confirmation queued");
+            }
         }
 
         if (s.sound != null && !minecraft.getSoundManager().isActive(s.sound)) {
             if (s.stream != null && s.stream.ended()) {
+                diag(s, "renderer inactive because stream reports ended");
                 finishLocal(s);
             } else if (s.started && !s.desiredPaused) {
                 // Sound engine/resource reload: rebuild from the local projection of the authoritative server cursor.
                 double resumeAt = s.clock.position(System.nanoTime());
+                diag(s, "renderer became inactive after start; rebuilding at " + resumeAt);
                 try { restartRenderer(s, resumeAt); }
                 catch (IOException e) { fail(s, "finite renderer restart failed: " + safeMessage(e)); }
             }
@@ -306,7 +321,9 @@ public final class HQFiniteMediaClient {
         s.sound = new FiniteSound(s.stream, s.begin, s.volume);
         s.started = false;
         s.startConfirmationQueued = false;
+        diag(s, "submitting FiniteSound to SoundManager at position=" + position + " volume=" + s.volume);
         Minecraft.getInstance().getSoundManager().play(s.sound);
+        diag(s, "SoundManager.play returned; isActive=" + Minecraft.getInstance().getSoundManager().isActive(s.sound));
     }
 
     private static void restartRenderer(Session s, double position) throws IOException {
@@ -318,7 +335,8 @@ public final class HQFiniteMediaClient {
     private static void restartStreamOnly(Session s, double position) throws IOException {
         if (s.stream != null) s.stream.close();
         s.stream = new FileFiniteAudioStream(s.finalPath, s.begin.format(), s.clock.looping());
-        s.stream.seek(position);
+        double actual = s.stream.seek(position);
+        diag(s, "decoder positioned requested=" + position + " actual=" + actual);
         s.started = false;
         s.startConfirmationQueued = false;
     }
@@ -336,6 +354,8 @@ public final class HQFiniteMediaClient {
     private static void fail(Session s, String error) {
         if (s.terminal) return;
         s.terminal = true;
+        HQSpeakerMod.error("M1E finite client source=" + s.begin.source() + " generation=" + s.begin.generation()
+            + " FAIL " + error);
         report(s, HQFiniteMediaStatusPacket.Transition.ERROR,
             s.clock.position(System.nanoTime()), s.clock.duration(), error);
         destroy(s, true);
@@ -343,6 +363,7 @@ public final class HQFiniteMediaClient {
     }
 
     private static void reportError(UUID source, long generation, String error) {
+        HQSpeakerMod.error("M1E finite client source=" + source + " generation=" + generation + " FAIL " + error);
         try { HQSpeakerNetwork.sendToServer(new HQFiniteMediaStatusPacket(source, generation,
             HQFiniteMediaStatusPacket.Transition.ERROR, 0.0, 0.0, error)); }
         catch (Exception ignored) {}
@@ -351,6 +372,8 @@ public final class HQFiniteMediaClient {
     private static void report(Session s, HQFiniteMediaStatusPacket.Transition transition,
                                double position, double duration, String error) {
         try {
+            diag(s, "sending status " + transition + " position=" + position + " duration=" + duration
+                + (error == null || error.isBlank() ? "" : " error=" + error));
             HQSpeakerNetwork.sendToServer(new HQFiniteMediaStatusPacket(s.begin.source(), s.begin.generation(),
                 transition, Math.max(0.0, position), Math.max(0.0, duration), error == null ? "" : error));
         } catch (Exception e) {
@@ -391,6 +414,11 @@ public final class HQFiniteMediaClient {
         }
     }
 
+    private static void diag(Session s, String message) {
+        HQSpeakerMod.log("M1E finite client source=" + s.begin.source() + " generation=" + s.begin.generation()
+            + " " + message);
+    }
+
     private static String safeMessage(Exception e) {
         String message = e.getMessage();
         return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
@@ -398,11 +426,15 @@ public final class HQFiniteMediaClient {
 
     private static final class FiniteSound extends AbstractSoundInstance implements TickableSoundInstance {
         private final FileFiniteAudioStream stream;
+        private final UUID source;
+        private final long generation;
         private boolean stopped;
 
         FiniteSound(FileFiniteAudioStream stream, HQFiniteMediaBeginPacket begin, float volume) {
             super(HQ_SOUND_LOC, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
             this.stream = stream;
+            this.source = begin.source();
+            this.generation = begin.generation();
             this.volume = volume;
             this.x = begin.x(); this.y = begin.y(); this.z = begin.z();
             this.attenuation = Attenuation.LINEAR;
@@ -413,6 +445,8 @@ public final class HQFiniteMediaClient {
         @Override public boolean isStopped() { return stopped || stream.ended(); }
         @Override public void tick() {}
         @Override public CompletableFuture<AudioStream> getStream(SoundBufferLibrary buffers, Sound sound, boolean looping) {
+            HQSpeakerMod.log("M1E finite sound source=" + source + " generation=" + generation
+                + " getStream invoked sound=" + sound.getLocation());
             return CompletableFuture.completedFuture(stream);
         }
     }
