@@ -1,114 +1,217 @@
-# CC:HQ Speakers fork — agent guide
+# CC:HQ Speakers — agent guide
 
-## Mission
+## Start here
 
-Improve CC:HQ Speakers into a **high-quality programmable ComputerCraft speaker peripheral** for the exact ATM10 target stack.
+This repository improves the normal CC:Tweaked `speaker` peripheral into a **high-quality programmable audio peripheral** for the exact ATM10 target stack.
 
-This is not a built-in music player, sound-effect player, notification system, or HighAudio 2. The Java side exposes truthful audio capabilities; Lua programs decide what those capabilities are used for.
+Before changing code, read in this order:
 
-Core rule:
+1. `docs/NEXT-CHAT-HANDOFF.md`
+2. `docs/CURRENT-STATE.md`
+3. `docs/VERIFIED-FACTS.md`
+4. `docs/ARCHITECTURE.md`
+5. `docs/M1E-SERVER-AUTHORITY.md`
+6. `docs/M1E-FINITE-STREAMING-DESIGN.md`
+7. the current milestone in `docs/ROADMAP.md`
+8. `docs/KNOWN-ISSUES.md`
+9. `docs/TESTING.md`
+10. `docs/CC-T-COMPATIBILITY-CONTRACT.md` before changing standard speaker behavior
 
-> Distinguish audio by technical properties, not by application meaning.
+Then re-read the current branch source and current CI. Exact source/runtime evidence overrides documentation if they disagree.
 
-- finite media (MP3/OGG/WAV/supported files): known timeline, so duration/position/seek/loop/pause/resume/EOF are meaningful;
-- raw/feed audio (`playAudio`, `speakPCM`): open-ended producer-fed PCM, so backpressure/stop/volume and possibly pause are meaningful, but finite duration/seek are not;
-- live network streams (MP3/HLS/TS): open-ended remote sources, so no fake finite duration/seek; pause/resume, when implemented, means stop/suspend then reconnect to the current live point.
-
-## Exact stack
+## Exact target stack
 
 - Minecraft 1.21.1
 - Java 21
 - CC:Tweaked 1.120.0
 - NeoForge 21.1.247 baseline
 - NeoForge 21.1.248 compatibility
-- SPR 1.21.1-1.5.1 compatibility target
+- future Sound Physics Remastered target: 1.21.1-1.5.1
 
-Untouched fork baseline:
+Active implementation branch:
 
-`d1a592351c866f9a28ceef00b59e591ee773f3d5`
+`codex/m1e-server-authoritative-finite`
 
-Reviewed M1 reference:
+Exact M1E code-bearing checkpoint:
 
-`fba84a33a94d451af09b983bcb04416c97ff64cf`
+`d0e66ab9135359627086c13647d5241ad778643f`
 
-M1A local-file prototype reference:
+Exact M1E CI run:
 
-`69e34a5346f6ce47580f49ed867c9951bfd338bc`
+`34658958488`
 
-Do not rewrite prototype history to pretend later redesign choices were already implemented there.
+M1E source/test/package CI passed both target NeoForge versions. Minecraft M1E runtime acceptance is still pending until `scripts/m1e_server_authority_test.lua` actually passes in-game on the target stack.
 
-## Compatibility is a hard requirement
+## Product rule
 
-The Mixin upgrades CC:Tweaked's normal `speaker` peripheral and still reports type `speaker`.
+This is **not** a built-in music player, notification system, sound-effect player, or Java playlist manager.
 
-Therefore standard CC:T speaker methods are a compatibility contract, not optional inspiration.
+Lua decides whether audio is music, alarms, speech, ambience, notifications, soundboards, playlists, or anything else. Java distinguishes sources only by technical capabilities.
 
-Read `docs/CC-T-COMPATIBILITY-CONTRACT.md` before changing:
+Do not create permanent Java concepts such as music/effect/notification lanes, automatic application priorities, playlists, albums, or a client music library.
+
+## Standard CC:T compatibility is mandatory
+
+The normal `computercraft:speaker` remains the main product surface and exposed peripheral type remains `speaker`.
+
+Standard behavior must continue to come from CC:T's real `SpeakerPeripheral` unless exact target-stack evidence requires otherwise:
 
 - `playNote`
 - `playSound`
 - `playAudio`
 - `stop`
-- `speaker_audio_empty`
+- native `speaker_audio_empty`
 
-Prefer delegating standard behavior to CC:T's actual `SpeakerPeripheral` rather than cloning it.
+HQ APIs extend that contract; they do not redefine it.
 
-## Accepted architecture
+## Technical source categories
 
-The old P0 D1-D4 choices are no longer unresolved. `docs/ROADMAP.md` is the implementation target.
+### Standard CC:T speaker audio
 
-- Java does **not** own playlists. A new incompatible HQ continuous playback replaces the previous HQ continuous playback; Lua owns sequencing/queue policy.
-- Do not keep a permanent historical listener list. The server owns playback state and nearby/tracking clients dynamically render the current state.
-- Finite media is a reusable **asset**, separate from a playback and separate from the physical speaker.
-- Large finite transfer is client-pulled in bounded byte ranges. Encoded asset transfer remains complete/reliable; only stale decoded PCM may later be dropped at renderer taps to preserve real-time sync.
-- The server owns finite playback state/timeline. Client renderer READY/STARTED/ENDED must not become canonical playback authority.
-- Multispeaker finite playback shares asset/timeline work where possible but keeps one positional renderer per audible physical speaker for correct spatial audio and eventual SPR integration.
-- Finite sync must not wait for an expected global speaker/tap count.
-- Local CC files and large finite media are higher priority than Internet/live streaming.
+Preserve native CC:T behavior and backpressure.
 
-Two choices remain open until implementation evidence warrants deciding them:
+### HQ raw/feed PCM
 
-- whether a first playback starts the server clock immediately or waits for initial nearby readiness;
-- progressive playback while an asset is still downloading (M2) versus M1 full encoded cache before playback.
+`speakPCM` is open-ended producer-fed audio. It has bounded backpressure and separate `hqspeaker_audio_empty` pacing. It does not truthfully have finite duration, arbitrary seek, or natural EOF.
+
+### Finite media
+
+Finite files have a known timeline and may truthfully support duration, position, pause/resume, seek, loop, volume, and natural EOF.
+
+Core final finite formats:
+
+- MP3 / MPEG Layer III
+- common WAV
+
+Wanted later but separately gated:
+
+- normal native `.flac`
+
+Not final finite requirements:
+
+- OGG Vorbis
+- Ogg-FLAC
+- AIFF/AIF
+- AU/SND
+- exotic/compressed/telephony WAV variants
+- >2-channel finite input
+
+One physical speaker renders one mono positional source. Mono stays mono; stereo is downmixed to mono; >2 channels are rejected.
+
+### Live network audio
+
+Internet MP3/HLS/TS is later work. Live sources are open-ended and must not pretend to have finite duration/seek history.
+
+## Settled finite architecture
+
+These are no longer open design questions:
+
+- A successful finite play starts the canonical **server clock immediately**, even with zero listeners.
+- The server owns finite generation, state, duration, position, pause/resume, seek, loop, volume, and EOF.
+- Client renderer readiness/failure never becomes canonical playback authority.
+- Finite media is a reusable server `MediaAsset`, separate from playback and physical speakers.
+- Final finite transfer is **client-pulled in bounded encoded byte ranges**.
+- There is **no persistent client song cache**, `.part` library, completed client media library, sparse-file cache, LRU database, or cross-restart download resume in the final path.
+- Clients keep only bounded temporary encoded/decoded RAM for active playback.
+- Seek and late join fetch fresh bounded encoded data around a server-selected anchor/current position.
+- A slow client may go silent/refill/rejoin; it never slows or rewinds the canonical server timeline.
+- Do not compare server and client `System.nanoTime()` values across JVMs.
+- Multispeaker synchronization must not wait for an expected global member/tap count.
+- Each audible physical speaker ultimately keeps its own positional renderer for correct spatial audio and future SPR behavior.
 
 ## Current source model
 
-There are currently overlapping inherited/prototype paths:
+The repository intentionally still contains overlapping generations of code:
 
-1. standard CC:T behavior delegated by the composite peripheral;
-2. legacy HQ raw/finite/stream code in `HQSpeakerPeripheral`/`HQAudioStream`;
-3. the M1A staged finite prototype in `HQFiniteMediaServer`/`HQFiniteMediaClient`.
+1. standard CC:T behavior delegated through `HQSpeakerCompositePeripheral`;
+2. inherited legacy HQ raw/finite/live code in `HQSpeakerPeripheral`, `HQAudioStream`, and legacy packets;
+3. the modern prepared finite path in `HQFiniteMediaServer` / `HQFiniteMediaClient`.
 
-The staged prototype proved staging, chunking, disk cache, and incremental decoding. Its fixed recipient set, renderer observation timeout, client-authoritative status transitions, and per-speaker media ownership are scheduled for replacement. Do not spend cleanup effort polishing those concepts.
+Do not mistake legacy finite renderer authority for the modern prepared-file design. The legacy byte APIs still exist and are migrated later.
+
+M1E already made the prepared finite path server-authoritative, but its transport is intentionally transitional: fixed recipients, whole-file server push, server-tick reads, client `.part/.media` files, and complete-file decoding still exist only as a bridge to M1F/M1G.
+
+## Current milestone: M1F
+
+M1F is **demand-driven finite transport**. Keep its scope narrow.
+
+Implement:
+
+- client -> server bounded range requests carrying source/generation/asset/offset/length;
+- server -> client bounded range data carrying source/generation/asset/offset/bytes;
+- validation of active playback, generation, asset, player connection, dimension/current relevance, range bounds, and resource limits;
+- bounded outstanding request count/bytes and rate protection where needed;
+- bounded server IO executor/queue;
+- no large asset reads on the server tick;
+- safe retained asset lifetime while async reads are in flight;
+- re-check generation/player relevance before sending completed async work;
+- discard stale completions after replacement/leave/disconnect;
+- bounded temporary client encoded RAM only;
+- arbitrary encoded offsets so seek/rejoin do not require downloading from byte 0;
+- codec-appropriate server-selected seek/stream anchors where needed.
+
+M1F must add deterministic tests for request bounds, stale generation, relevance, outstanding work, cancellation, in-flight asset lifetime, stale async completion, packet sizing, and proof that large reads do not execute on the game tick.
+
+### Do not pull M1G into M1F without evidence
+
+M1G owns the progressive MP3/common-WAV decoder/converter path, bounded PCM queues, mono conversion/downmix, MP3 starvation-vs-EOF handling, and MP3 seek pre-roll.
+
+Keep M1F as a generic bounded encoded-range transport unless implementation evidence proves the split is impossible.
+
+## Do not clean unrelated later work during M1F
+
+Unless a direct M1F dependency forces it, do not spend the M1F diff on:
+
+- legacy `speakMp3(bytes)` / `speakWav(bytes)` migration;
+- OGG/AIFF/AU removal from the historical path;
+- HLS/TS/live-stream fixes;
+- separate `hqspeaker:hq_speaker` block cleanup;
+- sound category/gain cleanup;
+- multispeaker sync redesign;
+- SPR integration;
+- license/provenance cleanup.
+
+Those are real issues, but they belong to later milestones.
 
 ## Working rules
 
-- Improve the inherited fork; do not rewrite unrelated working behavior for architectural cleanliness alone.
-- Preserve inherited behavior when useful and compatible, but do not preserve a proven bug.
-- Prefer exact source/runtime evidence over assumptions.
-- Keep server semantic state separate from client renderer observation.
-- Never invent duration/seek for open-ended inputs.
-- Do not classify MP3/WAV/PCM as music/effects/notifications.
-- Do not build a Java playlist/priority system; Lua is the policy layer.
-- Avoid fixing implementation details inside concepts explicitly scheduled for deletion.
-- Keep SPR V7.1 acoustics frozen unless explicitly retuning them.
-- Batch real Minecraft testing after source/automated work has narrowed the unknowns.
+- Improve the inherited fork; do not rewrite unrelated working behavior merely for architectural cleanliness.
+- Preserve useful compatible behavior, but do not preserve a proven bug.
+- Prefer exact runtime/source evidence over plausible assumptions.
+- Treat ideas as hypotheses until source/tests/runtime evidence support them.
+- Keep server semantic state separate from client transfer/decoder/renderer state.
+- Never invent duration/seek for open-ended sources.
+- Do not classify audio by application meaning.
+- Do not build Java playlist/priority policy.
+- Avoid polishing concepts explicitly scheduled for deletion.
+- Keep the frozen SPR V7.1 acoustics unchanged unless explicitly retuning them.
+- Do not call a Minecraft runtime script PASS unless it was actually executed successfully.
 - Do not use `git add .`.
 
 ## Evidence order
 
-1. exact target-stack runtime evidence;
-2. exact current source;
-3. `docs/VERIFIED-FACTS.md`;
-4. `docs/CURRENT-STATE.md`;
-5. `docs/CC-T-COMPATIBILITY-CONTRACT.md`;
-6. accepted architecture/roadmap;
-7. historical research/handoffs.
+When claims conflict, trust them in this order:
 
-Recommendations must not be written into `VERIFIED-FACTS.md` as facts.
+1. successful Minecraft runtime evidence on the exact target stack;
+2. exact current source code;
+3. exact current CI/build/package evidence;
+4. `docs/VERIFIED-FACTS.md`;
+5. `docs/CURRENT-STATE.md`;
+6. compatibility/design docs;
+7. `docs/ROADMAP.md`;
+8. milestone historical docs;
+9. old prototype/P0 material.
 
-## Testing
+Recommendations and unresolved choices must not be written into `VERIFIED-FACTS.md` as facts.
 
-Read `docs/P0-TEST-MATRIX.md`, `docs/TESTING.md`, and the current milestone section in `docs/ROADMAP.md`.
+## Testing rule
 
-Current Java CI is useful but does not prove Minecraft/client lifecycle behavior. Runtime scripts are acceptance tests, not substitutes for source/state-machine tests.
+Every milestone carries its own deterministic tests. A green Gradle/GitHub Actions build proves compilation/tests/package structure; it does **not** prove audible Minecraft behavior, renderer lifecycle, positional sound, resource reload, or real-client networking.
+
+For the current pre-M1F checkpoint, run:
+
+```text
+scripts/m1e_server_authority_test.lua <small-mp3-or-wav>
+```
+
+It must verify immediate server progression, pause/resume, non-looping exact-duration END, and looping exact-duration wrap before M1E is called a Minecraft runtime PASS.
