@@ -12,8 +12,8 @@ Do not model application roles such as music/effect/notification. Model technica
               +--------------------+--------------------+
               |                    |                    |
           raw/feed              finite media         live stream
-      playAudio/speakPCM       MP3/WAV/FLAC          MP3/HLS/TS
-              |                    |                    |
+      playAudio/speakPCM       MP3 / WAV core       MP3/HLS/TS
+              |               + FLAC if proven           |
       open-ended samples       known timeline       open-ended remote
               |                    |                    |
        backpressure/stop      seek/duration/loop    reconnect/stop/meta
@@ -63,13 +63,13 @@ The supported product target is deliberately narrow:
 
 - MP3 / MPEG Layer III;
 - normal WAV with common, easy-to-decode sample representations;
-- normal native FLAC once its decoder/analyzer path is proven.
+- normal native FLAC only if its decoder/analyzer/seek/package path is proven in the gated FLAC milestone.
 
-OGG Vorbis, AIFF/AIF, and AU/SND are not product targets going forward. Historical M1D support for analyzing those formats remains historical evidence and should not force the final streaming architecture to retain them.
+OGG Vorbis, Ogg-FLAC, AIFF/AIF, and AU/SND are not product targets going forward. Historical M1D support for analyzing some of those formats remains historical evidence and should not force the final streaming architecture to retain them.
 
 Finite render output is **mono positional audio**. Mono input stays mono. Stereo input is downmixed to mono. More-than-stereo input is rejected rather than pretending one physical Minecraft speaker is a surround array.
 
-For WAV, support the common/easy cases only. The intended target is common integer PCM plus 32-bit float, not every unusual telephony codec or arbitrary professional bit width which can technically appear inside a WAV container.
+For WAV, support the common/easy cases only: unsigned 8-bit PCM, signed 16/24/32-bit PCM, and 32-bit IEEE float, mono/stereo only. Do not keep every unusual telephony codec or arbitrary professional bit width which can technically appear inside a WAV container.
 
 ## Server-authoritative playback
 
@@ -89,7 +89,7 @@ Clients may report transfer/decoder/renderer failures for diagnostics, but a cli
 
 A finite playback continues logically even when no player is nearby. A client which becomes relevant later receives current state and streams from the current server position.
 
-This replaces the prototype renderer-observation timeout, successful-renderer authority, and STARTED/ENDED-driven canonical clock.
+M1E has already implemented this semantic server-authority model. M1F+ replaces the remaining transitional transport/render path.
 
 ## Local ComputerCraft file import
 
@@ -155,7 +155,7 @@ bounded encoded window in RAM
 
 ### MP3
 
-Use the exact JLayer path only with an input abstraction that distinguishes **temporary missing bytes** from true asset EOF. Temporary stream starvation must wait/refill on a decoder worker; it must never be exposed to JLayer as permanent EOF.
+Use the exact JLayer path only with an input abstraction which distinguishes **temporary missing bytes** from true asset EOF. Temporary stream starvation must wait/refill on a decoder worker; it must never be exposed to JLayer as permanent EOF.
 
 Random seek/rejoin uses server-derived MP3 frame offsets and codec pre-roll. MPEG Layer III's bit reservoir means the decoder should begin from earlier encoded frames and silently decode forward before audible output at the requested/current server position.
 
@@ -167,9 +167,9 @@ Do not retain support for every WAV encoding merely because JavaSound can theore
 
 ### FLAC
 
-Native `.flac` is a target because it is finite, frame-based, and suitable for bounded streaming. It is not considered implemented or advertised until the project proves an exact decoder path, metadata/seek behavior, malformed-input handling, and target-stack packaging.
+Native `.flac` is wanted because it is finite and frame-based, but FLAC is a separate gated extension after the MP3/WAV engine. It is not considered implemented or advertised until the project proves an exact decoder path, metadata/seek behavior, malformed-input handling, target-stack packaging, and Minecraft runtime playback.
 
-Do not add Ogg-FLAC as part of this target.
+Do not add Ogg-FLAC.
 
 ## Seeking while streaming
 
@@ -192,7 +192,7 @@ If fetching/decoding takes time, the server clock continues. When the client is 
 
 A slow client never pauses canonical finite playback.
 
-If its encoded or decoded buffer runs dry, that listener may become temporarily silent. It refills from the server and rejoins the current position. The exact renderer tactic (stop/recreate versus bounded silence) is an implementation/detail choice to settle with audible runtime tests; it does not change server semantics.
+If its encoded or decoded buffer runs dry, that listener may become temporarily silent. It refills from the server and rejoins the current position. The exact renderer tactic (stop/recreate versus bounded silence) should be settled with audible runtime tests; it does not change server semantics.
 
 ## Dynamic range rendering
 
@@ -244,10 +244,10 @@ Finite-file streaming and live-network streaming may share low-level buffering i
 The repository currently contains overlapping implementations:
 
 - legacy HQ raw/finite/stream code in `HQSpeakerPeripheral` / `HQAudioStream`;
-- staged finite prototype in `HQFiniteMediaServer` / `HQFiniteMediaClient`;
+- staged/prepared finite path in `HQFiniteMediaServer` / `HQFiniteMediaClient`;
 - standard CC:T delegation in `HQSpeakerCompositePeripheral`.
 
-The prototype proved writable staging, chunk packets, disk-backed temporary transfer, and incremental decode ideas. Its fixed recipient set, server push-whole-file behavior, client disk-file requirement, renderer observation timeout, and client-authoritative state reports are scheduled for replacement. Do not polish those concepts into the final design.
+M1E has already replaced the renderer-authoritative semantic model, but the finite client/server transfer is still transitional: fixed recipients, server push-whole-file behavior, client disk-file bridge, and complete-file decoder remain until M1F/M1G. Do not polish those concepts into the final design.
 
 Legacy byte-taking finite APIs should eventually become compatibility frontends into the same asset/playback engine, after which the old whole-file/whole-PCM finite decoder can be removed. Legacy OGG-specific compatibility APIs may be removed/deprecated with the narrowed finite format scope rather than forcing Vorbis into the final architecture.
 
