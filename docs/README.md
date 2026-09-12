@@ -4,21 +4,23 @@
 
 For a new chat or implementation handoff, read these in order:
 
-1. `NEXT-CHAT-HANDOFF.md` — **primary standalone handoff**. It explains the project in plain Minecraft/user-visible terms first, defines technical words, then provides the exact classes/packets/commits/tests needed by the next coding chat;
-2. `CURRENT-STATE.md` — current implementation truth and immediate next work;
-3. `VERIFIED-FACTS.md` — source/CI/runtime facts only;
-4. `ARCHITECTURE.md` — accepted target architecture;
-5. `M1E-SERVER-AUTHORITY.md` — exact source/test/CI-complete M1E behavior;
-6. `M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ finite-streaming implementation contract;
-7. `ROADMAP.md` — milestone order and acceptance boundaries;
-8. `KNOWN-ISSUES.md` — unresolved defects and where they are scheduled;
-9. `TESTING.md` — evidence and testing rules;
-10. `CHAT-HANDOFF.md` — previous canonical continuation handoff;
-11. `CHAT-HANDOFF-2026-09-12.md` — longer dated deep-context handoff retained for historical detail.
+1. `PRE-M1F-PREPARATION.md` — **current preparation checkpoint**. Read this first before any attempt to finish M1E acceptance or start M1F;
+2. `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md` — exact latest runtime findings, what they prove, and what they do not;
+3. `CURRENT-STATE.md` — current implementation truth and immediate boundaries;
+4. `VERIFIED-FACTS.md` — source/CI/runtime facts already frozen there;
+5. `ARCHITECTURE.md` — accepted target architecture;
+6. `M1E-SERVER-AUTHORITY.md` — exact M1E authority behavior and current runtime-pending status;
+7. `M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ finite-streaming implementation contract;
+8. `ROADMAP.md` — milestone order and acceptance boundaries;
+9. `KNOWN-ISSUES.md` — unresolved defects and where they are scheduled;
+10. `TESTING.md` — evidence and testing rules;
+11. `FUTURE-CLEANUP.md` — old/temporary code and release cleanup to remember without expanding current scope;
+12. `NEXT-CHAT-HANDOFF.md` — previous large standalone handoff, still useful for deep context but older than the current preparation checkpoint;
+13. `CHAT-HANDOFF-2026-09-12.md` — longer dated deep-context handoff retained for historical detail.
 
-`NEXT-CHAT-HANDOFF.md` is intentionally written so the user does not need to know Java/network/audio terminology. A new chat should explain **what happens in Minecraft first**, then put class/method/packet details underneath as implementation notes. Do not make the user decode implementation jargon just to understand a design decision.
+The preparation checkpoint deliberately separates current decisions from implementation. At this moment, do not change M1E semantics, declare M1E runtime PASS, start M1F implementation, or repair the temporary decoder unless explicitly requested.
 
-Always re-read the current branch source and current CI before changing implementation. The handoffs record the project state at the time they were written; source on the active branch wins if the branch later moves.
+Always re-read the exact current branch source and current CI before changing implementation. Current source/runtime evidence overrides older handoff wording.
 
 ## Documentation authority
 
@@ -26,45 +28,61 @@ Use this precedence when documents overlap:
 
 1. successful exact-target Minecraft runtime evidence;
 2. exact current source / current CI evidence;
-3. `VERIFIED-FACTS.md` for facts already recorded from source/CI/runtime;
-4. `CURRENT-STATE.md` for the current implementation snapshot;
-5. `CC-T-COMPATIBILITY-CONTRACT.md` for standard speaker compatibility;
-6. `ARCHITECTURE.md` and `M1E-FINITE-STREAMING-DESIGN.md` for accepted design;
-7. `ROADMAP.md` for future milestone ordering;
-8. milestone-specific historical docs for the code they describe;
-9. older P0/prototype docs as historical evidence only.
+3. `PRE-M1F-PREPARATION.md` for current sequencing/scope decisions;
+4. `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md` for the latest diagnostic evidence boundary;
+5. `VERIFIED-FACTS.md` for facts already recorded from source/CI/runtime;
+6. `CURRENT-STATE.md` for the current implementation snapshot;
+7. `CC-T-COMPATIBILITY-CONTRACT.md` for standard speaker compatibility;
+8. `ARCHITECTURE.md` and `M1E-FINITE-STREAMING-DESIGN.md` for accepted design;
+9. `ROADMAP.md` for future milestone ordering;
+10. milestone-specific historical docs for the code they describe;
+11. older P0/prototype docs as historical evidence only.
 
 A green build is not audible Minecraft runtime proof. Any milestone marked runtime-pending remains runtime-pending until its focused Minecraft contract is actually executed successfully.
 
 ## Current checkpoints
 
 - frozen M1D implementation: `4a2cd5de96228fc091226c7e72fb669b82be258c`, run `34635484316` green on both target NeoForge versions;
-- M1E exact code-bearing implementation: `d0e66ab9135359627086c13647d5241ad778643f`, run `34658958488` green on both target NeoForge versions;
+- M1E semantic implementation checkpoint: `d0e66ab9135359627086c13647d5241ad778643f`, run `34658958488` green on both target NeoForge versions;
+- pre-preparation diagnostic Java head: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`, run `34686003774` green on both target NeoForge versions;
 - active branch: `codex/m1e-server-authoritative-finite`;
 - M1E Minecraft runtime acceptance: still pending;
-- next implementation milestone: **M1F demand-driven finite transport**.
+- M1F implementation: not started;
+- agreed next implementation sequencing when work resumes: finish/capture M1E authority acceptance, then M1F clean-break bounded range transport, then M1G progressive decoder/audio.
 
-Later documentation-only commits move the branch head. Keep the exact code-bearing milestone commit above as the implementation proof anchor.
+Important: commits after `d0e66ab...` are not all docs-only. Several later Java commits added runtime diagnostics without intentionally changing the authority architecture.
+
+## Current decisions to preserve
+
+- the old JavaSound/mp3spi prepared decoder is temporary and not expected to work correctly before M1G;
+- its reported MP3 duration is not authoritative;
+- M1F should make a clean break from the modern whole-file `.part/.media` prepared path rather than maintaining two prepared transports in parallel;
+- M1F acceptance does not require audible finite playback;
+- M1F must still provide a bounded codec-agnostic encoded range/window contract which distinguishes temporary missing data from true asset EOF;
+- M1G owns progressive MP3/common-WAV decode, pre-roll, bounded PCM, and actual audible rendering.
 
 ## Index
 
 | Need | File |
 |---|---|
-| Complete plain-language-first fresh-chat handoff | `NEXT-CHAT-HANDOFF.md` |
-| Previous canonical handoff | `CHAT-HANDOFF.md` |
-| Longer dated handoff / deep context | `CHAT-HANDOFF-2026-09-12.md` |
+| What decisions/scope apply before implementation resumes? | `PRE-M1F-PREPARATION.md` |
+| What did the latest M1E runtime diagnostic show? | `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md` |
 | What exists now? | `CURRENT-STATE.md` |
-| What did M1E actually implement? | `M1E-SERVER-AUTHORITY.md` |
+| What old/temporary code should we remember to clean later? | `FUTURE-CLEANUP.md` |
+| Previous large plain-language fresh-chat handoff | `NEXT-CHAT-HANDOFF.md` |
+| Handoff pointer | `CHAT-HANDOFF.md` |
+| Longer dated handoff / deep context | `CHAT-HANDOFF-2026-09-12.md` |
+| What did M1E implement? | `M1E-SERVER-AUTHORITY.md` |
 | What do we build next? | `ROADMAP.md` |
 | What is the target architecture? | `ARCHITECTURE.md` |
 | What is the concrete M1F+ finite-streaming contract? | `M1E-FINITE-STREAMING-DESIGN.md` |
 | What is the exact CC:T compatibility contract? | `CC-T-COMPATIBILITY-CONTRACT.md` |
 | What does the M1A output/ownership slice guarantee? | `M1A-OUTPUT-OWNERSHIP.md` |
-| How does reusable **server-side** media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
+| How does reusable server-side media-asset storage work? | `M1B-MEDIA-ASSETS.md` |
 | How do CC-local files become prepared reusable server assets? | `M1C-LOCAL-IMPORT.md` |
 | What did frozen M1D media analysis implement? | `M1D-MEDIA-ANALYSIS.md` |
 | What storage safety settings can the server owner configure? | `SERVER-CONFIG.md` |
-| What is proven by source/runtime evidence? | `VERIFIED-FACTS.md` |
+| What is already recorded as verified source/runtime evidence? | `VERIFIED-FACTS.md` |
 | What are the known problems? | `KNOWN-ISSUES.md` |
 | General testing rules | `TESTING.md` |
 | Historical P0 design decisions | `P0-DESIGN-DECISIONS.md` |
@@ -77,4 +95,4 @@ Later documentation-only commits move the branch head. Keep the exact code-beari
 | Transferable HighAudio work | `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md` |
 | Existing SPR baseline | `research/SPR-INTEGRATION-BASELINE.md` |
 
-The documentation is deliberately split between current implementation truth, verified facts, accepted architecture/design, future roadmap, and historical/prototype evidence. Do not treat an old milestone document as the current product contract.
+The documentation is deliberately split between current implementation truth, current preparation decisions, verified facts, accepted architecture/design, future roadmap, cleanup inventory, and historical/prototype evidence. Do not treat an old milestone document or older handoff as the current product contract when newer exact source/runtime evidence exists.
