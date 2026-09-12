@@ -12,16 +12,14 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - verified M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`
 - M1E exact code-bearing head: `d0e66ab9135359627086c13647d5241ad778643f`
-- documentation freeze before canonical handoff: `17205142cc6328b55548fa281e1f511b2670c3bd`
+- reviewed documentation base before the complete next-chat handoff: `0aba08f70f15eb30830ef053f557103558a24e9b`
 - active branch: `codex/m1e-server-authoritative-finite`
 
 M1D final CI run: `34635484316` — success on NeoForge 21.1.247 and 21.1.248.
 
 M1E code-bearing CI run: `34658958488` — success on NeoForge 21.1.247 and 21.1.248.
 
-Documentation freeze run: `34663802799` — success on NeoForge 21.1.247 and 21.1.248.
-
-The active branch may contain later documentation-only commits. Do not use the latest docs commit as the M1E implementation proof point; `d0e66ab9135359627086c13647d5241ad778643f` is the exact code-bearing checkpoint verified by run `34658958488`.
+The active branch contains later documentation-only commits after the M1E code-bearing head. Do not use a docs-only branch head as the M1E implementation proof point; `d0e66ab9135359627086c13647d5241ad778643f` is the exact code-bearing checkpoint verified by run `34658958488`.
 
 Target stack:
 
@@ -32,7 +30,7 @@ Target stack:
 - NeoForge 21.1.248 compatibility
 - future SPR 1.21.1-1.5.1 compatibility
 
-For a new chat, start with `CHAT-HANDOFF.md`, then re-read the current branch source and current CI before making changes. `CHAT-HANDOFF-2026-09-12.md` remains as longer dated deep context.
+For a new chat, start with `NEXT-CHAT-HANDOFF.md`, then re-read the current branch source and current CI before making changes. `CHAT-HANDOFF.md` and `CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper context.
 
 ## Product identity
 
@@ -213,7 +211,7 @@ After M1F:
 
 After M1: M2 SPR, M3 live/open-ended network streams, M4 release cleanup.
 
-See `CHAT-HANDOFF.md`, `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, and `M1E-FINITE-STREAMING-DESIGN.md` for exact continuation boundaries. `CHAT-HANDOFF-2026-09-12.md` remains the longer dated deep-context record.
+See `NEXT-CHAT-HANDOFF.md`, `ROADMAP.md`, `M1E-SERVER-AUTHORITY.md`, and `M1E-FINITE-STREAMING-DESIGN.md` for exact continuation boundaries. `CHAT-HANDOFF.md` and `CHAT-HANDOFF-2026-09-12.md` remain supporting/deeper context.
 
 ## Other retained issues
 
