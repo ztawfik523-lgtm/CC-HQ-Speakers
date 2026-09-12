@@ -19,7 +19,8 @@ References:
 - completed M1B asset-store foundation: `40091ee32f412c1208e9016fca288b8d4f902dfa`;
 - verified M1C + server-storage-config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
-- M1E final code-bearing head before documentation freeze: `d0e66ab9135359627086c13647d5241ad778643f`;
+- M1E semantic implementation checkpoint: `d0e66ab9135359627086c13647d5241ad778643f`;
+- pre-preparation M1E diagnostic Java head: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`;
 - current implementation branch: `codex/m1e-server-authoritative-finite`.
 
 ### FACT-PLATFORM-001
@@ -42,7 +43,9 @@ The exact M1C + server-storage-config base `33bcc6e04a2734500b7b15b84bee88456253
 
 The final frozen M1D head `4a2cd5de96228fc091226c7e72fb669b82be258c` completed GitHub Actions run `34635484316` successfully. The workflow head SHA exactly matches that frozen M1D commit. Both target NeoForge jobs completed successfully with build/tests, package verification, and candidate-JAR upload.
 
-The M1E code-bearing head `d0e66ab9135359627086c13647d5241ad778643f` completed GitHub Actions run `34658958488` successfully on both NeoForge 21.1.247 and 21.1.248. This is source/test/package evidence for the M1E implementation, not Minecraft runtime proof.
+The M1E semantic implementation checkpoint `d0e66ab9135359627086c13647d5241ad778643f` completed GitHub Actions run `34658958488` successfully on both NeoForge 21.1.247 and 21.1.248. This is source/test/package evidence for the M1E authority implementation, not Minecraft runtime proof.
+
+The later diagnostic Java head `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7` completed GitHub Actions run `34686003774` successfully on both NeoForge 21.1.247 and 21.1.248. Those later Java changes add runtime diagnostics; they do not make M1E a Minecraft-runtime PASS.
 
 ### FACT-PLATFORM-003
 
@@ -235,7 +238,7 @@ Once asset import succeeds, failure to remove the temporary staging file does no
 
 ### FACT-M1C-011
 
-On server shutdown, speaker/prepared/playback references are cleaned before shared-store close. Failed store close remains reachable so cleanup may be retried.
+On server shutdown, speaker/prepared ownership is cleaned before shared media-store close. Failed store close remains reachable so cleanup may be retried.
 
 ## M1D server media-analysis facts
 
@@ -327,11 +330,27 @@ Current `HQFiniteMediaStatusPacket.Transition` contains only READY and ERROR. Th
 
 ### FACT-M1E-007
 
-The transitional M1E client still receives/writes the complete encoded file before constructing `FileFiniteAudioStream`, but it no longer starts at 0 when transfer ends. It reports READY and waits for a fresh authoritative STATE, then starts/seeks from the current server position or remains paused/destroys itself according to server state.
+The transitional M1E client still receives/writes the complete encoded file before constructing `FileFiniteAudioStream`, but it no longer starts at 0 when transfer ends. It reports READY and waits for a fresh authoritative STATE, then attempts to start/seek from the current server position or remains paused/destroys itself according to server state.
 
 ### FACT-M1E-008
 
 The client's `FinitePlaybackClock` remains as a local renderer projection, not canonical playback authority. Natural local decoder end does not send a canonical ENDED transition to the server.
+
+### FACT-M1E-009
+
+The 2026-09-12 diagnostic runtime on the target NeoForge/CC:T stack repeatedly reached complete old-file transfer, JavaSound/mp3spi decoder open, READY, fresh authoritative STATE, renderer submission, and then a first PCM read which returned no data. The client subsequently reported diagnostic ERROR while the server continued authoritative state/control traffic.
+
+The captured logs did not contain the ComputerCraft terminal line `M1E server-authority contract passed`, so that diagnostic run is not a recorded M1E runtime PASS.
+
+### FACT-M1E-010
+
+For the tested MP3, the server analyzer reported `161.304` seconds while the JavaSound/mp3spi bridge reported `322.584` seconds. Client JavaSound/mp3spi duration is therefore not the canonical duration source; the M1E server timeline continues to use server `MediaMetadata` duration.
+
+### FACT-M1E-011
+
+Current `FileFiniteAudioStream.JavaSoundDecoder.seek()` calculates the desired skip using decoded PCM frame/byte quantities and then calls the converted stream's `skip(long)`. The shipped mp3spi `DecodedMpegAudioInputStream.skip(long)` instead estimates MPEG frames from the compressed stream length and returns compressed bytes skipped. The current helper also returns the requested target after an early EOF break and clears `ended`, so its returned position does not prove the decoder physically reached the requested position.
+
+Current `HQFiniteMediaClient` renderer restart also performs a seek in `restartStreamOnly()` and then seeks the same stream again in `startRenderer()`.
 
 ## Frozen/prototype and transitional transport facts
 
@@ -377,7 +396,7 @@ Speaker/prepared ownership is cleaned before shared media-store close on `Server
 
 Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, `FiniteMediaAnalyzerTest`, and `MediaStorageLimitsTest`.
 
-`FinitePlaybackClockTest` now includes explicit natural-end tests: non-looping reaches known duration, while looping never reports natural EOF. Existing exact-end seek, loop-rebase, and pause/resume cases remain.
+`FinitePlaybackClockTest` includes explicit natural-end tests: non-looping reaches known duration, while looping never reports natural EOF. Existing exact-end seek, loop-rebase, and pause/resume cases remain.
 
 `FiniteMediaAnalyzerTest` uses synthetic container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3. It covers ID3v2 handling, non-Vorbis/truncated OGG rejection, WAV first-data/block-alignment/float-width behavior, AIFF width/offset/truncation behavior, bounded seek metadata, JavaSound conversion parity for accepted PCM fixtures, and channel reset after success/failure.
 
