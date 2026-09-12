@@ -4,6 +4,8 @@ Severity here is project priority, not a claim of exploitability. Source/CI work
 
 M1E server-authority source/test/CI is complete at code-bearing head `d0e66ab9135359627086c13647d5241ad778643f` (run `34658958488`). Minecraft M1E runtime acceptance is still pending. M1F demand-driven finite transport is the next implementation milestone.
 
+For a fresh chat, `NEXT-CHAT-HANDOFF.md` is the complete standalone continuation handoff. Exact current source and CI still take precedence if the branch later moves.
+
 ## Source-implemented / runtime pending
 
 ### KI-001 — standard CC:T contract was historically replaced instead of preserved
@@ -206,7 +208,7 @@ Legacy `speakMp3`/`speakOgg`/`speakWav` byte APIs still use one-shot limits/old 
 
 ### KI-024 — documentation/testing can become stale during redesign
 
-**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `CHAT-HANDOFF.md` is the canonical new-chat continuation document; `CHAT-HANDOFF-2026-09-12.md` is retained for deeper dated context. Exact current source and CI still take precedence if the branch later moves.
+**Status:** active docs are aligned around the M1E code-bearing checkpoint and the M1F+ streaming direction. `NEXT-CHAT-HANDOFF.md` is the complete fresh-chat continuation document. `CHAT-HANDOFF.md` is now only a pointer, and `CHAT-HANDOFF-2026-09-12.md` remains deeper dated context. Exact current source and CI always take precedence if the branch later moves.
 
 ### KI-025 — license metadata mismatch
 
