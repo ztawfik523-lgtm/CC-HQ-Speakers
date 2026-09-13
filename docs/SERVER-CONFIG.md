@@ -42,6 +42,19 @@ Set it to `0` to disable HQ Speaker's own total-store quota.
 
 For the ComputerCraft-visible staging mount, HQ Speaker translates the unlimited sentinel to the largest capacity that CC:T's `WritableFileMount` can represent safely. CC:T internally adds its `MINIMUM_FILE_SIZE` accounting overhead to the supplied capacity, so passing `Long.MAX_VALUE` directly would overflow. This clamp is only arithmetic protection and is effectively unlimited for real storage; it does not introduce a practical hidden quota.
 
-## Transport limits
+## Modern finite transport limits
 
-The old staged-finite prototype used a hard-coded 512 MiB check in its begin packet. That policy check has been removed. The packet carries encoded size as a variable-length long and transfers data in bounded chunks; file-size policy belongs to the server configuration/store, not the wire packet.
+Modern prepared playback does not push the complete file to a client. Protocol v6 carries the finite descriptor/state and uses client-requested bounded encoded ranges.
+
+Current implementation tuning is:
+
+- maximum range response: **128 KiB**;
+- client encoded sliding window: **512 KiB**;
+- maximum outstanding range requests per player: **4**;
+- maximum outstanding encoded bytes per player: **512 KiB**;
+- server range IO workers: **2**;
+- server range IO queue: **64**.
+
+These are implementation safety/tuning values, not public API guarantees and not currently exposed as server config options.
+
+The old staged-finite prototype's hard-coded 512 MiB begin-packet policy check is gone. Encoded file size policy belongs to the server configuration/store; the wire carries the total encoded size as a variable-length long while actual transfer remains bounded by range requests/responses.
