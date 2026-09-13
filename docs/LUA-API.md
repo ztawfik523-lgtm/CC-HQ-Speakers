@@ -181,10 +181,10 @@ These functions operate on the HQ continuous source currently owned by the speak
 
 Return current HQ audio status.
 
-For an active or terminal modern finite playback, useful fields include:
+For an active or terminal modern prepared finite playback, useful fields include:
 
-- `state`: `playing`, `paused`, `ended`, `error`, or `idle`.
-- `kind`: `finite` for the modern prepared finite path.
+- `state`: `playing`, `paused`, `ended`, or `error`.
+- `kind`: `finite`.
 - `assetId`: present for prepared-asset playback.
 - `generation`: playback generation.
 - `format`
@@ -202,7 +202,18 @@ For an active or terminal modern finite playback, useful fields include:
 
 The current M1E bridge also exposes transfer-oriented fields such as `transferredBytes` and `totalBytes`. `transferredBytes` is **transitional**, not a stable long-term API promise: M1F replaces the whole-file transfer model with demand-driven ranges.
 
-An idle modern finite status reports `state = "idle"`, position `0`, and false pause/seek/loop capabilities.
+When no HQ continuous source owns the speaker, `audioStatus()` reports an idle status with:
+
+- `state = "idle"`
+- `kind = "none"`
+- `observed = false`
+- `canPause = false`
+- `canSeek = false`
+- `canLoop = false`
+
+For HQ RAW ownership, the status uses `kind = "raw"` and does not claim finite pause/seek/loop capabilities.
+
+Legacy finite/live ownership may still return the inherited legacy status shape until those paths are migrated in their later milestones.
 
 ## `speaker.audioPause() -> boolean`
 
@@ -280,7 +291,9 @@ while true do
 end
 ```
 
-The event carries the same kind of server-owned status table used by `audioStatus()`.
+During active/terminal modern finite playback, the event carries the same server-owned finite status fields described above.
+
+One current implementation detail is worth documenting precisely: when a finite playback is explicitly stopped, the finite server queues an idle event with `kind = "finite"`; after composite ownership is cleared, a later `speaker.audioStatus()` call reports the general no-owner idle shape with `kind = "none"`.
 
 Do not infer client audibility from this event. It represents canonical server playback state, not whether one particular Minecraft client has decoded or rendered sound successfully.
 
