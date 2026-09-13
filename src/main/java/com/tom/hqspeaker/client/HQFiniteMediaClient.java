@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
 import com.tom.hqspeaker.media.FiniteRangeLimits;
 import com.tom.hqspeaker.media.FiniteRangeWindow;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
@@ -14,8 +15,12 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
+import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /** M1F bounded transport plus the local M1G decoder-epoch boundary. */
 @OnlyIn(Dist.CLIENT)
@@ -26,6 +31,10 @@ public final class HQFiniteMediaClient {
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
     private static final int MIN_PCM_QUEUE_BYTES = 32 * 1024;
     private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
+    // Decoder workers are allowed to block on M1F starvation/PCM backpressure. Virtual threads keep those waits from
+    // monopolizing Minecraft/client threads; active sessions remain hard-capped by MAX_SESSIONS.
+    private static final ExecutorService DECODERS = Executors.newThreadPerTaskExecutor(
+        Thread.ofVirtual().name("hqspeaker-finite-decoder-", 0L).factory());
 
     private HQFiniteMediaClient() {}
 
@@ -41,6 +50,7 @@ public final class HQFiniteMediaClient {
         boolean terminal;
         FiniteEncodedInputStream encodedInput;
         FinitePcmQueue pcmQueue;
+        Future<?> decoderTask;
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
@@ -48,6 +58,9 @@ public final class HQFiniteMediaClient {
         }
 
         void cancelDecodeEpoch() {
+            Future<?> task = decoderTask;
+            decoderTask = null;
+            if (task != null) task.cancel(true);
             FiniteEncodedInputStream input = encodedInput;
             encodedInput = null;
             if (input != null) input.cancel();
@@ -178,14 +191,35 @@ public final class HQFiniteMediaClient {
     private static void restartDecodeEpoch(Session session, long startOffset) {
         session.cancelDecodeEpoch();
         try {
-            session.encodedInput = new FiniteEncodedInputStream(session.window, startOffset);
-            session.pcmQueue = new FinitePcmQueue(pcmQueueCapacity(session.begin.descriptor().sampleRate()));
-            session.decodeEpoch++;
+            FiniteEncodedInputStream input = new FiniteEncodedInputStream(session.window, startOffset);
+            FinitePcmQueue pcm = new FinitePcmQueue(pcmQueueCapacity(session.begin.descriptor().sampleRate()));
+            session.encodedInput = input;
+            session.pcmQueue = pcm;
+            long epoch = ++session.decodeEpoch;
+
+            if (session.begin.descriptor().kind() == FiniteDecodeDescriptor.Kind.WAV) {
+                session.decoderTask = DECODERS.submit(() -> runWavDecoder(session, epoch, input, pcm, startOffset));
+            }
+            // MP3 gets the same epoch/input/PCM boundary; the JLayer worker is the next M1G slice.
         } catch (RuntimeException e) {
             session.encodedInput = null;
             session.pcmQueue = null;
             fail(session, "cannot create finite decoder epoch: " + safeMessage(e));
         }
+    }
+
+    private static void runWavDecoder(Session session, long epoch, FiniteEncodedInputStream input,
+                                      FinitePcmQueue pcm, long startOffset) {
+        try {
+            ProgressiveWavDecoder.decode(input, pcm, session.begin.descriptor().wavLayout(), startOffset);
+        } catch (IOException | RuntimeException e) {
+            Minecraft.getInstance().execute(() -> decoderFailed(session, epoch, e));
+        }
+    }
+
+    private static void decoderFailed(Session session, long epoch, Exception failure) {
+        if (session.terminal || session.decodeEpoch != epoch || SESSIONS.get(session.begin.source()) != session) return;
+        fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
     private static int pcmQueueCapacity(int sampleRate) {
