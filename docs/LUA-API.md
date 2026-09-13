@@ -2,6 +2,8 @@
 
 This is the current user-facing programming reference for CC:HQ Speakers.
 
+The public Lua/API shape below is still current. The 2026-09-13 M1E/M1F reevaluation reopened implementation correctness/acceptance work underneath that API; see `M1E-M1F-REEVALUATION-2026-09-13.md` for current engineering status.
+
 The mod upgrades the normal ComputerCraft `speaker`. Lua decides what the audio means; Java exposes audio capabilities and playback controls.
 
 ## Recommended starting point
@@ -31,7 +33,7 @@ assert(hq.playPrepared(speaker, asset, { volume = 0.6 }))
 assert(hq.releasePrepared(speaker, asset))
 ```
 
-The active playback has its own server asset reference, so releasing the preparation reference after a successful play does not stop that playback.
+The intended ownership model is that an accepted active playback has its own server asset reference, so releasing the preparation reference after a successful play does not stop that playback. The reevaluation found rare failure-path bookkeeping issues around unsuccessful release/start exceptions; that does not change the intended API contract.
 
 ## Standard CC:T functions
 
@@ -77,11 +79,11 @@ Behind the scenes:
 CC file
     -> temporary HQ import copy
     -> reusable immutable server MediaAsset
-    -> start playback
+    -> start prepared playback
     -> release temporary preparation ownership
 ```
 
-M1F changes how that server asset reaches Minecraft clients internally; the Lua call remains the same.
+M1F changed how that server asset reaches Minecraft clients internally; the Lua call remains the same.
 
 ### `hq.prepareFile(speaker, path) -> assetId`
 
@@ -105,11 +107,13 @@ The server metadata is authoritative for finite duration; client decoder guesses
 
 Start a previously prepared server asset.
 
+The normal successful path creates a server-owned finite playback generation and a separate playback asset reference.
+
 ### `hq.releasePrepared(speaker, assetId) -> boolean`
 
 Release this computer's preparation reference. Returns false when that computer did not own the preparation.
 
-A currently playing speaker keeps its separate playback reference until stop/end/error.
+A normally active playback keeps its separate playback reference until stop/end/error.
 
 ## Modern finite controls
 
@@ -152,7 +156,7 @@ With no HQ continuous owner, the composite reports the general idle shape:
 
 ### `speaker.audioPause() -> boolean`
 
-Pause finite playback. The server timeline freezes immediately.
+Pause finite playback. The intended canonical server timeline freezes immediately.
 
 ### `speaker.audioResume() -> boolean`
 
@@ -164,7 +168,7 @@ Change canonical server position.
 
 Non-looping exact-duration seek ends playback. Looping exact-duration seek wraps to the start.
 
-Under M1F the client is given the current server-selected encoded anchor and requests bounded data from there rather than downloading everything before the target.
+Under M1F the client is given a server-selected encoded anchor and requests bounded data from there rather than downloading everything before the target.
 
 ### `speaker.audioSetVolume(volume) -> boolean`
 
@@ -191,7 +195,7 @@ while true do
 end
 ```
 
-This is server semantic state, not proof that a particular Minecraft client currently hears sound.
+This represents server semantic state, not proof that a particular Minecraft client currently hears sound.
 
 When finite playback is explicitly stopped, the finite server's immediate event uses an idle finite state; after composite ownership clears, a later `audioStatus()` uses the general `kind = "none"` idle shape.
 
@@ -282,17 +286,19 @@ Project direction:
 
 ## Current implementation caveat
 
-M1F transport is source/test/CI complete, but M1G has not started.
+M1F's range architecture is implemented and both-target CI is green, but the 2026-09-13 reevaluation reopened M1E/M1F correctness and acceptance. M1G has not started.
 
-So the modern prepared-file path currently has:
+The modern prepared-file path currently has:
 
 ```text
 server MediaAsset
--> server timeline
+-> server-authoritative timeline
 -> client-requested encoded ranges
 -> bounded client encoded RAM
 ```
 
-but it does **not yet** have the final progressive decoder/PCM renderer attached to that RAM window.
+It does **not yet** have the final progressive decoder/PCM renderer attached to that RAM window, and the current encoded-window API still needs a cleaner sliding consume/discard operation before it should be treated as a finished progressive decoder input.
 
-Do not expect M1F alone to make prepared MP3/WAV audible. M1G owns that work.
+Do not expect M1F alone to make prepared MP3/WAV audible. M1G owns decoding/rendering, but M1G is currently blocked until the owner chooses how to close or explicitly defer the reopened M1E/M1F issues.
+
+The public Lua workflow above remains the intended programming shape. A green CI build or an accepted Lua call must not be described as proof of client audibility or full milestone acceptance.

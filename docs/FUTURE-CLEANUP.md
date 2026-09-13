@@ -2,7 +2,9 @@
 
 This is a parking lot for obsolete/legacy code and release cleanup. It is not permission to expand the active milestone.
 
-Current checkpoint: M1F source/test/CI complete; M1G not started.
+Current checkpoint: **M1E/M1F reevaluation hold; M1G not started.**
+
+The reevaluation's active correctness issues are tracked in `M1E-M1F-REEVALUATION-2026-09-13.md` and `KNOWN-ISSUES.md`; they are not merely optional future cleanup.
 
 ## Modern prepared path cleanup state after M1F
 
@@ -15,6 +17,16 @@ M1F already removed these from the modern prepared path:
 - active modern use of `FileFiniteAudioStream`.
 
 Do not restore them for temporary audibility.
+
+## Active lifetime hardening is not parked cleanup
+
+The reevaluation found a shared ownership rule which current callers do not all obey:
+
+`MediaAssetStore.release()` may fail final file deletion and deliberately keep the reference alive. A caller must therefore not forget ownership until release actually succeeds, or it must preserve an explicit retry owner.
+
+Current active hardening findings include playback-reference release ordering, rare in-flight range final-release retry, and detached prepared-owner cleanup which logs-and-forgets a failed release after detaching the computer.
+
+These belong to the current M1E/M1F hardening decision, not M4 cleanup.
 
 ## Old complete-file decoder classes/dependencies
 
@@ -33,13 +45,13 @@ Current JarJar dependencies include mp3spi/JLayer/tritonus-related pieces. Do no
 
 Older development builds may have left an `hqspeaker-cache` directory or `.part/.media` files on disk.
 
-Active M1F does not use them.
+Active M1F source does not use them.
 
 If a one-time cleanup is later added, restrict deletion narrowly to the mod-owned old cache path; never delete arbitrary user files.
 
 ## Legacy finite engine
 
-Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared M1F path.
+Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared path.
 
 Target M1L:
 
@@ -51,6 +63,8 @@ Target M1L:
 ## Protocol/state review after M1G/M1H
 
 Current modern finite protocol v5 includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
+
+The reevaluation did not find a reason to redesign protocol v5. The current buffer-comsume gap can be solved inside the client encoded-window API.
 
 Review later rather than deleting blindly:
 
