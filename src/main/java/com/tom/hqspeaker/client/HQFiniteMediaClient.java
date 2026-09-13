@@ -22,7 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-/** M1F bounded transport plus the local M1G decoder-epoch boundary. */
+/** M1F bounded transport plus the local M1G decoder and Minecraft renderer epoch. */
 @OnlyIn(Dist.CLIENT)
 public final class HQFiniteMediaClient {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
@@ -31,8 +31,6 @@ public final class HQFiniteMediaClient {
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
     private static final int MIN_PCM_QUEUE_BYTES = 32 * 1024;
     private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
-    // Decoder workers are allowed to block on M1F starvation/PCM backpressure. Virtual threads keep those waits from
-    // monopolizing Minecraft/client threads; active sessions remain hard-capped by MAX_SESSIONS.
     private static final ExecutorService DECODERS = Executors.newThreadPerTaskExecutor(
         Thread.ofVirtual().name("hqspeaker-finite-decoder-", 0L).factory());
 
@@ -48,16 +46,41 @@ public final class HQFiniteMediaClient {
         boolean anchorReady;
         boolean restartRequested;
         boolean terminal;
+        boolean desiredPaused;
+        boolean looping;
+        float volume;
         FiniteEncodedInputStream encodedInput;
         FinitePcmQueue pcmQueue;
         Future<?> decoderTask;
+        FinitePcmAudioStream rendererStream;
+        FiniteSpeakerSound sound;
+        boolean rendererStarted;
+        Boolean appliedPause;
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
             this.window = new FiniteRangeWindow(begin.totalBytes(), FiniteRangeLimits.CLIENT_WINDOW_BYTES);
+            this.desiredPaused = begin.paused();
+            this.looping = begin.looping();
+            this.volume = begin.volume();
+        }
+
+        void stopRenderer() {
+            FiniteSpeakerSound currentSound = sound;
+            sound = null;
+            if (currentSound != null) {
+                currentSound.stopLocally();
+                Minecraft.getInstance().getSoundManager().stop(currentSound);
+            }
+            FinitePcmAudioStream stream = rendererStream;
+            rendererStream = null;
+            if (stream != null) stream.close();
+            rendererStarted = false;
+            appliedPause = null;
         }
 
         void cancelDecodeEpoch() {
+            stopRenderer();
             Future<?> task = decoderTask;
             decoderTask = null;
             if (task != null) task.cancel(true);
@@ -102,6 +125,8 @@ public final class HQFiniteMediaClient {
             if (!session.anchorReady) return;
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
             pump(session, now);
+            tryStartRenderer(session);
+            applyRendererState(session);
         });
     }
 
@@ -119,8 +144,6 @@ public final class HQFiniteMediaClient {
 
         Session session = new Session(packet);
         SESSIONS.put(packet.source(), session);
-        // BEGIN describes identity/layout, but byte demand and a decoder epoch wait for authoritative STATE so the
-        // server chooses the current codec-safe encoded anchor.
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
     }
 
@@ -141,6 +164,10 @@ public final class HQFiniteMediaClient {
             return;
         }
 
+        session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
+        session.looping = packet.looping();
+        setVolume(session, packet.volume());
+
         boolean anchorChanged = !session.anchorReady || packet.anchorOffset() != session.anchorOffset;
         boolean anchorOutsideWindow = session.window.anchored()
             && (packet.anchorOffset() < session.window.windowStart() || packet.anchorOffset() >= session.window.windowEnd());
@@ -157,6 +184,8 @@ public final class HQFiniteMediaClient {
         if (restart) restartDecodeEpoch(session, packet.anchorOffset());
         session.restartRequested = false;
         pump(session, System.nanoTime());
+        tryStartRenderer(session);
+        applyRendererState(session);
     }
 
     private static void rangeData0(HQFiniteMediaRangeDataPacket packet) {
@@ -167,25 +196,32 @@ public final class HQFiniteMediaClient {
             if (input != null) input.signalDataAvailable();
             pump(session, System.nanoTime());
         }
-        // A stale response after seek/replacement is intentionally discarded without becoming a playback error.
     }
 
     private static void control0(HQFiniteMediaControlPacket packet) {
         Session session = SESSIONS.get(packet.source());
         if (session == null || session.begin.generation() != packet.generation() || session.terminal) return;
-        if (packet.action() == HQFiniteMediaControlPacket.Action.STOP) {
-            session.terminal = true;
-            session.cancelAll();
-            SESSIONS.remove(packet.source(), session);
-            return;
+        switch (packet.action()) {
+            case STOP -> {
+                session.terminal = true;
+                session.cancelAll();
+                SESSIONS.remove(packet.source(), session);
+            }
+            case SEEK -> {
+                session.cancelDecodeEpoch();
+                session.restartRequested = true;
+            }
+            case PAUSE -> {
+                session.desiredPaused = true;
+                applyRendererState(session);
+            }
+            case RESUME -> {
+                session.desiredPaused = false;
+                applyRendererState(session);
+            }
+            case SET_VOLUME -> setVolume(session, packet.value());
+            case SET_LOOP -> session.looping = packet.value() >= 0.5;
         }
-        if (packet.action() == HQFiniteMediaControlPacket.Action.SEEK) {
-            // Codec state and queued PCM are semantic-seek state. Invalidate them even if STATE later selects the same
-            // coarse encoded anchor. Immutable encoded bytes may remain reusable until STATE decides whether to reset.
-            session.cancelDecodeEpoch();
-            session.restartRequested = true;
-        }
-        // Pause/resume/loop/volume remain server semantics; renderer projection is added later in M1G.
     }
 
     private static void restartDecodeEpoch(Session session, long startOffset) {
@@ -237,8 +273,58 @@ public final class HQFiniteMediaClient {
         fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
+    private static void tryStartRenderer(Session session) {
+        if (session.terminal || session.rendererStarted || session.pcmQueue == null) return;
+        FinitePcmQueue pcm = session.pcmQueue;
+        int queued = pcm.queuedBytes();
+        int threshold = prebufferBytes(session.begin.descriptor().sampleRate(), pcm.capacityBytes());
+        if (queued <= 0 || (queued < threshold && !pcm.eofMarked())) return;
+
+        FinitePcmAudioStream stream = new FinitePcmAudioStream(pcm, session.begin.descriptor().sampleRate());
+        FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, session.volume,
+            session.begin.x(), session.begin.y(), session.begin.z());
+        session.rendererStream = stream;
+        session.sound = sound;
+        session.rendererStarted = true;
+        session.appliedPause = null;
+        Minecraft.getInstance().getSoundManager().play(sound);
+    }
+
+    private static void applyRendererState(Session session) {
+        FiniteSpeakerSound sound = session.sound;
+        if (sound == null || !Minecraft.getInstance().getSoundManager().isActive(sound)) return;
+        boolean desired = session.desiredPaused;
+        if (session.appliedPause != null && session.appliedPause == desired) return;
+        boolean found = HQSoundChannelControl.execute(sound, channel -> {
+            if (desired) channel.pause();
+            else channel.unpause();
+            Minecraft.getInstance().execute(() -> {
+                if (session.sound == sound && session.desiredPaused == desired) {
+                    session.appliedPause = desired;
+                }
+            });
+        });
+        if (!found) session.appliedPause = null;
+    }
+
+    private static void setVolume(Session session, double value) {
+        if (!Double.isFinite(value)) return;
+        session.volume = (float) Math.max(0.0, Math.min(3.0, value));
+        FiniteSpeakerSound sound = session.sound;
+        if (sound != null) {
+            sound.updateVolume(session.volume);
+            HQSoundChannelControl.refreshBlocksVolume();
+        }
+    }
+
+    private static int prebufferBytes(int sampleRate, int capacityBytes) {
+        long target = Math.max(2_048L, ((long) sampleRate * 2L) / 10L);
+        target = Math.min(target, Math.max(2L, capacityBytes / 2L));
+        int bytes = (int) target;
+        return (bytes & 1) == 0 ? bytes : bytes - 1;
+    }
+
     private static int pcmQueueCapacity(int sampleRate) {
-        // Roughly 500 ms of mono S16 at ordinary rates, with absolute bounds independent of hostile metadata.
         long target = Math.max(MIN_PCM_QUEUE_BYTES, Math.min((long) MAX_PCM_QUEUE_BYTES, (long) sampleRate));
         int bytes = (int) target;
         return (bytes & 1) == 0 ? bytes : bytes + 1;
