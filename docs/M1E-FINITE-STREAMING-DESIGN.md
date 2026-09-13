@@ -1,199 +1,100 @@
 # M1E+ finite streaming design contract
 
-This is the implementation contract for finite media after frozen M1D.
+This is the implementation contract for finite media from M1F onward.
 
-Historical M1D behavior remains documented in `M1D-MEDIA-ANALYSIS.md` and `VERIFIED-FACTS.md`. M1E server-authority behavior is documented in `M1E-SERVER-AUTHORITY.md`. This file defines the **replacement streaming architecture from M1F onward**.
+Read `HANDOFF-2026-09-13-PRE-M1F.md`, `LUA-API.md`, and `CURRENT-STATE.md` first for the current checkpoint and user-facing API.
 
-## Goal
+## Goal in player terms
 
-Play large finite files through the normal ComputerCraft speaker without downloading the whole file to the client first and without keeping a persistent client music cache in the final path.
+Large local files should behave like this:
 
 ```text
-ComputerCraft file
-    -> server MediaAsset
-    -> authoritative server playback clock/state
-    -> bounded client-requested encoded ranges
-    -> temporary bounded client RAM
-    -> progressive decoder/converter worker
-    -> bounded mono PCM queue
-    -> one positional Minecraft/OpenAL renderer
+ComputerCraft has a file
+    -> server stores one authoritative encoded copy
+    -> speaker playback starts on the server timeline
+    -> each relevant client asks for only the small encoded pieces it currently needs
+    -> the client keeps bounded temporary RAM
+    -> later M1G decodes those pieces into positional sound
 ```
 
-## Final format scope
+A 500 MiB song must not imply 500 MiB of client RAM/disk or a full download before useful work begins.
+
+## Current checkpoint
+
+M1E server-authority source/tests/CI are finalized and re-reviewed.
+
+The final manual M1E Minecraft acceptance script was prepared but not run. The project owner chose to skip that manual test. Therefore M1E has no recorded final runtime PASS, but that skipped run is no longer treated as a required sequencing gate before future M1F work.
+
+M1F implementation has **not started** at the current documentation checkpoint.
+
+## Final finite product scope
 
 Committed core targets:
 
 - MP3 / MPEG Layer III
 - common WAV
 
-Gated extension:
+Separately gated later:
 
-- normal native FLAC (`.flac`), only after its exact analyzer/decoder/seek/package path is proven
+- normal native FLAC
 
-Not final targets: OGG Vorbis, Ogg-FLAC, AIFF/AIF, AU/SND, and compressed/telephony/exotic WAV variants which substantially complicate the progressive converter.
+Not final core targets:
 
-Frozen M1D may continue to analyze old formats until M1G replaces the prepared/local decoder surface. Historical support does not create a permanent requirement.
+- OGG Vorbis
+- Ogg-FLAC
+- AIFF/AIF
+- AU/SND
+- unusual/compressed/telephony WAV variants
+- >2-channel finite input
 
-## Channel/sample policy
+One physical speaker ultimately renders one mono positional source. Mono stays mono; stereo is downmixed; >2 channels are rejected.
 
-One physical HQ speaker produces one **mono positional** source.
-
-Accepted input:
-
-- mono -> mono;
-- stereo -> safe downmix to mono;
-- >2 channels -> reject.
-
-Core WAV target:
-
-- unsigned 8-bit PCM;
-- signed 16-bit PCM;
-- signed 24-bit PCM;
-- signed 32-bit PCM;
-- 32-bit IEEE float.
-
-The final WAV advertisement must match the converter actually implemented.
-
-## M1E implementation checkpoint
-
-M1E source/test/CI is complete at code-bearing head:
-
-`d0e66ab9135359627086c13647d5241ad778643f`
-
-GitHub Actions run `34658958488` passed NeoForge 21.1.247 and 21.1.248. Minecraft runtime acceptance remains pending.
-
-Implemented M1E semantics:
-
-- server state is `PLAYING`, `PAUSED`, `ENDED`, or `ERROR`;
-- no server `LOADING` state exists for client buffering;
-- successful finite play starts canonical time immediately;
-- playback advances with zero listeners;
-- renderer/observation authority and its 15-second timeout are removed;
-- server duration/clock owns natural EOF;
-- exact-duration seek semantics are server-owned;
-- temporary transfer lifetime is closed before its playback asset reference is released at canonical EOF;
-- protocol v4 includes an authoritative server -> client STATE packet;
-- client -> server finite status is only READY plus diagnostic ERROR;
-- the temporary whole-file client waits for fresh STATE after READY and starts at current server time rather than 0.
-
-M1E intentionally does **not** replace transport or progressive decoding. Fixed recipients, whole-file server push, server-tick reads, client temp files, and complete-file decoding remain until M1F/M1G.
-
-## Server-authoritative semantics
+## Server-authoritative semantics inherited from M1E
 
 A finite playback exists independently of listeners.
 
-On successful `playPrepared` / `playFile`:
+On successful prepared play:
 
-1. validate and retain the server asset;
-2. increment playback generation;
+1. validate/retain the server asset;
+2. create a new playback generation;
 3. set canonical position to 0;
-4. set state `PLAYING`;
+4. enter PLAYING;
 5. start the server clock immediately;
-6. send setup/state to currently selected transitional recipients, if any.
+6. client readiness/failure remains non-authoritative.
 
-Canonical server state owns source/speaker identity, generation, asset ID, duration, position, semantic state, loop, volume, and later sync-clock membership.
+The server owns source/speaker identity, generation, asset ID, duration, position, semantic state, loop, volume, and later sync-clock membership.
 
-Client transfer/decoder/render readiness is not semantic playback state.
+For non-looping playback, reaching duration enters ENDED. Looping wraps. Exact-duration seek ends when non-looping and wraps to zero when looping.
 
-## EOF and asset lifetime
+Client READY only asks for a current state snapshot. Client ERROR is diagnostic only.
 
-Before returning status or applying controls, update/finalize semantic time.
+## Modern Lua/API path
 
-For non-looping playback:
-
-```text
-position >= duration
-    -> clamp to duration
-    -> state = ENDED
-    -> stop canonical clock
-    -> close/cancel any temporary old transfer still using the asset
-    -> release playback asset reference
-```
-
-For looping playback, position wraps modulo duration and does not naturally enter `ENDED`.
-
-`seek(duration)`:
-
-- non-looping -> immediate `ENDED`;
-- looping -> wrap to 0.
-
-## Client -> server finite status
-
-Protocol v4 deliberately has only:
-
-- `READY` — the temporary complete-file bridge can construct its decoder and requests a fresh authoritative state;
-- `ERROR` — local diagnostic telemetry only.
-
-The old `STARTED`, `PAUSED`, `RESUMED`, `SEEKED`, and `ENDED` renderer status transitions were removed in M1E. A client renderer cannot update canonical server position/state/EOF.
-
-A client ERROR never ends playback for other listeners.
-
-## Server -> client packet split
-
-M1E keeps immutable setup separate from mutable semantic truth.
-
-### BEGIN/setup
-
-The existing `finite_begin` packet is still used by the temporary whole-file bridge. It carries setup needed before transfer/rendering:
+Recommended programs use:
 
 ```text
-sourceId
-mediaId
-generation
-format
-initial volume
-speaker world position
-speaker block position
-total encoded bytes
-initial looping
-initial paused flag
+hq.playFile
+hq.prepareFile
+hq.preparedInfo
+hq.playPrepared
+hq.releasePrepared
 ```
 
-It is not the canonical moving clock.
+with the capability-oriented `audio*` finite controls.
 
-### STATE
+The temporary writable mount is import plumbing, not the playback model.
 
-The `finite_state` packet carries authoritative mutable truth:
+### `audioPlayStaged()` removal decision
 
-```text
-sourceId
-mediaId
-generation
-PLAYING | PAUSED | ENDED | ERROR
-positionSeconds
-durationSeconds
-volume
-looping
-error detail
-```
+`audioPlayStaged()` was introduced by this project during the staged/local-file prototype. It is not original HQ Speakers compatibility.
 
-Format, encoded size, and speaker position do not need to be duplicated in every STATE because BEGIN/setup already carries them for the transitional renderer. M1F may introduce a different stream descriptor when the old BEGIN/chunk/end transport is replaced.
+When M1F implementation begins, remove this direct-staged playback command rather than maintaining a second modern transport path.
 
-Do **not** send `System.nanoTime()` expecting the client to subtract it from its own `nanoTime()`: JVM clock origins are unrelated.
+New programs use `hq.playFile()` or prepare/play/release.
 
-STATE is sent on play/setup and semantic/control changes, and READY explicitly requests a fresh snapshot. Dynamic new-listener state delivery belongs to M1H once listener relevance is no longer a fixed recipient set.
+## M1F clean-break transport
 
-Periodic correction is optional later and should be driven by measured drift rather than guessed latency math.
-
-## Temporary M1E bridge
-
-M1E keeps the old full-file transfer only long enough to prove server authority:
-
-```text
-server starts at 0 immediately
-    -> old transfer runs
-    -> client eventually READY
-    -> server sends fresh current STATE
-    -> client starts near CURRENT server position
-```
-
-If transfer took 8 seconds, audible output starts around the then-current timeline, not 0:00. If playback ended/stopped/replaced before readiness, stale generation cannot start.
-
-This disk-backed bridge is explicitly temporary and is deleted by M1F/M1G.
-
-## M1F range protocol
-
-Final finite transfer is demand-driven.
+M1F replaces the modern prepared path's old whole-file push/client-file bridge.
 
 Conceptual request:
 
@@ -217,143 +118,231 @@ FiniteRangeData
     bytes
 ```
 
-No TCP-style ACK layer is required. Minecraft's connection is reliable; client demand naturally provides pacing. Keep outstanding request count/bytes bounded.
+Exact class names are not frozen.
 
-Generation changes on playback replacement, not on pause/resume/seek/volume/loop. A seek does not make the underlying asset bytes stale; obsolete pre-seek responses are simply outside the current demand window and may be discarded.
+The modern prepared path should stop depending on:
 
-## Server range validation/threading
+- fixed recipients captured only at play start;
+- server tick-thread whole-file reads;
+- push of the entire encoded asset;
+- client `.part`/`.media` song files;
+- complete local file before useful client work;
+- `FileFiniteAudioStream` as the modern transport consumer;
+- `audioPlayStaged()` as a direct temporary-file playback route.
 
-On the server thread, before scheduling IO:
+Legacy classes may remain elsewhere until their scheduled migration milestones.
 
-1. active finite playback exists;
-2. generation matches;
-3. asset matches;
-4. player is connected, same dimension, currently relevant/in range;
-5. offset/length are valid and bounded;
-6. per-player outstanding/rate limits allow it;
-7. playback still owns the asset.
+## Client-pulled behavior
 
-Then retain a safe read reference and perform the file read on a bounded IO executor.
+The server owns the complete file. The client asks for bounded encoded ranges near what it currently needs.
 
-Before sending completed IO, re-check active playback/generation and player connection/dimension/relevance. Discard stale work instead of sending it.
+The next request naturally provides pacing; no extra TCP-like ACK layer is required.
+
+Generation changes on playback replacement, not ordinary pause/resume/seek/volume/loop changes. Seek changes demand/window relevance rather than changing the underlying asset bytes.
+
+A stale pre-seek response may simply be discarded when it no longer intersects the current demand window.
+
+## Server validation
+
+Before scheduling a read, validate on the server thread:
+
+- active finite playback exists;
+- source/generation match;
+- asset matches;
+- player is connected;
+- dimension/relevance are valid for the current milestone rules;
+- offset/length are valid and bounded;
+- outstanding request count/bytes remain within limits;
+- playback still owns the asset.
+
+Then retain safe asset ownership and perform file IO on a bounded background executor/queue.
+
+Before sending completed work, re-check current playback/generation/player relevance. Discard stale work instead of sending it.
 
 No large asset read belongs on the server tick.
 
+## Shutdown/lifetime rule
+
+Background M1F reads must not outlive the shared media store.
+
+During server shutdown/unload cleanup, stop/drain/cancel the range IO work and release in-flight asset references before the server asset store closes/removes its files.
+
+This lifecycle ordering must be covered by deterministic tests.
+
 ## Packet sizing
 
-The existing 256 KiB chunk cap is a valid starting point, not a semantic constant. Benchmark typical encoded traffic at 64/128/256 KiB with Minecraft packet compression enabled and keep packet size easy to tune.
+Response packets remain bounded. The old 256 KiB chunk size is a reasonable starting point, not a semantic constant.
 
-## No client disk cache
+Keep the cap easy to tune and benchmark practical sizes with Minecraft packet compression before final performance tuning.
 
-The final path does not build `.part` song files, completed client media files, an LRU music cache, cache database, sparse range files, persistent range block files, or cross-restart resume.
+## No persistent client song cache
 
-The server owns the authoritative finite file. If a client later needs an old portion again, it asks the server again.
+The final path does not build:
+
+- `.part` song files;
+- completed client media files;
+- an LRU music cache;
+- a cache database;
+- sparse persistent range files;
+- cross-restart download resume.
 
 Client memory contains only active needs:
 
 - bounded encoded bytes;
-- codec-specific short pre-roll/context;
-- bounded decoded mono PCM.
+- short codec-specific seek/pre-roll context later;
+- bounded decoded PCM later.
 
-A 500 MiB file must not imply 500 MiB client RAM or disk.
+If old data is needed again, the client asks the server again.
+
+## Client encoded-window contract
+
+M1F must expose enough semantics for M1G without transport redesign.
+
+The encoded-data layer must distinguish conceptually:
+
+```text
+DATA_AVAILABLE
+NEED_DATA / NOT_ARRIVED_YET
+TRUE_ASSET_EOF
+CANCELLED_OR_STALE
+```
+
+Exact names are not frozen.
+
+Temporary network starvation must never be represented as permanent EOF.
+
+A deterministic fake/test consumer is sufficient for M1F.
+
+Example proof:
+
+```text
+request a non-zero-offset range
+-> verify exact bytes
+-> consume/discard it
+-> jump to a distant offset
+-> verify obsolete bytes are gone
+-> verify client memory stays within its configured bound
+```
 
 ## Seek-anchor rule
 
-Clients do **not** need the complete server seek index.
+Clients do not need the complete server seek index.
 
-For initial playback, late join, or seek, the server may provide a codec-appropriate anchor:
+For initial playback, seek, or later rejoin, the server may provide a codec/layout anchor at or before the desired canonical time:
 
 ```text
-anchorTimeSeconds
-anchorByteOffset
-codec/layout facts as needed
+asset ID
+generation/source identity
+anchor media time
+anchor encoded byte offset
+minimal codec/layout facts needed later
 ```
 
-The anchor is at/before the desired canonical position. The client requests forward from it and performs decoder-specific pre-roll/discard.
+M1F only needs to make requesting from that anchor possible.
 
-## MP3 contract
+MP3 bit-reservoir reconstruction and silent decode/discard pre-roll are M1G.
 
-Use the shipped JLayer family unless another Java decoder is proven better.
+## M1F acceptance boundary
+
+M1F PASS means the transport is correct and bounded. It does **not** mean the song is audible.
+
+M1F tests must prove at least:
+
+- request offset/length bounds;
+- source/generation/asset validation;
+- relevance/dimension checks for the milestone;
+- bounded outstanding request count/bytes;
+- safe in-flight asset lifetime;
+- stale completion discard after replacement/leave/disconnect;
+- cancellation/accounting/ref cleanup;
+- shutdown ordering with background reads;
+- no large tick-thread asset reads;
+- bounded response packet size;
+- exact returned bytes;
+- arbitrary encoded offsets;
+- bounded client encoded RAM independent of full asset size;
+- no modern client `.part/.media` requirement;
+- availability vs missing-data vs EOF vs stale distinction;
+- `audioPlayStaged()` no longer exists as a modern direct-staged path.
+
+## M1G MP3 contract
+
+M1G uses the shipped JLayer family unless another decoder is proven better.
 
 Critical rule:
 
 ```text
 next encoded byte not received yet
     -> wait/refill on decoder worker
-    -> NOT InputStream EOF
+    -> NOT permanent EOF
 ```
 
-M1D seek points are real scanned MP3 frame offsets. Layer III uses a bit reservoir, so starting exactly at the audible target frame can decode incorrectly for initial frames. Server chooses an earlier frame anchor; client decodes/discards pre-roll and only exposes PCM around the current canonical position.
+Layer III seek/rejoin starts earlier than the audible target because frame decoding may depend on previous main-data reservoir state. M1G decodes/discards pre-roll before audible output.
 
-## WAV contract
+## M1G WAV contract
 
-M1G narrows WAV support to the implemented common formats. Server metadata needs internal PCM layout such as audio-data offset/length, sample encoding, bits/sample, sample rate, channel count, and encoded frame size.
+For common uncompressed WAV, server metadata needs enough layout for direct time-to-byte mapping: audio data offset/length, sample encoding, bits/sample, sample rate, channels, and encoded frame size.
 
-For uncompressed supported WAV, time -> encoded byte is direct arithmetic. Client requests only needed frames and converts/downmixes them to mono signed PCM. Stereo averaging must widen arithmetic before division to avoid overflow.
+Supported final target:
+
+- unsigned 8-bit PCM;
+- signed 16-bit PCM;
+- signed 24-bit PCM;
+- signed 32-bit PCM;
+- 32-bit IEEE float;
+- mono/stereo only.
+
+Stereo downmix uses widened arithmetic to avoid overflow.
 
 ## FLAC contract
 
-FLAC is a **separate gated M1I extension**, not a blocker for the MP3/WAV engine.
+Native FLAC remains a separate M1I extension. Do not advertise it until analyzer, metadata, progressive decode, seek/rejoin, malformed-input/checksum behavior, bounded memory/cancellation, package behavior, and Minecraft runtime playback are proven.
 
-Before advertising native `.flac`, prove byte identification/STREAMINFO metadata, duration/total samples, mono/stereo validation, bounded progressive decoding from server ranges, seek/rejoin anchors, malformed-input/checksum behavior, bounded memory/cancellation, packaging on both NeoForge targets, and Minecraft runtime playback.
-
-Do not add Ogg-FLAC. If this cannot be done cleanly, leave FLAC unadvertised.
+Do not add Ogg-FLAC.
 
 ## Decoder/render threading
 
 ### Client packet/main thread
 
-Validate generation/source, enqueue/copy bounded range data into the in-memory stream buffer, and schedule semantic renderer changes. Never block on decoder/network progress.
+Accept/validate bounded range data and schedule state changes. Never block waiting for network/decoder progress.
 
 ### Decoder worker
 
-Perform MP3/FLAC decode or WAV conversion/downmix, wait for requested-but-not-yet-arrived encoded bytes, perform seek pre-roll/discard, and produce bounded PCM.
+M1G performs MP3/WAV work, waits for temporarily missing encoded bytes, performs seek pre-roll/discard, and produces bounded PCM.
 
 ### Sound/render thread
 
-Consume already-ready PCM only. Never wait for network, disk, or decoder work.
+Consumes already-ready PCM only. Never waits for network, disk, or decoder refill.
 
-## Seek behavior
+## Underrun and late entry
 
-Lua seek changes server truth immediately. Client drops obsolete demand/PCM, uses a server-selected codec anchor, requests bounded encoded data, pre-rolls/buffers, and begins audible output near the then-current server timeline. The server never pauses while a client catches up.
+If a client cannot keep up, the server timeline continues. Local rendering may go silent/refill and later rejoin current server time.
 
-## Late listener behavior
+A late listener should request data near current server time rather than downloading from the beginning.
 
-If server playback is already at 2:00, do not transfer 0:00 -> 2:00. Send current state/seek anchor, request bytes near the anchor, pre-roll/buffer, and join current time.
-
-## Underrun behavior
-
-If a client cannot keep up, canonical server playback continues. Local rendering may become silent; the client refills/re-anchors and resumes near current time. Choose stop/recreate vs short bounded silence based on audible runtime tests; semantic rules do not change.
+Dynamic new-listener discovery/rejoin correctness is M1H, but M1F transport must already support arbitrary range offsets and current-state anchoring.
 
 ## Resource limits
 
-Protect expensive resources rather than arbitrary Lua program counts:
+Protect expensive resources rather than arbitrary Lua-program counts:
 
 - max range request length;
-- max outstanding request count/bytes per Minecraft player;
-- per-player byte rate limit if needed;
+- max outstanding requests/bytes per player;
+- per-player rate limit if needed;
 - bounded server IO pool/queue;
 - existing server asset/staging quotas;
 - bounded client encoded/PCM buffers.
 
-Do not add a low static "finite sessions per ComputerCraft computer" cap without profiling evidence.
-
-## Multispeaker direction
-
-One server asset may back many playbacks. M1J later adds shared server sync clocks and one physical renderer per audible block. M1K may then share active encoded/decode work for identical timelines. No expected-group-size barrier and no persistent client cache are required.
-
-## Explicitly removed architecture
-
-Do not reintroduce wait-for-READY server start, server `LOADING` based on client readiness, successful-renderer/anchor-client authority, renderer-defined canonical EOF, 15-second no-renderer failure, renderer STARTED/SEEKED/etc. authority, full client file before first audio in the final path, persistent client song cache/LRU, OGG/AIFF/AU requirements, surround finite rendering from one block, or whole decoded track in RAM.
+Do not add a low static finite-session-per-computer cap without profiling evidence.
 
 ## Milestone mapping
 
-- **M1E:** source/test/CI complete — server-authoritative state/EOF + real STATE packet; old transfer remains only as bridge; Minecraft runtime acceptance pending.
-- **M1F:** client-requested encoded range transport + off-thread server IO + seek-anchor/stream descriptors.
-- **M1G:** progressive MP3 + common WAV + bounded RAM/mono output + final format narrowing.
-- **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin and stale-generation hardening.
-- **M1I:** optional/gated native FLAC extension.
-- **M1J:** functional multispeaker shared clocks and correct positional sources.
+- **M1E:** server authority/source tests/CI finalized; final manual Minecraft PASS skipped/unrecorded.
+- **M1F:** client-requested encoded range transport + off-thread server IO + bounded client encoded window; remove `audioPlayStaged()`; no audible requirement.
+- **M1G:** progressive MP3 + common WAV + bounded PCM + actual audible positional output.
+- **M1H:** dynamic relevance, late join, leave/re-enter, underrun/rejoin hardening.
+- **M1I:** optional/gated native FLAC.
+- **M1J:** functional multispeaker shared clocks and correct physical renderers.
 - **M1K:** active-session transfer/decode fan-out optimization.
 
-Then legacy finite migration, RAW finalization, OpenAL cleanup, lifecycle/performance hardening, CI/package verification, and consolidated Minecraft acceptance complete M1.
+Then legacy finite migration, RAW finalization, OpenAL cleanup, lifecycle/performance hardening, package verification, and consolidated Minecraft acceptance complete M1.
