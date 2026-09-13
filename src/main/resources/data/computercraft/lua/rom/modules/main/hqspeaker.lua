@@ -1,6 +1,21 @@
 -- HQ Speakers finite-file helper.
--- Copies a ComputerCraft-visible file into temporary writable staging, prepares one reusable
--- server media asset, and lets Lua decide when/how often that asset is played.
+--
+-- Recommended high-level API for ComputerCraft-local finite files:
+--   hqspeaker.playFile(speaker, path [, options])
+--   hqspeaker.prepareFile(speaker, path)
+--   hqspeaker.preparedInfo(speaker, assetId)
+--   hqspeaker.playPrepared(speaker, assetId [, options])
+--   hqspeaker.releasePrepared(speaker, assetId)
+--
+-- A CC-visible file is copied into temporary writable staging, imported as one reusable
+-- server-owned media asset, and then played from that asset. Staging is import plumbing,
+-- not the persistent media/playback model.
+--
+-- The old peripheral-level audioPlayStaged() command is intentionally not wrapped here.
+-- It belongs to this project's earlier staged-file prototype and is scheduled for removal
+-- when M1F replaces the old whole-file transport.
+--
+-- Full user-facing reference: docs/LUA-API.md in the project repository.
 
 local hqspeaker = {}
 
@@ -49,10 +64,16 @@ local function stageFile(speaker, path)
 end
 
 --- Prepare and analyze a finite CC-local file without starting playback.
---- The returned asset ID owns one prepared reference. Call releasePrepared when no longer needed.
---- @param speaker table A wrapped HQ speaker peripheral.
---- @param path string Path in the CC filesystem.
---- @return string assetId
+---
+--- The returned asset ID represents one reusable server-owned media asset and one
+--- preparation-owner reference held by this ComputerCraft computer. The file is not
+--- tied to one playback: a later successful play takes its own separate playback reference.
+---
+--- Call releasePrepared when this program no longer needs preparation ownership.
+---
+--- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
+--- @param path string Path in the ComputerCraft filesystem.
+--- @return string assetId Server media asset ID.
 function hqspeaker.prepareFile(speaker, path)
     local stagedName, stagedPath = stageFile(speaker, path)
     local ok, assetOrError = pcall(speaker.audioPrepareStaged, stagedName, true)
@@ -61,28 +82,39 @@ function hqspeaker.prepareFile(speaker, path)
         error(assetOrError, 2)
     end
 
-    -- The server normally consumes the staging file. Retry from the mounted filesystem too so a successful asset
-    -- is never discarded merely because the first cleanup attempt failed.
+    -- The server normally consumes the temporary staging file after importing it.
+    -- Retry from the mounted filesystem too so a successful server asset is never
+    -- discarded merely because the first staging cleanup attempt failed.
     pcall(fs.delete, stagedPath)
     return assetOrError
 end
 
 --- Return server-derived facts for a prepared finite asset.
---- @param speaker table A wrapped HQ speaker peripheral.
+---
+--- Current fields include format, duration, sampleRate, channels, bitsPerSample,
+--- sizeBytes, and sourceName. These are facts about the server asset; client decoder
+--- guesses are not the authoritative finite duration source.
+---
+--- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
 --- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
---- @return table info format, duration, sampleRate, channels, bitsPerSample, sizeBytes, sourceName
+--- @return table info Server-derived media information.
 function hqspeaker.preparedInfo(speaker, assetId)
     checkSpeaker(speaker)
     if type(assetId) ~= "string" then error("assetId must be a string", 2) end
     return speaker.audioPreparedInfo(assetId)
 end
 
---- Start a previously prepared asset on this speaker.
---- Starting another incompatible HQ source follows the speaker's normal replacement semantics.
---- @param speaker table A wrapped HQ speaker peripheral.
+--- Start a previously prepared server asset on this speaker.
+---
+--- A successful playback takes its own asset reference before returning true, so the
+--- preparation reference may be released afterward without stopping the active playback.
+--- Starting another incompatible HQ continuous source follows the speaker's normal
+--- replacement semantics.
+---
+--- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
 --- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
---- @param options? table { volume = number }
---- @return boolean accepted
+--- @param options? table Optional table, currently { volume = number }.
+--- @return boolean accepted True when playback was accepted.
 function hqspeaker.playPrepared(speaker, assetId, options)
     checkSpeaker(speaker)
     if type(assetId) ~= "string" then error("assetId must be a string", 2) end
@@ -92,23 +124,31 @@ function hqspeaker.playPrepared(speaker, assetId, options)
     return speaker.audioPlayPrepared(assetId, volume)
 end
 
---- Release this computer's prepared reference to an asset.
---- A currently playing speaker keeps its own reference until that playback stops/ends/errors.
---- @param speaker table A wrapped HQ speaker peripheral.
+--- Release this ComputerCraft computer's preparation reference to an asset.
+---
+--- This does not stop a currently playing speaker which already retained a separate
+--- playback reference. Returns false if this computer does not own that preparation.
+---
+--- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
 --- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
---- @return boolean released
+--- @return boolean released True when this computer's preparation reference was released.
 function hqspeaker.releasePrepared(speaker, assetId)
     checkSpeaker(speaker)
     if type(assetId) ~= "string" then error("assetId must be a string", 2) end
     return speaker.audioReleasePrepared(assetId)
 end
 
---- Convenience: prepare a local file, start it, then release the temporary prepared reference.
---- The playback itself retains the asset, so the encoded file remains alive while it is playing.
---- @param speaker table A wrapped HQ speaker peripheral.
---- @param path string Path in the CC filesystem.
---- @param options? table { volume = number }
---- @return boolean accepted
+--- Convenience helper: prepare one local file, start playback, then release only the
+--- temporary preparation reference.
+---
+--- This is the recommended one-call path for a normal ComputerCraft-local finite file.
+--- Internally the active playback has already retained its own server asset reference,
+--- so the encoded asset remains alive while playback is active.
+---
+--- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
+--- @param path string Path in the ComputerCraft filesystem.
+--- @param options? table Optional table, currently { volume = number }.
+--- @return boolean accepted True when playback was accepted.
 function hqspeaker.playFile(speaker, path, options)
     local assetId = hqspeaker.prepareFile(speaker, path)
 
