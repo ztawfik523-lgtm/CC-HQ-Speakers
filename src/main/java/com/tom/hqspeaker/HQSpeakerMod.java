@@ -56,6 +56,7 @@ public class HQSpeakerMod {
 
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
+        ServerMediaAssets.retryPendingReleases();
         com.tom.hqspeaker.peripheral.HQSpeakerPeripheral.tickAllActive();
         com.tom.hqspeaker.peripheral.HQFiniteMediaServer.tickAll();
         com.tom.hqspeaker.peripheral.HQSpeakerCompositePeripheral.tickAll();

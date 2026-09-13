@@ -2,9 +2,10 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.media.FiniteMediaFormat;
-import com.tom.hqspeaker.media.FinitePlaybackClock;
+import com.tom.hqspeaker.media.FinitePlaybackStateMachine;
 import com.tom.hqspeaker.media.FiniteRangeReadService;
 import com.tom.hqspeaker.media.MediaAsset;
+import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
 import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.MediaSeekPoint;
@@ -20,6 +21,7 @@ import com.tom.hqspeaker.vs2.VS2TransformHelper;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.peripheral.IComputerAccess;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.joml.Matrix4dc;
@@ -40,7 +42,6 @@ public final class HQFiniteMediaServer {
     private static final Set<HQFiniteMediaServer> ACTIVE = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, HQFiniteMediaServer> BY_SOURCE = new ConcurrentHashMap<>();
 
-    private enum State { PLAYING, PAUSED, ENDED, ERROR }
     private record Anchor(long offset, double seconds) {}
 
     private static final class Session {
@@ -49,32 +50,24 @@ public final class HQFiniteMediaServer {
         final HQFiniteMediaBeginPacket.MediaFormat format;
         final MediaMetadata metadata;
         final long totalBytes;
-        final FinitePlaybackClock clock;
-        final MediaAssetStore assetStore;
+        final FinitePlaybackStateMachine playback;
         final FiniteRangeReadService rangeReads;
+        final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
-        float volume;
-        boolean assetReferenceHeld;
-        State state;
-        String error = "";
+        boolean assetReferenceHeld = true;
 
         Session(UUID mediaId, long generation, MediaMetadata metadata, long totalBytes,
-                MediaAssetStore assetStore, FiniteRangeReadService rangeReads, float volume) {
+                FiniteRangeReadService rangeReads, MediaAssetReleaseQueue releases,
+                double volume, long nowNanos) {
             this.mediaId = mediaId;
             this.generation = generation;
             this.metadata = metadata;
             this.format = wireFormat(metadata.format());
             this.totalBytes = totalBytes;
-            this.assetStore = assetStore;
             this.rangeReads = rangeReads;
+            this.releases = releases;
             this.retainedAssetId = mediaId;
-            this.assetReferenceHeld = true;
-            this.volume = volume;
-            this.clock = new FinitePlaybackClock(false);
-            long now = System.nanoTime();
-            this.clock.setDuration(metadata.durationSeconds(), now);
-            this.clock.start(now);
-            this.state = State.PLAYING;
+            this.playback = new FinitePlaybackStateMachine(metadata.durationSeconds(), volume, nowNanos);
         }
     }
 
@@ -103,7 +96,7 @@ public final class HQFiniteMediaServer {
     public static void tickAll() {
         for (HQFiniteMediaServer server : ACTIVE) {
             try { server.tick(); }
-            catch (Exception e) { HQSpeakerMod.warn("finite media tick failed at " + server.pos + ": " + e.getMessage()); }
+            catch (Exception e) { HQSpeakerMod.warn("finite media tick failed at " + server.pos + ": " + safeMessage(e)); }
         }
     }
 
@@ -124,24 +117,29 @@ public final class HQFiniteMediaServer {
     public synchronized boolean playPrepared(String assetId, double volume) throws LuaException {
         if (isActive()) return false;
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
-        float appliedVolume = (float) Math.max(0.0, Math.min(3.0, volume));
+
         UUID id = HQMediaStaging.parseAssetId(assetId);
         MediaAssetStore store = staging.assetStore();
         MediaAsset asset = store.get(id).orElseThrow(() -> new LuaException("unknown or released media asset"));
         MediaMetadata metadata = asset.metadata();
         if (metadata == null) throw new LuaException("media asset has not been analyzed");
 
-        FiniteRangeReadService rangeReads;
+        ServerMediaAssets mediaAssets;
         try {
-            rangeReads = ServerMediaAssets.get(level.getServer()).rangeReads();
+            mediaAssets = ServerMediaAssets.get(level.getServer());
         } catch (IOException e) {
-            throw new LuaException("HQ media range service is unavailable: " + safeMessage(e));
+            throw new LuaException("HQ media services are unavailable: " + safeMessage(e));
         }
 
         if (!store.retain(id)) throw new LuaException("unknown or released media asset");
+
+        Session next = null;
         try {
             long generation = ++generationCounter;
-            Session next = new Session(id, generation, metadata, asset.sizeBytes(), store, rangeReads, appliedVolume);
+            next = new Session(id, generation, metadata, asset.sizeBytes(),
+                mediaAssets.rangeReads(), mediaAssets.releases(), volume, System.nanoTime());
+
+            // Install canonical server truth before projecting it to any client. All projection below is best-effort.
             session = next;
             terminalStatus = null;
             sendBeginToRelevant(next);
@@ -149,14 +147,22 @@ public final class HQFiniteMediaServer {
             queueStateEvent(statusOf(next, System.nanoTime()));
             return true;
         } catch (RuntimeException e) {
-            try { store.release(id); }
-            catch (IOException releaseFailure) { e.addSuppressed(releaseFailure); }
+            if (next != null && session == next) {
+                session = null;
+                terminalStatus = null;
+            }
+            MediaAssetReleaseQueue.Result release = mediaAssets.releases().release(id);
+            if (next != null) next.assetReferenceHeld = false;
+            if (release.deferred()) {
+                HQSpeakerMod.warn("prepared start rolled back; playback asset release queued for retry " + id
+                    + ": " + release.error());
+            }
             throw e;
         }
     }
 
     public synchronized boolean isActive() {
-        return session != null && (session.state == State.PLAYING || session.state == State.PAUSED);
+        return session != null && session.playback.active();
     }
 
     public synchronized boolean pause() {
@@ -167,9 +173,7 @@ public final class HQFiniteMediaServer {
             notifyState(s, now);
             return false;
         }
-        if (s.state != State.PLAYING) return false;
-        s.clock.pause(now);
-        s.state = State.PAUSED;
+        if (!s.playback.pause(now)) return false;
         sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.PAUSE, 0.0);
         notifyState(s, now);
         return true;
@@ -177,10 +181,9 @@ public final class HQFiniteMediaServer {
 
     public synchronized boolean resume() {
         Session s = session;
-        if (s == null || s.state != State.PAUSED) return false;
+        if (s == null) return false;
         long now = System.nanoTime();
-        s.clock.resume(now);
-        s.state = State.PLAYING;
+        if (!s.playback.resume(now)) return false;
         sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.RESUME, 0.0);
         notifyState(s, now);
         return true;
@@ -189,22 +192,23 @@ public final class HQFiniteMediaServer {
     public synchronized boolean seek(double seconds) throws LuaException {
         if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
         Session s = session;
-        if (s == null || s.state == State.ERROR || s.state == State.ENDED || s.clock.duration() <= 0.0) return false;
+        if (s == null || s.playback.terminal() || s.playback.duration() <= 0.0) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
             notifyState(s, now);
             return false;
         }
-        double target = s.clock.seek(seconds, now);
-        if (!s.clock.looping() && target >= s.clock.duration()) {
-            s.clock.finish(now);
-            s.state = State.ENDED;
+
+        FinitePlaybackStateMachine.SeekResult result = s.playback.seek(seconds, now);
+        if (!result.accepted()) return false;
+        if (result.ended()) {
             releaseAssetReference(s);
             terminalStatus = statusOf(s, now);
             notifyState(s, now);
             return true;
         }
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SEEK, target);
+
+        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SEEK, result.position());
         notifyState(s, now);
         return true;
     }
@@ -212,27 +216,27 @@ public final class HQFiniteMediaServer {
     public synchronized boolean setVolume(double volume) throws LuaException {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
         Session s = session;
-        if (s == null || s.state == State.ERROR || s.state == State.ENDED) return false;
+        if (s == null || s.playback.terminal()) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
             notifyState(s, now);
             return false;
         }
-        s.volume = (float) Math.max(0.0, Math.min(3.0, volume));
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SET_VOLUME, s.volume);
+        if (!s.playback.setVolume(volume)) return false;
+        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SET_VOLUME, s.playback.volume());
         notifyState(s, now);
         return true;
     }
 
     public synchronized boolean setLooping(boolean looping) {
         Session s = session;
-        if (s == null || s.state == State.ERROR || s.state == State.ENDED) return false;
+        if (s == null || s.playback.terminal()) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
             notifyState(s, now);
             return false;
         }
-        s.clock.setLooping(looping, now);
+        if (!s.playback.setLooping(looping, now)) return false;
         sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SET_LOOP, looping ? 1.0 : 0.0);
         notifyState(s, now);
         return true;
@@ -241,11 +245,13 @@ public final class HQFiniteMediaServer {
     public synchronized void stop() {
         Session s = session;
         if (s == null) return;
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.STOP, 0.0);
+
+        // Canonical stop and ownership release happen regardless of whether any client can be notified.
         releaseAssetReference(s);
         terminalStatus = null;
         session = null;
         queueStateEvent(idleStatus());
+        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.STOP, 0.0);
     }
 
     public synchronized Map<String, Object> status() {
@@ -270,15 +276,13 @@ public final class HQFiniteMediaServer {
 
     private synchronized void tick() {
         Session s = session;
-        if (s == null || s.state == State.ENDED || s.state == State.ERROR) return;
+        if (s == null || s.playback.terminal()) return;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) notifyState(s, now);
     }
 
     private boolean finalizeNaturalEnd(Session s, long now) {
-        if (s.state != State.PLAYING || !s.clock.reachedEnd(now)) return false;
-        s.clock.finish(now);
-        s.state = State.ENDED;
+        if (!s.playback.finalizeNaturalEnd(now)) return false;
         releaseAssetReference(s);
         terminalStatus = statusOf(s, now);
         return true;
@@ -286,7 +290,7 @@ public final class HQFiniteMediaServer {
 
     private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
         Session s = session;
-        if (s == null || player == null || s.state == State.ENDED || s.state == State.ERROR) return;
+        if (s == null || player == null || s.playback.terminal()) return;
         if (packet.generation() != s.generation || !packet.assetId().equals(s.mediaId)) return;
         if (!isRelevant(player)) return;
         if (packet.offset() < 0L || packet.offset() >= s.totalBytes || packet.length() <= 0
@@ -314,7 +318,7 @@ public final class HQFiniteMediaServer {
     private synchronized void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
                                             FiniteRangeReadService.ReadResult result) {
         Session s = session;
-        if (s == null || s.state == State.ENDED || s.state == State.ERROR) return;
+        if (s == null || s.playback.terminal()) return;
         if (s.generation != generation || !s.mediaId.equals(assetId)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
@@ -329,7 +333,7 @@ public final class HQFiniteMediaServer {
             return;
         }
 
-        HQSpeakerNetwork.sendToPlayer(new HQFiniteMediaRangeDataPacket(
+        safeSendToPlayer(new HQFiniteMediaRangeDataPacket(
             source, assetId, generation, result.offset(), result.data()), player);
     }
 
@@ -352,11 +356,14 @@ public final class HQFiniteMediaServer {
     }
 
     private void failServerSession(Session s, String error) {
-        if (session != s || s.state == State.ENDED || s.state == State.ERROR) return;
-        s.state = State.ERROR;
-        s.error = error;
-        releaseAssetReference(s);
+        if (session != s || s.playback.terminal()) return;
         long now = System.nanoTime();
+        if (finalizeNaturalEnd(s, now)) {
+            notifyState(s, now);
+            return;
+        }
+        if (!s.playback.fail(error, now)) return;
+        releaseAssetReference(s);
         terminalStatus = statusOf(s, now);
         notifyState(s, now);
     }
@@ -364,8 +371,8 @@ public final class HQFiniteMediaServer {
     private void sendBeginToRelevant(Session s) {
         float[] world = computeWorldPos();
         HQFiniteMediaBeginPacket packet = new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.format,
-            s.volume, world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
-            s.totalBytes, s.clock.looping(), s.state == State.PAUSED);
+            s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+            s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
         sendToRelevant(packet);
     }
 
@@ -378,16 +385,16 @@ public final class HQFiniteMediaServer {
     }
 
     private void sendState(Session s, ServerPlayer player) {
-        if (player != null && isRelevant(player)) HQSpeakerNetwork.sendToPlayer(statePacket(s, System.nanoTime()), player);
+        if (player != null && isRelevant(player)) safeSendToPlayer(statePacket(s, System.nanoTime()), player);
     }
 
     private HQFiniteMediaStatePacket statePacket(Session s, long now) {
-        double position = s.clock.position(now);
+        double position = s.playback.position(now);
         Anchor anchor = selectAnchor(s, position);
         return new HQFiniteMediaStatePacket(
-            source, s.mediaId, s.generation, wireState(s.state),
-            position, s.clock.duration(), s.volume, s.clock.looping(),
-            anchor.offset(), anchor.seconds(), s.error
+            source, s.mediaId, s.generation, wireState(s.playback.state()),
+            position, s.playback.duration(), s.playback.volume(), s.playback.looping(),
+            anchor.offset(), anchor.seconds(), s.playback.error()
         );
     }
 
@@ -410,9 +417,19 @@ public final class HQFiniteMediaServer {
         queueStateEvent(statusOf(s, now));
     }
 
-    private void sendToRelevant(net.minecraft.network.protocol.common.custom.CustomPacketPayload packet) {
+    private void sendToRelevant(CustomPacketPayload packet) {
         for (ServerPlayer player : level.players()) {
-            if (isRelevant(player)) HQSpeakerNetwork.sendToPlayer(packet, player);
+            if (isRelevant(player)) safeSendToPlayer(packet, player);
+        }
+    }
+
+    /** Client/network projection is best-effort and may never abort canonical server state transitions. */
+    private void safeSendToPlayer(CustomPacketPayload packet, ServerPlayer player) {
+        try {
+            HQSpeakerNetwork.sendToPlayer(packet, player);
+        } catch (RuntimeException e) {
+            HQSpeakerMod.warn("finite media packet delivery failed for player " + player.getUUID()
+                + " source=" + source + " packet=" + packet.getClass().getSimpleName() + ": " + safeMessage(e));
         }
     }
 
@@ -426,22 +443,22 @@ public final class HQFiniteMediaServer {
     private Map<String, Object> statusOf(Session s, long now) {
         Map<String, Object> out = new HashMap<>();
         out.put("generation", s.generation);
-        out.put("state", s.state.name().toLowerCase(Locale.ROOT));
+        out.put("state", s.playback.state().name().toLowerCase(Locale.ROOT));
         out.put("kind", "finite");
         out.put("format", s.metadata.format().id());
-        out.put("position", s.clock.position(now));
+        out.put("position", s.playback.position(now));
         out.put("duration", s.metadata.durationSeconds());
         out.put("sampleRate", s.metadata.sampleRate());
         out.put("channels", s.metadata.channels());
         out.put("bitsPerSample", s.metadata.bitsPerSample());
-        out.put("volume", (double) s.volume);
-        out.put("looping", s.clock.looping());
+        out.put("volume", (double) s.playback.volume());
+        out.put("looping", s.playback.looping());
         out.put("totalBytes", s.totalBytes);
         out.put("assetId", s.retainedAssetId.toString());
-        out.put("canPause", s.state != State.ENDED && s.state != State.ERROR);
-        out.put("canSeek", s.state != State.ENDED && s.state != State.ERROR);
-        out.put("canLoop", s.state != State.ENDED && s.state != State.ERROR);
-        if (!s.error.isBlank()) out.put("error", s.error);
+        out.put("canPause", !s.playback.terminal());
+        out.put("canSeek", !s.playback.terminal());
+        out.put("canLoop", !s.playback.terminal());
+        if (!s.playback.error().isBlank()) out.put("error", s.playback.error());
         return out;
     }
 
@@ -471,7 +488,7 @@ public final class HQFiniteMediaServer {
         };
     }
 
-    private static HQFiniteMediaStatePacket.PlaybackState wireState(State state) {
+    private static HQFiniteMediaStatePacket.PlaybackState wireState(FinitePlaybackStateMachine.State state) {
         return switch (state) {
             case PLAYING -> HQFiniteMediaStatePacket.PlaybackState.PLAYING;
             case PAUSED -> HQFiniteMediaStatePacket.PlaybackState.PAUSED;
@@ -495,18 +512,21 @@ public final class HQFiniteMediaServer {
                 }
             }
         } catch (Exception e) {
-            HQSpeakerMod.warn("finite media position transform failed: " + e.getMessage());
+            HQSpeakerMod.warn("finite media position transform failed: " + safeMessage(e));
         }
         return new float[]{ x, y, z };
     }
 
     private void releaseAssetReference(Session s) {
         if (!s.assetReferenceHeld) return;
+        MediaAssetReleaseQueue.Result result = s.releases.release(s.retainedAssetId);
+        // RELEASED, MISSING and DEFERRED all transfer this session's release responsibility away from the session.
         s.assetReferenceHeld = false;
-        try {
-            s.assetStore.release(s.retainedAssetId);
-        } catch (IOException e) {
-            HQSpeakerMod.warn("could not release playback media asset " + s.retainedAssetId + ": " + e.getMessage());
+        if (result.status() == MediaAssetReleaseQueue.Status.MISSING) {
+            HQSpeakerMod.warn("playback media asset reference was already missing " + s.retainedAssetId);
+        } else if (result.deferred()) {
+            HQSpeakerMod.warn("playback media asset release queued for retry " + s.retainedAssetId
+                + ": " + result.error());
         }
     }
 

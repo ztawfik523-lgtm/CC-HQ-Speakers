@@ -24,8 +24,8 @@ import java.util.function.Consumer;
  * Bounded off-thread reader for M1F encoded media ranges.
  *
  * <p>Every accepted read takes its own asset reference before it enters the executor. That reference remains held
- * until the read finishes or a queued task is cancelled, so playback stop/final release cannot delete the file under
- * an in-flight read.</p>
+ * until the read finishes or a queued task is cancelled. Release responsibility is handed to the shared retry queue,
+ * so a transient final-file deletion failure cannot silently leak an in-flight reference.</p>
  */
 public final class FiniteRangeReadService implements AutoCloseable {
     public enum Submission { ACCEPTED, INVALID, OVER_LIMIT, UNKNOWN_ASSET, BUSY, CLOSED }
@@ -42,6 +42,7 @@ public final class FiniteRangeReadService implements AutoCloseable {
     private static final AtomicInteger THREAD_IDS = new AtomicInteger();
 
     private final MediaAssetStore store;
+    private final MediaAssetReleaseQueue releases;
     private final ExecutorService executor;
     private final int maxRequestsPerPlayer;
     private final long maxBytesPerPlayer;
@@ -51,14 +52,24 @@ public final class FiniteRangeReadService implements AutoCloseable {
     private boolean closeComplete;
 
     public FiniteRangeReadService(MediaAssetStore store) {
-        this(store, productionExecutor(),
+        this(store, new MediaAssetReleaseQueue(store));
+    }
+
+    public FiniteRangeReadService(MediaAssetStore store, MediaAssetReleaseQueue releases) {
+        this(store, releases, productionExecutor(),
             FiniteRangeLimits.MAX_OUTSTANDING_REQUESTS_PER_PLAYER,
             FiniteRangeLimits.MAX_OUTSTANDING_BYTES_PER_PLAYER);
     }
 
     FiniteRangeReadService(MediaAssetStore store, ExecutorService executor,
                            int maxRequestsPerPlayer, long maxBytesPerPlayer) {
+        this(store, new MediaAssetReleaseQueue(store), executor, maxRequestsPerPlayer, maxBytesPerPlayer);
+    }
+
+    FiniteRangeReadService(MediaAssetStore store, MediaAssetReleaseQueue releases, ExecutorService executor,
+                           int maxRequestsPerPlayer, long maxBytesPerPlayer) {
         this.store = Objects.requireNonNull(store, "store");
+        this.releases = Objects.requireNonNull(releases, "releases");
         this.executor = Objects.requireNonNull(executor, "executor");
         if (maxRequestsPerPlayer <= 0) throw new IllegalArgumentException("maxRequestsPerPlayer must be positive");
         if (maxBytesPerPlayer <= 0L) throw new IllegalArgumentException("maxBytesPerPlayer must be positive");
@@ -196,8 +207,7 @@ public final class FiniteRangeReadService implements AutoCloseable {
                 error = safeMessage(e);
             }
 
-            String releaseError = releaseLease();
-            if (!releaseError.isBlank() && error.isBlank()) error = releaseError;
+            releaseLease();
             try {
                 completion.accept(new ReadResult(offset, data == null ? new byte[0] : data, error));
             } catch (RuntimeException ignored) {
@@ -209,16 +219,9 @@ public final class FiniteRangeReadService implements AutoCloseable {
             releaseLease();
         }
 
-        private String releaseLease() {
-            String error = "";
-            try {
-                store.release(assetId);
-            } catch (Exception e) {
-                error = "could not release in-flight media asset: " + safeMessage(e);
-            } finally {
-                releaseAccount(playerId, length);
-            }
-            return error;
+        private void releaseLease() {
+            releases.release(assetId);
+            releaseAccount(playerId, length);
         }
     }
 

@@ -5,6 +5,7 @@ import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.media.FiniteMediaAnalyzer;
 import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
+import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
 import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.MediaStorageLimits;
@@ -122,13 +123,7 @@ public final class HQMediaStaging {
             MediaMetadata metadata = FiniteMediaAnalyzer.analyze(committed);
             asset.attachMetadata(metadata);
         } catch (IOException | RuntimeException e) {
-            try {
-                store.release(asset.id());
-            } catch (IOException cleanupFailure) {
-                e.addSuppressed(cleanupFailure);
-                HQSpeakerMod.warn("could not discard rejected media asset " + asset.id() + ": "
-                    + safeMessage(cleanupFailure));
-            }
+            releaseReferenceBestEffort(asset.id(), "rejected media asset");
             throw new LuaException("cannot prepare staged media: " + safeMessage(e));
         }
 
@@ -145,11 +140,7 @@ public final class HQMediaStaging {
 
         synchronized (ownershipLock) {
             if (!attachedComputerIds.contains(computerId)) {
-                try {
-                    store.release(asset.id());
-                } catch (IOException e) {
-                    HQSpeakerMod.warn("could not release asset prepared by detached computer: " + e.getMessage());
-                }
+                releaseReferenceBestEffort(asset.id(), "asset prepared by detached computer");
                 throw new LuaException("computer detached while preparing media");
             }
             preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(asset.id());
@@ -170,6 +161,8 @@ public final class HQMediaStaging {
     public boolean releasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         UUID id = parseAssetId(assetId);
         int computerId = computer.getID();
+        MediaAssetReleaseQueue releases = mediaAssets().releases();
+
         boolean owned;
         synchronized (ownershipLock) {
             Set<UUID> assets = preparedByComputerId.get(computerId);
@@ -178,18 +171,9 @@ public final class HQMediaStaging {
         }
         if (!owned) return false;
 
-        try {
-            boolean released = assetStore().release(id);
-            if (!released) throw new IOException("prepared media asset no longer exists");
-            return true;
-        } catch (IOException e) {
-            synchronized (ownershipLock) {
-                if (attachedComputerIds.contains(computerId)) {
-                    preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(id);
-                }
-            }
-            throw new LuaException("cannot release prepared media: " + safeMessage(e));
-        }
+        MediaAssetReleaseQueue.Result result = releases.release(id);
+        logReleaseResult(result, id, "prepared media asset");
+        return true;
     }
 
     public StagedFile openStaged(IComputerAccess computer, String path) throws LuaException {
@@ -223,8 +207,12 @@ public final class HQMediaStaging {
     }
 
     public MediaAssetStore assetStore() throws LuaException {
+        return mediaAssets().store();
+    }
+
+    private ServerMediaAssets mediaAssets() throws LuaException {
         try {
-            return ServerMediaAssets.get(server).store();
+            return ServerMediaAssets.get(server);
         } catch (IOException e) {
             throw new LuaException("HQ media asset store is unavailable: " + safeMessage(e));
         }
@@ -245,19 +233,34 @@ public final class HQMediaStaging {
 
     private void releaseDetached(Set<UUID> assets) {
         if (assets == null || assets.isEmpty()) return;
-        MediaAssetStore store;
+        MediaAssetReleaseQueue releases;
         try {
-            store = ServerMediaAssets.get(server).store();
+            releases = ServerMediaAssets.get(server).releases();
         } catch (IOException e) {
-            HQSpeakerMod.warn("could not open media asset store while releasing detached assets: " + e.getMessage());
+            HQSpeakerMod.warn("could not open media asset services while releasing detached assets: " + e.getMessage());
             return;
         }
         for (UUID id : assets) {
-            try {
-                store.release(id);
-            } catch (IOException e) {
-                HQSpeakerMod.warn("could not release prepared media " + id + ": " + e.getMessage());
-            }
+            MediaAssetReleaseQueue.Result result = releases.release(id);
+            logReleaseResult(result, id, "detached prepared media");
+        }
+    }
+
+    private void releaseReferenceBestEffort(UUID id, String context) {
+        try {
+            MediaAssetReleaseQueue.Result result = ServerMediaAssets.get(server).releases().release(id);
+            logReleaseResult(result, id, context);
+        } catch (IOException e) {
+            HQSpeakerMod.warn("could not open media asset services while releasing " + context + " " + id
+                + ": " + safeMessage(e));
+        }
+    }
+
+    private static void logReleaseResult(MediaAssetReleaseQueue.Result result, UUID id, String context) {
+        if (result.status() == MediaAssetReleaseQueue.Status.MISSING) {
+            HQSpeakerMod.warn(context + " was already missing " + id);
+        } else if (result.deferred()) {
+            HQSpeakerMod.warn(context + " release queued for retry " + id + ": " + result.error());
         }
     }
 
