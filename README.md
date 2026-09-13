@@ -69,8 +69,8 @@ Open current items are tracked in `docs/KNOWN-ISSUES.md`:
 
 - KI-051 — owner choice for audible loop-wrap rejoin: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart;
 - KI-053 — same-anchor STATE can reset a slid encoded window without restarting the live decoder epoch;
-- KI-055 — real-MP3 progressive integration and focused renderer-adapter deterministic coverage are incomplete;
-- KI-054 — shutdown-only MediaAssetStore completed-file deletion retry gap.
+- KI-054 — shutdown deletion failure loses retry bookkeeping and can also skip media-services registry cleanup;
+- KI-055 — real-MP3 progressive integration and focused renderer-adapter deterministic coverage are incomplete.
 
 No implementation fix was made during the 2026-09-14 documentation audit.
 
