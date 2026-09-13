@@ -8,7 +8,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
 
-Repository/source audits on 2026-09-14 found KI-053 through KI-060 below. Those audits changed documentation only; no source fix was made.
+Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those audits changed documentation only; no source fix was made.
 
 ## Runtime evidence gaps
 
@@ -129,7 +129,7 @@ Reasonable fixes have real tradeoffs: use a fixed maximum transport radius (simp
 
 `tryStartRenderer()` sets `rendererStarted = true` immediately before calling `SoundManager.play(sound)`. There is no later path which clears/retries that latch if Minecraft never allocates/starts the sound. This matters especially for the known Minecraft interaction where a sound started at effective volume zero may never actually start; a later `audioSetVolume()` can then leave the finite session permanently silent locally even though the server clock keeps advancing.
 
-The desired product behavior for volume zero should be decided explicitly. One clean option is “muted playback continues canonically, but local renderer creation is deferred until effective volume becomes nonzero, then catch up before starting.” Other implementations are possible, but the current latch needs deterministic/runtime coverage for failed or zero-volume starts.
+Minecraft exposes `SoundInstance.canStartSilent()` specifically for long-lived sounds which should be allowed to start while currently inaudible. Modern finite playback therefore has two reasonable implementation directions: allow the streaming sound to start silent and continue consuming at canonical time, or defer local renderer creation while inaudible and catch up before starting when unmuted. The owner should choose the desired resource/complexity tradeoff; the current one-way `rendererStarted` latch needs fixing either way.
 
 ### KI-054 — `MediaAssetStore.close()` does not retain failed shutdown deletions for retry
 
@@ -151,6 +151,18 @@ Several Lua scripts are historical/legacy. In particular `scripts/m1d_media_anal
 
 `TESTING.md` is the authoritative current matrix until those scripts are replaced/reworked.
 
+### KI-061 — per-speaker staging mounts can leave unreachable files on disk
+
+**Active storage-lifecycle issue found by the 2026-09-14 storage sweep. No fix has been applied.**
+
+Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory mount under a fresh random path such as `hqspeaker/staging/<uuid>`. `cleanup()` detaches computers and releases prepared-asset ownership, but it does not clear arbitrary files still present in that writable staging mount.
+
+CC:T 1.120.0 implements `createSaveDirMount()` as a normal persistent `WritableFileMount` rooted at the requested server-storage subdirectory. Unmounting or dropping the Java mount object does not delete that directory. A program using the low-level staging API, a failed/interrupted copy, or any other leftover staged file can therefore become unreachable when the speaker/composite is destroyed and later recreated with a new random staging ID. Repeated speaker lifecycle churn can accumulate those files across restarts.
+
+The high-level `hq.playFile()` path normally deletes/consumes its temporary staging file, so this is not ordinary successful-playback corruption. It is still a disk-leak/lifecycle gap and is potentially more practically reachable than the shutdown-only KI-054 edge.
+
+A likely fix is to clear the mount contents when the whole `HQMediaStaging` object is being cleaned up, after all attached computers are unmounted. Do not clear the shared mount on one computer's ordinary `detach()`. Add failure handling and deterministic coverage for leftover-file cleanup.
+
 ## Active listener lifecycle — M1H
 
 ### KI-004 — complete leave/re-enter lifecycle is not final
@@ -171,5 +183,5 @@ M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, di
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.
 - M1G integrated source is green, but audible runtime PASS is unrecorded.
-- KI-053/KI-054/KI-056/KI-057/KI-058/KI-059/KI-060 are documented findings/decisions only; no implementation fix has been applied.
+- KI-053/KI-054/KI-056/KI-057/KI-058/KI-059/KI-060/KI-061 are documented findings/decisions only; no implementation fix has been applied.
 - Historical docs/scripts may preserve earlier contracts; current state/testing/facts documents override them.
