@@ -13,7 +13,7 @@ Target stack:
 
 This mod is a **programmable audio peripheral**, not a built-in music player.
 
-Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java distinguishes sources only where their technical capabilities differ.
+Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java distinguishes sources only where technical capabilities differ.
 
 The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
 
@@ -23,23 +23,23 @@ One physical speaker remains one mono positional source.
 
 M1E server-authoritative finite playback and M1F bounded demand-driven encoded transport are complete at the **source/test/CI/package** level.
 
-M1G progressive decode/rendering has **started** on:
+M1G progressive decode/rendering is actively implemented on:
 
 `codex/m1g-progressive-finite-decode`
 
-M1G preparation base:
+Current green integrated M1G source checkpoint:
 
-`aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
+`957832348eaa6e497282d923f2312c9c7d7c550f`
 
-Current green M1G start source checkpoint:
+Source CI:
 
-`fc99ec093528f1a8d6a975fab52c270e498dbb04`
+`34778546164`
 
-CI `34773448121` passed NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
+NeoForge 21.1.247 and 21.1.248 both passed build, tests, packaged-mod verification, and artifact upload.
 
-Final M1F source/test candidate remains `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, with final M1F CI `34763362365` green on both targets.
+Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-Focused real-Minecraft M1F transport acceptance is **not recorded**. M1G audible runtime acceptance is also not recorded. CI/component proof is not runtime proof.
+Focused real-Minecraft M1F transport acceptance is **not recorded**. Focused audible M1G Minecraft acceptance is also **not recorded**. CI/component proof is not runtime proof.
 
 The current finite architecture is:
 
@@ -47,17 +47,18 @@ The current finite architecture is:
 ComputerCraft file
     -> reusable server MediaAsset
     -> server-authoritative finite playback state
-    -> server-selected encoded anchor
+    -> codec-aware server STATE anchor
     -> bounded client range requests
     -> bounded off-thread server reads
     -> bounded sliding client encoded RAM
     -> starvation-aware decoder-worker input
-    -> progressive MP3/common-WAV decoder/converter (next integration)
+    -> progressive MP3/common-WAV decoder
     -> bounded mono signed-16 PCM queue at source sample rate
-    -> Minecraft AudioStream / SoundManager positional renderer (next integration)
+    -> nonblocking Minecraft AudioStream
+    -> one positional BLOCKS SoundManager source
 ```
 
-Read `docs/M1G-DESIGN-DECISIONS-2026-09-13.md` and `docs/HANDOFF-2026-09-13-M1G-START.md` before continuing M1G.
+Read `docs/HANDOFF-2026-09-13-M1G-START.md`, `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`, and `docs/CURRENT-STATE.md` before continuing M1G.
 
 ## M1E finite server authority
 
@@ -91,11 +92,9 @@ The client waits for authoritative STATE before first demand, supports arbitrary
 
 The modern prepared path has no complete-song client `.part/.media` cache, no modern CHUNK/END whole-file packets, and no `audioPlayStaged()` route.
 
-M1F intentionally does **not** decode/render the file.
+## M1G integrated implementation
 
-## M1G implementation
-
-The owner decisions are resolved as:
+Locked owner choices:
 
 - **A1:** normal Minecraft `AudioStream` / `SoundManager` renderer;
 - **B1:** server-normalized common-WAV layout;
@@ -103,26 +102,32 @@ The owner decisions are resolved as:
 - **D1:** narrow PCM/float `WAVE_FORMAT_EXTENSIBLE` compatibility;
 - **E1:** coarse conservative MP3 pre-roll from an earlier existing seek point.
 
-See `docs/M1G-DESIGN-DECISIONS-2026-09-13.md` for rationale and constraints.
+Current source includes:
 
-The current green M1G start checkpoint implements:
+- protocol v6 BEGIN descriptor for modern MP3/common WAV;
+- normalized narrow common-WAV/WAVEX layout;
+- modern prepared/local format gate narrowed to MP3 + supported common WAV;
+- exact WAV frame anchors and E1 MP3 pre-roll anchors;
+- starvation-aware progressive encoded input over M1F;
+- bounded PCM queue with decoder backpressure and nonblocking consumer reads;
+- progressive U8/S16/S24/S32/F32 WAV conversion to mono S16 at source rate;
+- progressive JLayer MP3 decode with earlier-anchor silent pre-roll and pre-target discard;
+- decoder epoch cancellation/replacement on seek/replacement/stop;
+- bounded prebuffer/catch-up toward projected authoritative server time;
+- Minecraft `FinitePcmAudioStream` + positional `FiniteSpeakerSound` through `SoundManager` / `SoundSource.BLOCKS`;
+- pause/resume/volume projection through the Minecraft channel-control path.
 
-- normalized `WavLayout` metadata;
-- bounded `CommonWavAnalyzer` for classic common PCM/float WAV and narrow WAVEX;
-- declared RIFF-container and complete-frame validation;
-- `ModernFiniteMediaAnalyzer` narrowing newly prepared/local assets to MP3 + common WAV;
-- `FiniteDecodeDescriptor` as the modern decoder-facing MP3/WAV contract;
-- `FiniteDecodeAnchorSelector` with exact WAV frame anchors and E1 MP3 pre-roll anchors;
-- `HQMediaStaging.prepareAsset(...)` using the modern acceptance gate;
-- decoder-worker `FiniteEncodedInputStream` over M1F where starvation waits/refills instead of becoming EOF, with cancellation and lost-wakeup protection;
-- fixed-capacity `FinitePcmQueue` with decoder backpressure and nonblocking DATA/STARVED/EOF/CANCELLED renderer states;
-- deterministic tests for layout/anchor behavior and the encoded-input/PCM concurrency boundaries.
+The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared engine.
 
-The modern client is still silent because those new primitives are not yet wired into an active progressive decoder and Minecraft renderer.
+## Current architecture gate before more M1G source changes
 
-Next work is the MP3/WAV modern wire descriptor + codec-aware server STATE anchors, then client decode-epoch integration, common-WAV conversion, JLayer progressive MP3, and the A1 positional renderer.
+The next chat must ask the owner to choose **loop-wrap rejoin**:
 
-Do not route modern prepared playback back through inherited complete-file/whole-decoded-track finite classes.
+- **L1 — client EOF refresh:** local EOF during a looping server session requests fresh STATE and restarts from the authoritative anchor.
+- **L2 — server wrap STATE:** server detects canonical loop wrap and proactively projects fresh STATE.
+- **L3 — client local modulo/restart:** client predicts loop wrap locally and reconciles later.
+
+Do not silently choose among L1/L2/L3. Full pros/cons are in `docs/HANDOFF-2026-09-13-M1G-START.md`.
 
 ## Lua finite-file API
 
@@ -157,7 +162,7 @@ See `docs/LUA-API.md`.
 
 - **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
 - **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + audible renderer — **in progress**.
+- **M1G:** progressive MP3/common-WAV decode + positional renderer — **in progress; loop-wrap policy choice pending**.
 - **M1H:** dynamic listener/late-join/leave-return/recovery.
 - **M1I:** optional gated native FLAC.
 - later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
@@ -173,16 +178,15 @@ See `docs/LUA-API.md`.
 
 Read current development docs in this order:
 
-1. `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`
-2. `docs/HANDOFF-2026-09-13-M1G-START.md`
+1. `docs/HANDOFF-2026-09-13-M1G-START.md`
+2. `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`
 3. `docs/CURRENT-STATE.md`
 4. `docs/TESTING.md`
 5. `docs/KNOWN-ISSUES.md`
-6. `docs/PRE-M1G-PREPARATION.md` for historical tradeoff analysis only
+6. `docs/VERIFIED-FACTS.md`
 7. `docs/M1F-FINALIZATION-2026-09-13.md`
-8. `docs/VERIFIED-FACTS.md`
-9. `docs/ROADMAP.md`
-10. `docs/LUA-API.md`
-11. exact current source/CI
+8. `docs/ROADMAP.md`
+9. `docs/LUA-API.md`
+10. exact current source/CI
 
-Older milestone/handoff documents preserve checkpoint history but do not override current M1G records.
+Older milestone/handoff documents preserve checkpoint history but do not override current records.
