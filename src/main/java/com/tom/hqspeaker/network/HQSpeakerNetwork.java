@@ -9,7 +9,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class HQSpeakerNetwork {
 
-    private static final String PROTOCOL_VERSION = "5";
+    private static final String PROTOCOL_VERSION = "6";
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
@@ -27,7 +27,7 @@ public class HQSpeakerNetwork {
         registrar.playToServer(HQFiniteMediaRangeRequestPacket.TYPE, HQFiniteMediaRangeRequestPacket.STREAM_CODEC, HQFiniteMediaRangeRequestPacket::handle);
         registrar.playToClient(HQFiniteMediaRangeDataPacket.TYPE, HQFiniteMediaRangeDataPacket.STREAM_CODEC, HQFiniteMediaRangeDataPacket::handle);
 
-        HQSpeakerMod.log("Network registered with M1F protocol v5 and 11 payloads.");
+        HQSpeakerMod.log("Network registered with M1G protocol v6 and 11 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {
