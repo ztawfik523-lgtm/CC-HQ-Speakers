@@ -433,7 +433,9 @@ public final class HQFiniteMediaServer {
 
     private void sendToRelevantUnchecked(CustomPacketPayload packet) {
         for (ServerPlayer player : level.players()) {
-            if (isRelevant(player)) HQSpeakerNetwork.sendToPlayer(packet, player);
+            if (!isRelevant(player)) continue;
+            projectToClients(packet.getClass().getSimpleName() + " player=" + player.getUUID(), () ->
+                HQSpeakerNetwork.sendToPlayer(packet, player));
         }
     }
 
