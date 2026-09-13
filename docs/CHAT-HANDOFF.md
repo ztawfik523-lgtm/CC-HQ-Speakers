@@ -4,11 +4,7 @@ Date: 2026-09-13
 
 Current continuation entry point:
 
-`HANDOFF-2026-09-13-M1E-M1F-REEVALUATION.md`
-
-Read the detailed audit next:
-
-`M1E-M1F-REEVALUATION-2026-09-13.md`
+`M1E-FINAL-HARDENING-2026-09-13.md`
 
 Then read:
 
@@ -17,6 +13,7 @@ Then read:
 - `TESTING.md`
 - `VERIFIED-FACTS.md`
 - `M1E-SERVER-AUTHORITY.md`
+- `M1E-M1F-REEVALUATION-2026-09-13.md` — historical audit; M1E findings are resolved
 - `M1F-IMPLEMENTATION-2026-09-13.md`
 - `M1E-FINITE-STREAMING-DESIGN.md`
 - `ROADMAP.md`
@@ -24,24 +21,28 @@ Then read:
 - `ARCHITECTURE.md`
 - `FUTURE-CLEANUP.md`
 
-Current implementation branch:
+Current hardening branch:
 
-`codex/m1f-demand-driven-finite`
+`codex/m1e-final-hardening`
 
-Current Java/source head remains:
+Final M1E code candidate:
 
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+`521d4323d9216c8a99e8ec60426997c3330c4068`
 
-No Java was changed during the M1E/M1F reevaluation.
+Exact code CI:
 
-Both-target CI/package evidence for that source head remains green (`34731827907`), but the old `M1E finalized` / `M1F source-test-CI complete` status wording is superseded.
+`34757923455`
+
+Both NeoForge 21.1.247 and 21.1.248 passed build/tests/package verification/artifact upload.
 
 Current status:
 
-- M1E semantic design remains implemented, but exception/lifetime hardening and acceptance are reopened;
-- M1E final focused Minecraft PASS remains skipped/unrecorded;
-- M1F range architecture remains implemented and CI-green, but acceptance/completeness is reopened;
-- M1F Minecraft runtime acceptance is unrecorded;
-- M1G has not started and should not start until the owner chooses how to close/defer the reopened issues.
+- M1E semantic design/source hardening/deterministic tests are complete;
+- M1E final focused Minecraft acceptance remains skipped by owner decision / no recorded PASS;
+- M1F range architecture remains implemented, but its sliding-window boundary and remaining acceptance matrix are provisional;
+- M1F focused Minecraft runtime transport acceptance is unrecorded;
+- M1G has not started.
 
-Older M1E/M1F completion documents are historical checkpoint records. Exact current source and the reevaluation documents take precedence for status.
+Do not reopen the old M1E packet-send/ghost-session/release-retry/error-clock findings: they were fixed by the final hardening sequence ending at `521d4323...`.
+
+Do not infer M1F completion from M1E finalization. Exact current source and the final-hardening/current-state documents take precedence over older checkpoint wording.

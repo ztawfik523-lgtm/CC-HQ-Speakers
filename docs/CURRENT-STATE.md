@@ -2,9 +2,27 @@
 
 ## Current checkpoint
 
-The project is at an **M1E/M1F reevaluation hold**.
+M1E is complete at the source/test/CI level after the 2026-09-13 hardening pass.
 
-The main architecture remains accepted:
+Final M1E code candidate:
+
+`521d4323d9216c8a99e8ec60426997c3330c4068`
+
+Branch:
+
+`codex/m1e-final-hardening`
+
+Final M1E CI:
+
+`34757923455`
+
+Both NeoForge 21.1.247 and 21.1.248 passed build, tests, package verification, and artifact upload.
+
+The final focused Minecraft M1E acceptance script was previously skipped by explicit owner decision. There is still **no recorded final M1E runtime PASS**. This is an evidence boundary, not an open source blocker.
+
+Read `M1E-FINAL-HARDENING-2026-09-13.md` for the exact completion record.
+
+## Architecture that remains current
 
 ```text
 ComputerCraft file
@@ -14,177 +32,70 @@ ComputerCraft file
     -> progressive decode/PCM/rendering later (M1G)
 ```
 
-However, the earlier labels `M1E finalized` and `M1F source/test/CI complete` are now superseded by `M1E-M1F-REEVALUATION-2026-09-13.md`.
+M1E now has a tested production semantic state machine and hardened failure/lifetime boundaries:
 
-Current Java/source code remains:
+- canonical playback starts immediately on the server;
+- server owns PLAYING / PAUSED / ENDED / ERROR;
+- server owns position, duration, seek, loop, volume, and natural EOF;
+- client READY requests state only;
+- client ERROR is diagnostic only;
+- server-side ERROR freezes position;
+- packet/client projection is best-effort and isolated per recipient;
+- prepared start completes throwable construction before canonical session installation;
+- logical MediaAsset release failures transfer to a retry-safe server owner;
+- speaker cleanup happens before shared store shutdown;
+- range IO drains before store cleanup.
 
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+## M1F status
 
-Current implementation branch:
-
-`codex/m1f-demand-driven-finite`
-
-No Java was changed during the reevaluation.
-
-## Evidence status
-
-M1E:
-
-- server-authoritative normal-path semantics are still present by current source review;
-- `FinitePlaybackClockTest` covers core clock math;
-- previous both-target CI/package verification remains valid;
-- historical runtime diagnostics support authority separation;
-- the final focused Minecraft M1E PASS was skipped by explicit owner decision and remains unrecorded;
-- deterministic `HQFiniteMediaServer` state-machine/failure-path coverage is still missing.
-
-M1F:
-
-- protocol-v5 bounded range transport is implemented;
-- modern client whole-song `.part/.media` caching is removed;
-- range-window/read-service unit tests and both-target CI/package verification are green;
-- focused Minecraft M1F transport acceptance is not recorded;
-- the original deterministic M1F acceptance matrix is only partially covered;
-- the encoded window is re-anchorable but lacks the intended sliding consume/discard interface for clean progressive refill.
-
-Therefore neither M1E nor M1F should currently be described as fully accepted/finalized.
-
-## Reopened correctness issues
-
-### 1. Client packet sends can escape authoritative transitions
-
-`HQFiniteMediaServer` sends packets inline without isolating per-player runtime send failures. A client/network-send exception can therefore escape start/stop/control/state operations even though M1E's model says client delivery must not own canonical server truth.
-
-This is a source-level robustness defect; it is not a recorded runtime failure.
-
-### 2. `playPrepared()` rollback is not atomic
-
-The new session is assigned before BEGIN/STATE delivery. If a later runtime exception occurs, the catch releases the retained asset but leaves the installed session/ownership flag in place.
-
-At the composite layer, a thrown start does not set STAGED_FINITE ownership, so a ghost finite session is possible in that failure path.
-
-### 3. Playback asset release forgets ownership before successful release
-
-`releaseAssetReference()` clears its held flag before `MediaAssetStore.release()` succeeds.
-
-If final file deletion fails, `MediaAssetStore` correctly preserves the reference, but the finite session has already forgotten it and cannot retry. This can retain file/quota state until shutdown.
-
-M1F in-flight range-release cleanup has a related rare final-release retry gap.
-
-### 4. `FiniteRangeWindow` is not a true sliding consumer window yet
-
-It can request, accept, probe, copy, retry, cancel, and `reset()` at arbitrary encoded anchors. It cannot advance/discard consumed prefix bytes while keeping useful unread prefetched bytes.
-
-M1G could reset only after consuming the full current 512 KiB window, but that creates hard refill boundaries. Resetting earlier discards useful prefetched bytes.
-
-This does not require changing protocol v5, but the M1F/M1G buffer boundary should be strengthened before relying on it as a progressive decoder input.
-
-## M1E server authority that still stands
-
-Current source still implements:
-
-- PLAYING / PAUSED / ENDED / ERROR;
-- immediate server-clock start after successful prepared play;
-- canonical pause/resume/seek/loop/volume;
-- duration-driven natural EOF;
-- non-looping `seek(duration)` -> ENDED;
-- looping `seek(duration)` -> wrap to zero;
-- client READY -> fresh STATE only;
-- client ERROR -> diagnostic only.
-
-The reevaluation did not find a reason to revert this semantic model.
-
-## M1F transport that still stands
-
-Current source still implements:
+M1F remains **implemented but provisional**. Its range architecture still stands:
 
 - protocol v5 range request/data;
-- server-selected `anchorOffset` + `anchorTime` in STATE;
+- server-selected encoded anchors in STATE;
 - first demand waits for authoritative STATE;
-- max current range payload 128 KiB;
-- 512 KiB one-source encoded byte window;
-- bounded per-player outstanding requests/bytes;
-- bounded two-thread server range-IO pool and queue;
-- in-flight MediaAsset retain for accepted reads;
-- off-thread encoded file reads;
-- current generation/asset/player/relevance recheck before send;
-- arbitrary encoded request offsets;
-- no modern client `.part/.media` complete-song path;
-- old modern finite CHUNK/END packets removed;
-- `audioPlayStaged()` removed;
-- encoded availability distinguishes DATA_AVAILABLE / NEED_DATA / TRUE_ASSET_EOF / CANCELLED_OR_STALE.
+- bounded packet/window/outstanding limits;
+- bounded off-thread server reads;
+- in-flight MediaAsset retain;
+- current generation/asset/player/relevance recheck before range send;
+- arbitrary encoded offsets;
+- no modern client whole-song `.part/.media` cache;
+- old modern CHUNK/END path removed;
+- project-prototype `audioPlayStaged()` removed;
+- missing network data is distinct from true asset EOF.
 
-The reevaluation did not find a reason to restore the old whole-file bridge.
+M1F still needs its own completion work:
 
-## M1F acceptance coverage gap
+- make `FiniteRangeWindow` a true sliding consume/discard window instead of only re-anchorable;
+- close the remaining deterministic acceptance matrix around request identity/relevance/stale completion/shutdown/client anchor gating/packet integration;
+- focused Minecraft range-transport acceptance remains unrecorded.
 
-The original M1F contract required deterministic proof for more than the current two M1F-specific unit-test classes provide.
-
-Current tests strongly cover:
-
-- range window bounds/arbitrary offset/re-anchor/retry;
-- missing-vs-EOF distinction;
-- exact range bytes;
-- range service accounting/outstanding limits;
-- in-flight asset retain across owner release.
-
-Still missing as dedicated deterministic component tests:
-
-- full server source/generation/asset validation;
-- relevance/dimension gating;
-- stale completion after replacement/leave/disconnect;
-- shutdown ordering and retry behavior;
-- packet codec/bounds integration;
-- client BEGIN/STATE anchor gating;
-- sliding consume/discard progression;
-- authoritative server state-machine failure/rollback behavior.
-
-Some of these are visible by source review, but source review is not the deterministic acceptance proof the original contract asked for.
+These M1F items do **not** reopen M1E.
 
 ## M1G status
 
-M1G has **not started**.
+M1G has not started.
 
-Do not start it until the owner chooses how to handle the reopened M1E/M1F issues.
+M1G still owns progressive MP3/common-WAV decoding, starvation-vs-EOF behavior, MP3 pre-roll, bounded mono PCM, decoder cancellation, and actual positional Minecraft/OpenAL rendering.
 
-M1G still owns:
+Do not repair the obsolete JavaSound/mp3spi complete-file bridge merely for temporary audibility.
 
-- progressive MP3 decode;
-- common WAV layout/conversion;
-- temporary-starvation vs true EOF at decoder boundary;
-- MP3 Layer III pre-roll;
-- bounded mono PCM;
-- decoder cancellation;
-- actual positional Minecraft/OpenAL rendering.
+## M1H boundary
 
-## M1H boundary remains separate
-
-Full late-entry / leave-range cleanup / return-rejoin / dimension-reload lifecycle remains M1H.
-
-M1F currently revalidates relevance before serving/sending ranges, but it does not proactively destroy out-of-range client sessions or discover late entrants. That remains intentional and is not being reclassified as an M1F regression.
-
-## Decision required before Java changes
-
-Read `M1E-M1F-REEVALUATION-2026-09-13.md` for the three reasonable paths:
-
-1. close all reopened M1E/M1F issues before M1G;
-2. fix shared correctness now and make buffer/test completion explicit M1G entry work;
-3. documentation-only defer, leaving M1E/M1F provisional.
-
-Do not choose on the owner's behalf.
+Full late-entry / leave-range cleanup / return-rejoin / dimension-reload listener lifecycle remains M1H.
 
 ## Current read order
 
-1. `M1E-M1F-REEVALUATION-2026-09-13.md`
-2. `HANDOFF-2026-09-13-M1E-M1F-REEVALUATION.md`
-3. `CURRENT-STATE.md`
-4. `KNOWN-ISSUES.md`
-5. `TESTING.md`
-6. `VERIFIED-FACTS.md`
-7. `M1E-SERVER-AUTHORITY.md`
+1. `M1E-FINAL-HARDENING-2026-09-13.md`
+2. `CURRENT-STATE.md`
+3. `KNOWN-ISSUES.md`
+4. `TESTING.md`
+5. `VERIFIED-FACTS.md`
+6. `M1E-SERVER-AUTHORITY.md`
+7. `M1E-M1F-REEVALUATION-2026-09-13.md` — historical audit, M1E findings now resolved
 8. `M1F-IMPLEMENTATION-2026-09-13.md`
 9. `M1E-FINITE-STREAMING-DESIGN.md`
 10. `ROADMAP.md`
 11. `LUA-API.md`
 12. exact current source/CI
 
-Older completion/finalization documents remain useful historical evidence, but their old status labels do not override the reevaluation.
+Older M1E completion documents remain historical evidence. The final hardening record above is authoritative for current M1E status.

@@ -1,47 +1,47 @@
 # M1E — server-authoritative finite playback
 
-## Current status after 2026-09-13 reevaluation
+## Current status
 
-M1E's **semantic design remains accepted and present in current source**, but the old `finalized` label is superseded by `M1E-M1F-REEVALUATION-2026-09-13.md`.
+M1E is complete at the source/test/CI level after the 2026-09-13 hardening pass.
 
-The reevaluation found exception/lifetime failure paths which mean M1E implementation hardening is reopened even though the normal-path server-authority model still looks correct.
+Final M1E code candidate:
 
-Original semantic implementation checkpoint:
+`521d4323d9216c8a99e8ec60426997c3330c4068`
 
-`d0e66ab9135359627086c13647d5241ad778643f`
+Branch:
 
-M1E finalization candidate:
+`codex/m1e-final-hardening`
 
-`38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+Exact final code CI:
 
-Current M1F Java/source containing the inherited M1E semantics:
+`34757923455`
 
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+Both NeoForge 21.1.247 and 21.1.248 passed build, tests, packaged-mod verification, and artifact upload.
 
-Historical CI for M1E finalization `34725651930` passed both NeoForge targets. Current M1F code-head CI `34731827907` also passed both targets.
+The final strengthened Minecraft M1E acceptance script was previously skipped by explicit owner decision. Therefore there is **no recorded final M1E runtime PASS**. This remains an evidence boundary, not an open source blocker.
 
-The final manual Minecraft M1E acceptance script was prepared but not run. The owner explicitly chose to skip it, so there is no recorded final M1E runtime PASS.
+See `M1E-FINAL-HARDENING-2026-09-13.md` for the exact completion evidence.
 
-## What M1E changed
+## Product behavior
 
-M1E removed client renderer readiness/status as canonical playback authority.
+M1E makes prepared finite playback server-authoritative.
 
-A successful modern prepared finite start is conceptually:
+A successful start is conceptually:
 
 ```text
-server has prepared MediaAsset
--> create playback generation
--> duration already known server-side
--> state = PLAYING
--> server clock starts immediately
--> clients are consumers/renderers, not the clock owner
+server has analyzed MediaAsset
+-> retain one playback reference
+-> construct playback state
+-> install canonical PLAYING session
+-> canonical server clock is already running
+-> project state to clients/computers best-effort
 ```
 
-No client is required for semantic playback to begin.
+No client READY, decoder setup, renderer setup, listener presence, or audible output is required for semantic playback to begin.
 
-## Server semantic states
+## Canonical states
 
-Current finite server states remain:
+The server semantic states are:
 
 - `PLAYING`
 - `PAUSED`
@@ -50,33 +50,88 @@ Current finite server states remain:
 
 There is no canonical server LOADING state for client buffering.
 
+`FinitePlaybackStateMachine` is the production semantic component used by `HQFiniteMediaServer` for these rules.
+
 ## Canonical controls and EOF
 
-Current source still makes the server authoritative for:
+The server owns:
 
-- position/duration;
+- position and duration;
 - pause/resume;
 - seek;
 - loop;
 - volume;
-- natural EOF.
+- natural EOF;
+- terminal server errors.
 
-Non-looping natural EOF comes from the server clock reaching the known duration.
+Non-looping natural EOF is driven by the server clock reaching the known server-derived duration.
 
-Exact-end semantics remain:
+Exact-end semantics are:
 
-- non-looping `audioSeek(duration)` -> ENDED at duration;
+- non-looping `audioSeek(duration)` -> `ENDED` at duration;
 - looping `audioSeek(duration)` -> wrap to zero and remain active.
 
-`FinitePlaybackClockTest` covers the core clock arithmetic for these rules.
+A server-side `ERROR` freezes the canonical position at the failure instant. Status reads after the error do not continue advancing time.
+
+## Prepared-start atomicity
+
+The final start path performs throwable construction and the initial status snapshot before the new session becomes canonical.
+
+If that pre-install work fails:
+
+- no new session is installed;
+- the retained playback reference is handed to retry-safe release ownership;
+- the call fails without leaving a ghost finite session.
+
+After the session is installed, remaining BEGIN/STATE/Lua-event work is projection only and cannot turn a successful canonical start into an unowned/half-installed start.
+
+## Client finite status
+
+Client finite telemetry is deliberately non-authoritative:
+
+- READY — requests a fresh current server STATE;
+- ERROR — diagnostic only.
+
+Client decoder/render/transport state cannot canonically end, pause, rewind, or otherwise own the finite server timeline.
+
+## Client/network projection
+
+Client delivery is best-effort projection of server truth.
+
+Runtime packet-send failure cannot abort canonical server transitions. Broadcast delivery is isolated per relevant player, so one failing recipient does not prevent later relevant recipients from receiving the same projection.
+
+ComputerCraft `hqspeaker_audio_state` event delivery is also best-effort per attached computer.
+
+## Asset lifetime
+
+A successful finite playback holds a separate MediaAsset playback reference from any ComputerCraft preparation reference.
+
+`MediaAssetReleaseQueue` owns deferred logical release retries. If final file deletion temporarily fails, responsibility is transferred to the queue instead of being forgotten.
+
+The active paths using this retry-safe rule include:
+
+- finite playback references;
+- explicit prepared-owner release;
+- detached prepared-owner cleanup;
+- rejected/detached-during-prepare cleanup;
+- M1F in-flight range-read references.
+
+Deferred releases are retried at a modest cadence.
+
+Server shutdown ordering is:
+
+```text
+speaker/peripheral cleanup
+-> finite + staging ownership released/transferred
+-> range IO stopped/drained
+-> MediaAssetStore close/cleanup
+```
 
 ## Current protocol relationship
 
-The authority model survived the M1F transport rewrite.
+M1E originally existed with the temporary protocol-v4 whole-file bridge.
 
-Historical M1E used protocol v4 and a temporary whole-file client bridge.
-
-Current source uses protocol v5. STATE still carries canonical server truth and now also includes the encoded seek anchor used by M1F:
+Current source uses M1F protocol v5, but the M1E authority contract is unchanged. STATE still carries canonical server truth and now also includes the M1F encoded anchor:
 
 - source/media/generation;
 - PLAYING / PAUSED / ENDED / ERROR;
@@ -88,110 +143,69 @@ Current source uses protocol v5. STATE still carries canonical server truth and 
 - `anchorTime`;
 - optional server error detail.
 
-The old M1E whole-file CHUNK/END packets are no longer current.
+The transport extension does not give clients authority over the timeline.
 
-## Client finite status
+## Deterministic evidence
 
-Modern prepared finite client status remains:
+Current M1E-specific deterministic coverage includes:
 
-- READY — asks for a fresh current server snapshot;
-- ERROR — diagnostic only.
+### `FinitePlaybackStateMachineTest`
 
-A client decoder/render failure does not canonically end or rewind server playback.
+- immediate server-owned start;
+- pause/resume;
+- non-loop exact-duration END;
+- loop exact-duration wrap;
+- natural EOF;
+- terminal control rejection;
+- ERROR position freeze;
+- volume clamping and finite-input validation.
 
-## Reevaluation finding 1 — send failures are not fully isolated from server truth
+### `FinitePlaybackClockTest`
 
-M1E's design says client delivery must not own canonical playback truth.
+- immediate progression without renderer handshake;
+- pause/resume arithmetic;
+- loop rebasing;
+- exact-end math;
+- natural EOF math.
 
-Current normal-path logic follows that idea, but failure handling is weaker than the design:
+### `BestEffortProjectionTest`
 
-`HQFiniteMediaServer.sendToRelevant()` directly sends packets per player without a local runtime-exception catch.
+- successful projection;
+- runtime projection failure containment;
+- containment even if failure reporting itself throws.
 
-Authoritative operations call send helpers inline. A runtime packet-send exception can therefore escape prepared start, stop, or control/state publication.
+### `MediaAssetReleaseQueueTest`
 
-No such runtime incident has been recorded, but the source path means network projection is not yet fully isolated from canonical transition execution.
+- failed final release transfers retry ownership;
+- repeated failure remains queued;
+- later success clears responsibility;
+- genuinely missing asset is treated as resolved.
 
-## Reevaluation finding 2 — prepared-start rollback is not atomic
+The complete project test suite passed on both supported NeoForge versions for the exact final M1E code candidate.
 
-Current `playPrepared()` does:
+## Runtime evidence boundary
 
-```text
-retain asset
--> create Session
--> session = next
--> send BEGIN
--> send STATE
--> queue Lua state event
-```
+The 2026-09-12 runtime diagnostic showed server state/control behavior continuing while the obsolete client MP3 bridge failed after decoder setup. That remains useful authority-separation evidence.
 
-The surrounding runtime-exception catch releases the retained asset, but it does not remove the installed session or repair its asset ownership flag.
+It is not the final strengthened acceptance run.
 
-If an exception occurs after session assignment, the method can throw while leaving finite PLAYING state installed. The composite only sets STAGED_FINITE ownership after a normal successful return, so this can become an unowned/ghost finite session.
-
-This is a failure-path correctness problem, not a change to the intended M1E semantics.
-
-## Reevaluation finding 3 — playback asset-release retry can be lost
-
-Current `releaseAssetReference()` clears the session's `assetReferenceHeld` flag before `MediaAssetStore.release()` succeeds.
-
-The store intentionally preserves the entry/reference if final file deletion fails. If that happens, the session has already forgotten the still-live reference and cannot retry it.
-
-The intended ownership model remains correct; the failure-path bookkeeping order needs hardening.
-
-## Evidence boundary after reevaluation
-
-What M1E evidence supports today:
-
-- current source still implements the intended normal-path server-authority semantics;
-- `FinitePlaybackClockTest` deterministically covers core clock math;
-- both-target CI/package evidence exists;
-- 2026-09-12 runtime diagnostics support client/server authority separation.
-
-What remains unproven/uncovered:
-
-- the final focused Minecraft M1E PASS was not run;
-- no dedicated deterministic `HQFiniteMediaServer` state-machine test currently exists;
-- packet-send failure isolation is not tested;
-- prepared-start rollback atomicity is not tested;
-- playback-reference release-failure retry is not tested.
-
-Accordingly, do not describe M1E as fully finalized at the current checkpoint.
-
-## Historical runtime diagnostic
-
-The 2026-09-12 diagnostic reached behavior like:
+The owner explicitly chose not to run that final M1E script, so record:
 
 ```text
-BEGIN
--> authoritative PLAYING STATE
--> complete old temporary transfer
--> old decoder open
--> READY
--> fresh server STATE
--> renderer submission
--> client decode failure
+M1E final manual Minecraft acceptance: skipped / no recorded PASS
 ```
 
-The server timeline continued independently through control behavior. That remains useful authority-separation evidence.
-
-It is not a substitute for the skipped final script or the reopened failure-path tests.
+Do not infer runtime PASS from CI.
 
 ## Decoder boundary
 
-The old JavaSound/mp3spi bridge remains non-authoritative historical code and is no longer the current M1F prepared transport consumer.
+The obsolete JavaSound/mp3spi complete-file decoder is not the authority source and is not the current M1F prepared transport consumer.
 
-For the tested MP3, historical evidence included:
-
-- server analyzer: `161.304 s`;
-- old JavaSound/mp3spi: `322.584 s`;
-- first PCM read failure after setup;
-- incompatible seek/skip unit assumptions.
-
-M1G owns the replacement progressive decoder/audio path.
+M1G owns the replacement progressive decoder/audio path. Do not repair the obsolete bridge merely to make M1F temporarily audible.
 
 ## User-facing Lua path
 
-Recommended helpers remain:
+Recommended finite-file helpers remain:
 
 - `hq.playFile`
 - `hq.prepareFile`
@@ -199,19 +213,12 @@ Recommended helpers remain:
 - `hq.playPrepared`
 - `hq.releasePrepared`
 
-Finite controls remain capability-oriented.
+`audioPlayStaged()` was this project's temporary prototype API and has been removed from the current modern finite path.
 
-`audioPlayStaged()` was this project's prototype API and has now been removed by M1F.
+## Boundary to M1F
 
-## Current continuation
+M1E completion does not make M1F complete.
 
-Read, in order:
+M1F still has separate work around the sliding encoded-window consumer boundary, its remaining deterministic acceptance matrix, and optional focused Minecraft range-transport acceptance.
 
-1. `M1E-M1F-REEVALUATION-2026-09-13.md`
-2. `CURRENT-STATE.md`
-3. `TESTING.md`
-4. `KNOWN-ISSUES.md`
-5. `M1F-IMPLEMENTATION-2026-09-13.md`
-6. exact current source/CI
-
-This file remains the M1E authority contract, with its current status corrected by the reevaluation.
+Those issues do not reopen the M1E server-authority milestone.

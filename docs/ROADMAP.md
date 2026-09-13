@@ -6,11 +6,17 @@ Build a better programmable ComputerCraft speaker peripheral. Lua owns applicati
 
 Do not add permanent music/effect/notification roles or a Java playlist manager.
 
-## Current sequencing note — 2026-09-13 reevaluation
+## Current sequencing note — 2026-09-13
 
-`M1E-M1F-REEVALUATION-2026-09-13.md` supersedes the earlier completion labels for M1E/M1F.
+M1E server-authoritative finite playback is complete at the source/test/CI level after final hardening at:
 
-The architecture remains accepted, but M1E/M1F correctness/acceptance work is reopened. M1G must not begin until the owner chooses how to handle those findings.
+`521d4323d9216c8a99e8ec60426997c3330c4068`
+
+Exact final code CI `34757923455` passed both NeoForge targets.
+
+The final focused M1E Minecraft acceptance was explicitly skipped by the owner and remains unrecorded; do not claim a runtime PASS.
+
+M1F range transport is implemented but still has its own completion/acceptance work. M1G has not started.
 
 ## Foundation
 
@@ -32,40 +38,34 @@ Frozen server analysis proves format/duration/seek facts without whole-track PCM
 
 ## M1E — server-authoritative finite timeline
 
-**Implemented semantic design; hardening/acceptance reopened.**
+**Complete at source/test/CI level.**
 
-Still correct by current source review:
+Final code candidate:
 
-- server starts canonical playback immediately;
-- server owns state/time/EOF/seek/loop/volume;
-- client READY/ERROR is non-authoritative;
-- exact-end and loop semantics remain intact.
+`521d4323d9216c8a99e8ec60426997c3330c4068`
 
-Evidence limits:
+Implemented/finalized behavior:
 
-- core clock math has deterministic tests;
-- both-target CI/package evidence exists;
-- historical runtime diagnostics support authority separation;
-- final focused Minecraft PASS was skipped/unrecorded;
-- no direct deterministic `HQFiniteMediaServer` state-machine/failure-path test currently exists.
+- successful prepared play starts canonical server time immediately;
+- server owns PLAYING / PAUSED / ENDED / ERROR;
+- server owns position/duration/pause/resume/seek/loop/volume/natural EOF;
+- non-loop exact-duration seek -> ENDED;
+- loop exact-duration seek -> zero and remain active;
+- server ERROR freezes position;
+- client READY is state refresh only;
+- client ERROR is diagnostic only;
+- start construction completes before canonical installation;
+- client projection is best-effort and per-recipient isolated;
+- MediaAsset final-release failures transfer to retry-safe ownership;
+- server shutdown drains range IO before asset-store cleanup.
 
-Reopened correctness work:
+Deterministic coverage now includes the production playback state machine, core clock, projection failure containment, and deferred-release ownership.
 
-- isolate client packet-send failures from canonical server transitions;
-- make `playPrepared()` start/rollback atomic;
-- keep/retry playback asset ownership when final release fails.
-
-Do not call M1E fully finalized until the chosen hardening path is resolved.
+Final focused Minecraft acceptance remains **skipped / no recorded PASS** by owner decision.
 
 ## M1F — demand-driven finite transport
 
-**Architecture implemented and CI-green; acceptance/completeness reopened.**
-
-Current code head:
-
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
-
-CI `34731827907` passed both NeoForge targets, including tests/package verification/artifact upload.
+**Architecture implemented; acceptance/completion still provisional.**
 
 Implemented and retained:
 
@@ -73,41 +73,30 @@ Implemented and retained:
 - server-selected encoded anchors in STATE;
 - bounded packet/window/outstanding limits;
 - bounded off-thread server reads;
-- in-flight asset retain;
+- in-flight MediaAsset retain/retry-safe release;
 - current generation/asset/player/relevance recheck before send;
 - arbitrary encoded re-anchors;
-- no modern client `.part/.media` whole-song bridge;
+- no modern client whole-song `.part/.media` bridge;
 - old modern finite CHUNK/END packets removed;
 - project-prototype `audioPlayStaged()` removed;
 - transport availability distinguishes missing data from real EOF.
 
-Reopened M1F work:
+Remaining M1F completion work:
 
-- add a real sliding/consume/discard window operation suitable for progressive refill without throwing away useful unread prefetched bytes;
-- close the rare in-flight asset-release retry gap;
-- add the deterministic acceptance coverage originally promised for server request identity/relevance/stale completion, shutdown ordering, packet bounds/integration, client anchor gating, and consume/discard progression;
-- record focused Minecraft transport acceptance if/when the owner wants runtime proof.
+- add a true sliding consume/discard encoded-window operation which preserves useful unread prefetched bytes;
+- close the remaining deterministic component matrix for request identity/relevance/stale completion, shutdown integration, packet bounds/codecs, and client BEGIN/STATE anchor gating;
+- record focused Minecraft range-transport acceptance if/when runtime proof is wanted.
 
-Do not call M1F fully accepted/source-test-CI complete at the reevaluated checkpoint.
-
-## Decision gate before M1G
-
-Owner chooses one:
-
-1. finish all reopened M1E/M1F work first;
-2. fix shared correctness first and make M1F buffer/test completion explicit M1G entry work;
-3. defer Java changes and keep M1E/M1F provisional.
-
-See `M1E-M1F-REEVALUATION-2026-09-13.md` for tradeoffs.
+M1E is no longer part of this completion gate.
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
-**Not started; blocked on the reevaluation decision.**
+**Not started.**
 
 Goal:
 
 ```text
-M1F bounded encoded window
+M1F bounded sliding encoded window
     -> progressive decoder/converter worker
     -> bounded mono PCM queue
     -> positional Minecraft/OpenAL renderer
