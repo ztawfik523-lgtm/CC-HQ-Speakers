@@ -4,42 +4,23 @@
 
 M1E server-authoritative finite semantics and M1F bounded demand-driven encoded transport are complete at the **source/test/CI/package** level.
 
-M1G is **prepared but not started**. No M1G Java/resource behavior has been added.
+M1G has now **started** on:
 
-Preparation branch:
+`codex/m1g-progressive-finite-decode`
 
-`codex/m1g-preparation`
+M1G preparation base:
 
-Preparation base/current M1F documentation head:
+`aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
-`8b86d2d1977a23c1c9aeb30a996d3375a05a5b80`
+The chosen M1G architecture is recorded in `M1G-DESIGN-DECISIONS-2026-09-13.md`.
 
-Final M1F source/test candidate:
+Final M1F source/test candidate remains:
 
 `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
 
-Final M1F CI:
+Final M1F CI remains `34763362365`, with NeoForge 21.1.247 and 21.1.248 green. M1F documentation-head verification and the requested rerun also passed both targets.
 
-`34763362365`
-
-Both NeoForge 21.1.247 and 21.1.248 passed build, tests, package verification, and artifact upload.
-
-Baseline 21.1.247 M1F JAR SHA-256:
-
-`2979b53f1c9903c491dda0cb3ba4a46cfff0ad4924910a974b3aaaff3e9acc32`
-
-## Fresh M1F re-verification before M1G preparation
-
-The documentation-head verification run `34763711105` ultimately completed green on both NeoForge targets.
-
-At the owner's request it was run again. Fresh rerun jobs:
-
-- NeoForge 21.1.247 job `103742611713`: PASS;
-- NeoForge 21.1.248 job `103742612481`: PASS.
-
-Both rerun jobs passed build, the full test suite, packaged-mod verification, and artifact upload.
-
-This is still not a focused Minecraft runtime PASS.
+Focused real-Minecraft M1F transport acceptance remains unrecorded. Green CI is not runtime proof.
 
 ## Current finite architecture
 
@@ -50,9 +31,9 @@ ComputerCraft file
     -> server-selected encoded anchor
     -> bounded client-requested encoded ranges (M1F)
     -> bounded sliding client encoded RAM
-    -> progressive decoder/converter worker (M1G)
-    -> bounded mono PCM
-    -> one positional renderer per physical speaker
+    -> progressive decoder/converter worker (M1G, in progress)
+    -> bounded mono signed-16 PCM at source sample rate
+    -> Minecraft AudioStream / SoundManager positional renderer
 ```
 
 ## M1E evidence boundary
@@ -69,7 +50,7 @@ M1F source/test/CI/package and deterministic/component acceptance are complete.
 
 Current modern transport has:
 
-- protocol v5 range request/data;
+- protocol v5 range request/data at the finalized M1F checkpoint;
 - authoritative STATE-selected encoded anchors;
 - first demand gated on STATE;
 - 128 KiB maximum range;
@@ -87,95 +68,82 @@ Current modern transport has:
 
 Focused real-Minecraft M1F transport acceptance is not recorded. M1F audibility was not required.
 
-## M1G preparation findings
+## M1G decisions are resolved
 
-Exact current source was rechecked before preparation.
+The earlier A/B/C decision gates are no longer open. The owner selected, after repeated source/web pressure-testing:
 
-### Modern insertion point
+- **A1:** normal Minecraft `AudioStream` / `SoundManager` renderer;
+- **B1:** server-normalized common-WAV layout carried to clients;
+- **C1:** preserve source sample rate;
+- **D1:** narrow PCM/float `WAVE_FORMAT_EXTENSIBLE` support;
+- **E1:** coarse conservative MP3 pre-roll using an earlier real seek point.
 
-`HQFiniteMediaClient` is currently transport-only: BEGIN/state identity, `FiniteRangeWindow`, range pumping, anchor state, and terminal cancellation. It has no modern decoder, PCM queue, or renderer.
+Important refinements:
 
-M1G should build on that boundary rather than reuse the inherited finite engine.
+- output representation will normalize to mono signed 16-bit PCM while preserving sample rate;
+- renderer-facing reads must never wait on network/codec work;
+- seek/replacement/stop discards the old local decoder/PCM/renderer epoch;
+- semantic seek restarts codec state even if the selected encoded anchor byte is unchanged;
+- temporary M1F starvation is never decoder EOF;
+- client decoder EOF is not canonical server EOF.
 
-### Old finite code is not the M1G engine
+See `M1G-DESIGN-DECISIONS-2026-09-13.md` for the locked rationale and boundaries.
 
-- `FileFiniteAudioStream` requires a complete local file.
-- `HQAudioStream` finite mode decodes the complete finite payload to a retained `FiniteAudioTrack`.
-- `FiniteAudioTrack` stores whole decoded PCM in RAM.
+## M1G implementation started
 
-Those violate the M1G bounded-duration-independent target.
+The first M1G slice is the format/layout/anchor foundation.
 
-### MP3 dependency fact
+Implemented on the M1G branch so far:
 
-The project already packages JLayer `1.0.1.4`. Inherited live MP3 code proves frame-by-frame JLayer use works in this dependency/package path.
+- `WavLayout`: normalized common-WAV representation/rate/channels/block-align/data-range facts;
+- `CommonWavAnalyzer`: bounded server parser for the chosen classic PCM/float + narrow WAVEX subset;
+- `ModernFiniteMediaAnalyzer`: modern prepared/local acceptance gate narrowed to MP3 + common WAV;
+- `FiniteDecodeDescriptor`: decoder-facing MP3/WAV-only contract;
+- `FiniteDecodeAnchorSelector`: exact WAV frame anchors plus E1 MP3 pre-roll anchor selection;
+- `MediaMetadata` can now carry normalized WAV layout while keeping the historical constructor for inherited analyzer paths;
+- `HQMediaStaging.prepareAsset(...)` now routes newly prepared assets through the modern MP3/common-WAV gate;
+- deterministic tests were added for common WAV/WAVEX normalization, decoder format narrowing, and codec-aware anchors.
 
-M1G still needs a starvation-aware input bridge over the M1F window so temporary `NEED_DATA` never becomes decoder EOF.
+This is a real production start, not only documentation, because newly prepared assets now use the M1G acceptance gate. The modern client is still silent at this checkpoint; progressive decode, bounded PCM, and renderer integration are the next implementation slices.
 
-### WAV gap
+## Current M1G implementation order
 
-Current `FiniteMediaAnalyzer` accepts historical WAV shapes broader than the final M1G target. Current `MediaMetadata` does not contain a final normalized common-WAV layout descriptor.
-
-M1G must narrow active prepared/local WAV support to the implemented mono/stereo common PCM/float subset.
-
-## M1G decision gates
-
-M1G implementation is blocked on three owner choices documented with tradeoffs in `PRE-M1G-PREPARATION.md`:
-
-1. **Renderer:** normal Minecraft `AudioStream`/SoundManager vs direct Channel/OpenAL queue.
-2. **WAV layout:** server-normalized layout carried over the wire vs client progressive container parsing.
-3. **Sample rate:** preserve source sample rate vs normalize finite PCM to 48 kHz.
-
-Do not silently choose among these.
-
-## M1G non-negotiable requirements
-
-Regardless of those choices:
-
-- M1F encoded data stays bounded;
-- decoded PCM stays bounded independently of track duration;
-- no network/disk/decode blocking on Minecraft or audio threads;
-- temporary encoded/PCM starvation is not physical EOF;
-- MP3 seek/rejoin includes Layer III pre-roll;
-- seek/replacement/stop invalidates stale decoder + PCM + renderer state;
-- same coarse encoded anchor does not imply same decoder/audible seek state;
-- renderer failure remains local/diagnostic and cannot own server EOF;
-- one physical speaker remains one mono positional source;
-- standard CC:T speaker behavior remains foundational.
+1. finish/verify the normalized format/layout/anchor foundation;
+2. carry the MP3/common-WAV descriptor over the modern finite wire and use codec-aware anchors in server STATE;
+3. add a cancelable starvation-aware encoded-input bridge over M1F;
+4. add a bounded PCM queue with backpressure and nonblocking renderer reads;
+5. add progressive common-WAV conversion;
+6. add progressive JLayer MP3 decode with E1 pre-roll/discard;
+7. add the A1 Minecraft positional renderer;
+8. integrate pause/resume/seek/loop/volume/stop and stale-epoch cancellation;
+9. complete deterministic/component acceptance and focused Minecraft audible acceptance.
 
 ## M1H boundary
 
 Full late-entry, proactive leave cleanup, return/rejoin, dimension/resource reload recovery, robust underrun rejoin, and final VS2 listener lifecycle remain M1H.
-
-## Documentation drift warning
-
-Two transitional paragraphs in `ARCHITECTURE.md` are stale after M1F finalization:
-
-- current active max range is 128 KiB, not the older 256 KiB starting-point statement;
-- modern prepared transport no longer uses whole-file push/client `.part/.media` bridging.
-
-Current source, `M1F-FINALIZATION-2026-09-13.md`, and the pre-M1G docs override those old paragraphs.
 
 ## Evidence boundaries
 
 ```text
 M1E final focused Minecraft acceptance: skipped / no recorded PASS
 M1F focused Minecraft transport acceptance: not recorded
-M1G implementation: not started
-M1G audible runtime PASS: not applicable yet
+M1G implementation: started, not source-complete
+M1G audible runtime PASS: not recorded
 ```
-
-Green CI is not runtime proof.
 
 ## Current read order
 
-1. `HANDOFF-2026-09-13-PRE-M1G.md`
-2. `PRE-M1G-PREPARATION.md`
-3. `M1F-FINALIZATION-2026-09-13.md`
-4. `CURRENT-STATE.md`
-5. `KNOWN-ISSUES.md`
-6. `TESTING.md`
-7. `VERIFIED-FACTS.md`
-8. `ROADMAP.md`
-9. `M1E-FINITE-STREAMING-DESIGN.md`
-10. `LUA-API.md`
-11. exact current source and current CI
+1. `M1G-DESIGN-DECISIONS-2026-09-13.md`
+2. `HANDOFF-2026-09-13-PRE-M1G.md` (historical preparation context; its owner-choice gate is superseded)
+3. `PRE-M1G-PREPARATION.md` (historical tradeoff analysis; decisions are now resolved)
+4. `M1F-FINALIZATION-2026-09-13.md`
+5. `CURRENT-STATE.md`
+6. `KNOWN-ISSUES.md`
+7. `TESTING.md`
+8. `VERIFIED-FACTS.md`
+9. `ROADMAP.md`
+10. `M1E-FINITE-STREAMING-DESIGN.md`
+11. `LUA-API.md`
+12. exact current source and current CI
+
+If a new correctness/design choice appears during implementation, stop and ask the owner before selecting among meaningful tradeoffs.
