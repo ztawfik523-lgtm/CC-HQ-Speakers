@@ -93,7 +93,9 @@ Required regression coverage: slide forward, apply an ordinary same-anchor STATE
 
 Normal final release keeps bookkeeping alive if file deletion fails. `MediaAssetStore.close()` instead clears completed entries before deletion attempts and marks close cleanup complete even when a deletion throws, so a later `close()` cannot retry those completed files.
 
-Next startup orphan pruning should normally recover the managed files, so this is not active playback corruption. It still needs explicit shutdown-deletion-failure coverage before being called resolved.
+There is an additional shutdown-lifetime consequence: `ServerMediaAssets.closeServer()` removes the stopped server from its static registry only after `store.close()` succeeds. If `store.close()` throws, registry removal is skipped; the server-stop hook currently catches/logs that exception and does not schedule another close. In a long-lived JVM/integrated-server restart scenario, the stopped server/services can therefore remain strongly reachable until process exit unless another explicit retry occurs.
+
+Next startup orphan pruning should normally recover the managed files, so this is not active playback corruption. It still needs explicit shutdown-deletion-failure and failed-close registry-lifetime coverage before being called resolved.
 
 ### KI-055 — current test/script surface mixes modern M1G acceptance with historical legacy tests
 
