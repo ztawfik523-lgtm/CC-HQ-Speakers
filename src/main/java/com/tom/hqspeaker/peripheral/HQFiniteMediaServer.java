@@ -131,7 +131,13 @@ public final class HQFiniteMediaServer {
             throw new LuaException("HQ media services are unavailable: " + safeMessage(e));
         }
 
-        if (!store.retain(id)) throw new LuaException("unknown or released media asset");
+        final boolean retained;
+        try {
+            retained = store.retain(id);
+        } catch (IllegalStateException e) {
+            throw new LuaException("HQ media asset store is unavailable: " + safeMessage(e));
+        }
+        if (!retained) throw new LuaException("unknown or released media asset");
 
         Session next = null;
         try {
@@ -139,7 +145,7 @@ public final class HQFiniteMediaServer {
             next = new Session(id, generation, metadata, asset.sizeBytes(),
                 mediaAssets.rangeReads(), mediaAssets.releases(), volume, System.nanoTime());
 
-            // Install canonical server truth before projecting it to any client. All projection below is best-effort.
+            // Install canonical server truth before projecting it to any client. Projection failures are contained.
             session = next;
             terminalStatus = null;
             sendBeginToRelevant(next);
@@ -369,23 +375,30 @@ public final class HQFiniteMediaServer {
     }
 
     private void sendBeginToRelevant(Session s) {
-        float[] world = computeWorldPos();
-        HQFiniteMediaBeginPacket packet = new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.format,
-            s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
-            s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
-        sendToRelevant(packet);
+        projectToClients("BEGIN", () -> {
+            float[] world = computeWorldPos();
+            HQFiniteMediaBeginPacket packet = new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.format,
+                s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+                s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
+            sendToRelevantUnchecked(packet);
+        });
     }
 
     private void sendControlToRelevant(Session s, HQFiniteMediaControlPacket.Action action, double value) {
-        sendToRelevant(new HQFiniteMediaControlPacket(source, s.generation, action, value));
+        projectToClients("CONTROL " + action, () ->
+            sendToRelevantUnchecked(new HQFiniteMediaControlPacket(source, s.generation, action, value)));
     }
 
     private void sendStateToRelevant(Session s) {
-        sendToRelevant(statePacket(s, System.nanoTime()));
+        projectToClients("STATE", () -> sendToRelevantUnchecked(statePacket(s, System.nanoTime())));
     }
 
     private void sendState(Session s, ServerPlayer player) {
-        if (player != null && isRelevant(player)) safeSendToPlayer(statePacket(s, System.nanoTime()), player);
+        projectToClients("STATE", () -> {
+            if (player != null && isRelevant(player)) {
+                HQSpeakerNetwork.sendToPlayer(statePacket(s, System.nanoTime()), player);
+            }
+        });
     }
 
     private HQFiniteMediaStatePacket statePacket(Session s, long now) {
@@ -417,20 +430,23 @@ public final class HQFiniteMediaServer {
         queueStateEvent(statusOf(s, now));
     }
 
-    private void sendToRelevant(CustomPacketPayload packet) {
+    private void sendToRelevantUnchecked(CustomPacketPayload packet) {
         for (ServerPlayer player : level.players()) {
-            if (isRelevant(player)) safeSendToPlayer(packet, player);
+            if (isRelevant(player)) HQSpeakerNetwork.sendToPlayer(packet, player);
         }
     }
 
     /** Client/network projection is best-effort and may never abort canonical server state transitions. */
-    private void safeSendToPlayer(CustomPacketPayload packet, ServerPlayer player) {
+    private void projectToClients(String what, Runnable projection) {
         try {
-            HQSpeakerNetwork.sendToPlayer(packet, player);
+            projection.run();
         } catch (RuntimeException e) {
-            HQSpeakerMod.warn("finite media packet delivery failed for player " + player.getUUID()
-                + " source=" + source + " packet=" + packet.getClass().getSimpleName() + ": " + safeMessage(e));
+            HQSpeakerMod.warn("finite media client projection failed source=" + source + " " + what + ": " + safeMessage(e));
         }
+    }
+
+    private void safeSendToPlayer(CustomPacketPayload packet, ServerPlayer player) {
+        projectToClients(packet.getClass().getSimpleName(), () -> HQSpeakerNetwork.sendToPlayer(packet, player));
     }
 
     private boolean isRelevant(ServerPlayer player) {

@@ -161,15 +161,20 @@ public final class HQMediaStaging {
     public boolean releasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         UUID id = parseAssetId(assetId);
         int computerId = computer.getID();
-        MediaAssetReleaseQueue releases = mediaAssets().releases();
 
-        boolean owned;
+        // Check ownership before touching shared services. If service lookup fails, ownership is still intact for retry.
         synchronized (ownershipLock) {
             Set<UUID> assets = preparedByComputerId.get(computerId);
-            owned = assets != null && assets.remove(id);
-            if (assets != null && assets.isEmpty()) preparedByComputerId.remove(computerId);
+            if (assets == null || !assets.contains(id)) return false;
         }
-        if (!owned) return false;
+        MediaAssetReleaseQueue releases = mediaAssets().releases();
+
+        // Detach may race between the check and this removal. In that case detach already took responsibility.
+        synchronized (ownershipLock) {
+            Set<UUID> assets = preparedByComputerId.get(computerId);
+            if (assets == null || !assets.remove(id)) return false;
+            if (assets.isEmpty()) preparedByComputerId.remove(computerId);
+        }
 
         MediaAssetReleaseQueue.Result result = releases.release(id);
         logReleaseResult(result, id, "prepared media asset");
