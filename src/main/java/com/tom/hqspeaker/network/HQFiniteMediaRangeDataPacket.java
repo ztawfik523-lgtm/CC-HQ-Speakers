@@ -3,6 +3,7 @@ package com.tom.hqspeaker.network;
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.client.HQFiniteMediaClient;
 import com.tom.hqspeaker.media.FiniteRangeLimits;
+import com.tom.hqspeaker.media.FiniteRangeValidation;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -46,8 +47,8 @@ public record HQFiniteMediaRangeDataPacket(
         };
 
     public boolean sensible() {
-        return source != null && assetId != null && generation > 0L && offset >= 0L
-            && data != null && data.length > 0 && data.length <= FiniteRangeLimits.MAX_RANGE_BYTES;
+        return data != null && FiniteRangeValidation.wireRangeSensible(
+            source, assetId, generation, offset, data.length);
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

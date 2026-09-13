@@ -11,6 +11,17 @@ class FiniteRangeValidationTest {
     private static final UUID ASSET = UUID.randomUUID();
 
     @Test
+    void wireRangeUsesSharedPacketMaximum() {
+        assertTrue(FiniteRangeValidation.wireRangeSensible(
+            SOURCE, ASSET, 1L, 0L, FiniteRangeLimits.MAX_RANGE_BYTES));
+        assertFalse(FiniteRangeValidation.wireRangeSensible(
+            SOURCE, ASSET, 1L, 0L, FiniteRangeLimits.MAX_RANGE_BYTES + 1));
+        assertFalse(FiniteRangeValidation.wireRangeSensible(SOURCE, ASSET, 1L, -1L, 1));
+        assertFalse(FiniteRangeValidation.wireRangeSensible(SOURCE, ASSET, 1L, 0L, 0));
+        assertFalse(FiniteRangeValidation.wireRangeSensible(null, ASSET, 1L, 0L, 1));
+    }
+
+    @Test
     void requestRequiresExactSourceGenerationAssetAndBounds() {
         assertTrue(FiniteRangeValidation.requestMatches(
             SOURCE, ASSET, 7L, 1_000_000L,

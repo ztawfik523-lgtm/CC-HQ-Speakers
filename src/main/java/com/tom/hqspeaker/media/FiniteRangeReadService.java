@@ -40,12 +40,14 @@ public final class FiniteRangeReadService implements AutoCloseable {
     }
 
     private static final AtomicInteger THREAD_IDS = new AtomicInteger();
+    private static final long DEFAULT_SHUTDOWN_WAIT_MILLIS = 10_000L;
 
     private final MediaAssetStore store;
     private final MediaAssetReleaseQueue releases;
     private final ExecutorService executor;
     private final int maxRequestsPerPlayer;
     private final long maxBytesPerPlayer;
+    private final long shutdownWaitMillis;
     private final Map<UUID, Account> accounts = new HashMap<>();
     private boolean closed;
     private boolean shutdownStarted;
@@ -58,23 +60,32 @@ public final class FiniteRangeReadService implements AutoCloseable {
     public FiniteRangeReadService(MediaAssetStore store, MediaAssetReleaseQueue releases) {
         this(store, releases, productionExecutor(),
             FiniteRangeLimits.MAX_OUTSTANDING_REQUESTS_PER_PLAYER,
-            FiniteRangeLimits.MAX_OUTSTANDING_BYTES_PER_PLAYER);
+            FiniteRangeLimits.MAX_OUTSTANDING_BYTES_PER_PLAYER,
+            DEFAULT_SHUTDOWN_WAIT_MILLIS);
     }
 
     FiniteRangeReadService(MediaAssetStore store, ExecutorService executor,
                            int maxRequestsPerPlayer, long maxBytesPerPlayer) {
-        this(store, new MediaAssetReleaseQueue(store), executor, maxRequestsPerPlayer, maxBytesPerPlayer);
+        this(store, new MediaAssetReleaseQueue(store), executor, maxRequestsPerPlayer, maxBytesPerPlayer,
+            DEFAULT_SHUTDOWN_WAIT_MILLIS);
     }
 
     FiniteRangeReadService(MediaAssetStore store, MediaAssetReleaseQueue releases, ExecutorService executor,
                            int maxRequestsPerPlayer, long maxBytesPerPlayer) {
+        this(store, releases, executor, maxRequestsPerPlayer, maxBytesPerPlayer, DEFAULT_SHUTDOWN_WAIT_MILLIS);
+    }
+
+    FiniteRangeReadService(MediaAssetStore store, MediaAssetReleaseQueue releases, ExecutorService executor,
+                           int maxRequestsPerPlayer, long maxBytesPerPlayer, long shutdownWaitMillis) {
         this.store = Objects.requireNonNull(store, "store");
         this.releases = Objects.requireNonNull(releases, "releases");
         this.executor = Objects.requireNonNull(executor, "executor");
         if (maxRequestsPerPlayer <= 0) throw new IllegalArgumentException("maxRequestsPerPlayer must be positive");
         if (maxBytesPerPlayer <= 0L) throw new IllegalArgumentException("maxBytesPerPlayer must be positive");
+        if (shutdownWaitMillis <= 0L) throw new IllegalArgumentException("shutdownWaitMillis must be positive");
         this.maxRequestsPerPlayer = maxRequestsPerPlayer;
         this.maxBytesPerPlayer = maxBytesPerPlayer;
+        this.shutdownWaitMillis = shutdownWaitMillis;
     }
 
     public Submission submit(UUID playerId, UUID assetId, long totalBytes, long offset, int length,
@@ -163,7 +174,7 @@ public final class FiniteRangeReadService implements AutoCloseable {
         }
 
         try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            if (!executor.awaitTermination(shutdownWaitMillis, TimeUnit.MILLISECONDS)) {
                 throw new IOException("finite range IO workers did not stop before media-store shutdown");
             }
         } catch (InterruptedException e) {

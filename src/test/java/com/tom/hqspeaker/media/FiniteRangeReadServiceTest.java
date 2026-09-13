@@ -51,6 +51,30 @@ class FiniteRangeReadServiceTest {
     }
 
     @Test
+    void productionReadAndCompletionRunOffSubmittingThread() throws Exception {
+        byte[] source = new byte[2048];
+        try (MediaAssetStore store = new MediaAssetStore(temp.resolve("thread-store"), 1_000_000L, 2_000_000L);
+             FiniteRangeReadService service = new FiniteRangeReadService(store)) {
+            MediaAsset asset = store.importAsset("fixture.bin", source.length,
+                Channels.newChannel(new ByteArrayInputStream(source)));
+            Thread submittingThread = Thread.currentThread();
+            AtomicReference<Thread> completionThread = new AtomicReference<>();
+            CountDownLatch done = new CountDownLatch(1);
+
+            assertEquals(FiniteRangeReadService.Submission.ACCEPTED,
+                service.submit(UUID.randomUUID(), asset.id(), source.length, 0L, 1024, read -> {
+                    completionThread.set(Thread.currentThread());
+                    done.countDown();
+                }));
+
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+            assertNotNull(completionThread.get());
+            assertNotSame(submittingThread, completionThread.get());
+            assertTrue(completionThread.get().getName().startsWith("hqspeaker-range-io-"));
+        }
+    }
+
+    @Test
     void queuedReadRetainsAssetAcrossOwnerRelease() throws Exception {
         byte[] source = new byte[1024];
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -153,6 +177,45 @@ class FiniteRangeReadServiceTest {
             assertEquals(0, store.referenceCount(asset.id()));
         } finally {
             blocker.countDown();
+            service.close();
+            store.close();
+        }
+    }
+
+    @Test
+    void shutdownWaitCanBeRetriedAfterInitialTimeout() throws Exception {
+        byte[] source = new byte[512];
+        MediaAssetStore store = new MediaAssetStore(temp.resolve("shutdown-retry-store"), 1_000_000L, 2_000_000L);
+        MediaAsset asset = store.importAsset("fixture.bin", source.length,
+            Channels.newChannel(new ByteArrayInputStream(source)));
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        executor.submit(() -> {
+            started.countDown();
+            while (true) {
+                try {
+                    releaseWorker.await();
+                    return;
+                } catch (InterruptedException ignored) {
+                    // Deliberately remain alive through the first shutdownNow so close() must time out and be retried.
+                }
+            }
+        });
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+
+        FiniteRangeReadService service = new FiniteRangeReadService(
+            store, new MediaAssetReleaseQueue(store), executor, 4, 1024 * 1024L, 25L);
+        try {
+            IOException first = assertThrows(IOException.class, service::close);
+            assertTrue(first.getMessage().contains("did not stop"));
+            assertTrue(store.get(asset.id()).isPresent(), "store must remain open while range shutdown is incomplete");
+
+            releaseWorker.countDown();
+            service.close();
+            assertTrue(store.get(asset.id()).isPresent());
+        } finally {
+            releaseWorker.countDown();
             service.close();
             store.close();
         }
