@@ -119,6 +119,8 @@ Historical scripts/handoffs are evidence, not current contracts. Keep them clear
 
 Current docs must point readers to `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` for present behavior.
 
+The bundled ROM module `src/main/resources/data/computercraft/lua/rom/modules/main/hqspeaker.lua` still contains a stale comment saying `audioPlayStaged()` is scheduled for removal when M1F replaces the old whole-file transport. M1F has already removed that route; runtime behavior is correct and only the source comment is stale. When source/comment edits are allowed, update that comment without changing behavior.
+
 ## Packaging/license cleanup
 
 Before public release:
