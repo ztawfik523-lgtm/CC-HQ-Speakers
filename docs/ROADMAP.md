@@ -16,7 +16,7 @@ M1G is in progress on `codex/m1g-progressive-finite-decode`.
 
 Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`.
 
-The 2026-09-14 audits changed documentation only and recorded KI-053 through KI-060; source remains at the integrated checkpoint for implementation purposes.
+The 2026-09-14 audits changed documentation only and recorded KI-053 through KI-061; source remains at the integrated checkpoint for implementation purposes.
 
 ## Foundation
 
@@ -78,11 +78,12 @@ Integrated work includes protocol v6 descriptor/anchors, common-WAV conversion, 
 1. **Choose and implement a coherent decoder snapshot/reanchor model** for KI-053/KI-056/KI-057. The main choice is a minimal v6/client-ordering patch versus an explicit server-authoritative decode/reanchor revision (likely protocol v7). Do not patch KI-053 in isolation.
 2. **Fix cancellation ordering** so expected SEEK cancellation cannot race into a fatal decoder error; invalidate stale worker identity before cancellation wakes it.
 3. **Make ordinary STATE reconciliation non-destructive** to a healthy decoder while still guaranteeing fresh codec state for semantic seek/rejoin even when the coarse encoded anchor is unchanged.
-4. **Choose modern finite volume/range behavior** for KI-058/KI-059/KI-060: whether volume 0 is muted canonical playback with later catch-up, and whether volume 0..3 should preserve normal CC:T/Minecraft audible-distance semantics. Then fix live attenuation refresh, renderer-start retry/defer behavior, and server relevance accordingly.
+4. **Choose modern finite volume/range behavior** for KI-058/KI-059/KI-060: whether volume 0 keeps a silent renderer active or defers local start/catches up later, and whether volume 0..3 should preserve normal CC:T/Minecraft audible-distance semantics. Then fix live attenuation refresh, renderer-start retry/defer behavior, and server relevance accordingly.
 5. **Choose loop-wrap rejoin policy KI-051**: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart. Implement loop on top of the corrected reanchor mechanism rather than creating a second restart path.
 6. **Close deterministic evidence gaps**: real-MP3 JLayer decode across sliding/starvation/pre-roll, focused `FinitePcmAudioStream` tests, decoder cancellation/revision ordering, live volume/start behavior, and repeated seek stress.
-7. **Re-audit timing/cancellation/authority** after the above changes and keep both NeoForge targets green/package-verified.
-8. **Run focused real-Minecraft audible acceptance** for modern `hq.playFile()` MP3/common WAV, controls/seek/starvation, bounded memory, positional attenuation, live volume/range behavior, zero-volume behavior, stop/replacement, loop after KI-051, and standard CC:T compatibility.
+7. **Close staging lifecycle leak KI-061** by reclaiming leftover files when the whole per-speaker staging owner is destroyed, with multi-attachment and cleanup-failure coverage. This may be done before or after focused playback fixes; unlike KI-054 it can accumulate during ordinary speaker lifecycle churn.
+8. **Re-audit timing/cancellation/authority/storage** after the above changes and keep both NeoForge targets green/package-verified.
+9. **Run focused real-Minecraft audible acceptance** for modern `hq.playFile()` MP3/common WAV, controls/seek/starvation, bounded memory, positional attenuation, live volume/range behavior, zero-volume behavior, stop/replacement, loop after KI-051, staging lifecycle, and standard CC:T compatibility.
 
 M1G non-negotiables remain:
 
@@ -132,7 +133,7 @@ Final category/gain, reload lifecycle, stale-channel cleanup, attenuation/VS2 mo
 
 ## M1O/P/Q — hardening, package verification, consolidated runtime acceptance
 
-Includes shutdown/storage hardening such as KI-054, practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
+Includes shutdown/storage hardening such as KI-054 (and any KI-061 residual cleanup if not closed in M1G), practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
 
 ## M2 — Sound Physics Remastered
 
