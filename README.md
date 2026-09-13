@@ -23,13 +23,15 @@ One physical speaker remains one mono positional source.
 
 M1E server-authoritative finite playback and M1F bounded demand-driven encoded transport are complete at the **source/test/CI/package** level.
 
+M1G progressive decode/rendering is **prepared but not started**.
+
+Current preparation branch:
+
+`codex/m1g-preparation`
+
 Final M1F source/test candidate:
 
 `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
-
-Branch:
-
-`codex/m1f-finalization`
 
 Final M1F CI:
 
@@ -41,7 +43,9 @@ Baseline 21.1.247 M1F candidate JAR SHA-256:
 
 `2979b53f1c9903c491dda0cb3ba4a46cfff0ad4924910a974b3aaaff3e9acc32`
 
-Focused real-Minecraft M1F transport acceptance is **not recorded**. CI/component proof is not being presented as runtime proof.
+The finalized-M1F documentation head `8b86d2d1977a23c1c9aeb30a996d3375a05a5b80` also passed run `34763711105` on both targets, and the owner-requested fresh rerun passed both target jobs again.
+
+Focused real-Minecraft M1F transport acceptance is **not recorded**. CI/component proof is not runtime proof.
 
 The current finite architecture is:
 
@@ -53,10 +57,12 @@ ComputerCraft file
     -> bounded client range requests
     -> bounded off-thread server reads
     -> bounded sliding client encoded RAM
-    -> M1G progressive decode/PCM/rendering
+    -> M1G progressive decoder/converter worker
+    -> bounded mono PCM
+    -> positional speaker renderer
 ```
 
-Read `docs/M1F-FINALIZATION-2026-09-13.md` and `docs/CURRENT-STATE.md` before continuing implementation.
+Read `docs/HANDOFF-2026-09-13-PRE-M1G.md` and `docs/PRE-M1G-PREPARATION.md` before any M1G implementation.
 
 ## M1E finite server authority
 
@@ -68,11 +74,10 @@ Prepared finite playback has hardened server-owned semantics:
 - server ERROR freezes position;
 - client READY requests current state only;
 - client ERROR is diagnostic only;
-- prepared-start construction finishes before canonical session installation;
-- client delivery is best-effort and isolated per recipient;
-- MediaAsset final-release failures transfer to retry-safe ownership.
+- client delivery is best-effort/per-recipient;
+- MediaAsset release is retry-safe.
 
-The final focused Minecraft M1E acceptance script was explicitly skipped by the owner, so there is no recorded final M1E runtime PASS.
+Final focused Minecraft M1E acceptance was explicitly skipped by the owner, so there is no recorded final M1E runtime PASS.
 
 ## M1F finite encoded transport
 
@@ -80,20 +85,34 @@ Protocol v5 uses bounded client-requested ranges rather than whole-song transfer
 
 Current implementation values:
 
-- max range: 128 KiB;
-- client encoded window: 512 KiB;
-- max outstanding requests/player: 4;
-- max outstanding encoded bytes/player: 512 KiB;
-- range IO workers: 2;
-- range IO queue: 64.
+- max range 128 KiB;
+- client encoded window 512 KiB;
+- max outstanding requests/player 4;
+- max outstanding encoded bytes/player 512 KiB;
+- range IO workers 2;
+- range IO queue 64.
 
-The client window is now genuinely progressive: it waits for authoritative STATE before first demand, supports arbitrary re-anchor, can slide forward while preserving unread prefetched bytes, refills past a full window, and keeps memory bounded independent of track duration.
+The client waits for authoritative STATE before first demand, supports arbitrary re-anchor, slides forward while retaining useful unread prefetch, and distinguishes missing data from true EOF/stale state.
 
-The server validates source/asset/generation/bounds/relevance, reads ranges off-thread, retains assets while work is in flight, discards stale work, and drains/cancels range IO before media-store shutdown.
+The modern prepared path has no complete-song client `.part/.media` cache, no modern CHUNK/END whole-file packets, and no `audioPlayStaged()` route.
 
-The modern prepared path has no complete-song client `.part/.media` cache, no modern CHUNK/END whole-file packets, and no project-prototype `audioPlayStaged()` route.
+M1F intentionally does **not** decode/render the file.
 
-M1F intentionally does **not** decode/render the file. M1G owns progressive MP3/common-WAV decoding and actual audible positional rendering.
+## M1G preparation
+
+M1G will add progressive MP3/common-WAV decoding, bounded mono PCM, and actual positional rendering on top of M1F.
+
+Exact source recheck found that modern `HQFiniteMediaClient` is transport-only, which is the clean M1G insertion point. Do not route modern prepared playback back through the inherited complete-file/whole-decoded-track finite classes.
+
+The project already packages JLayer `1.0.1.4`; inherited live MP3 code proves frame-by-frame JLayer use is available in the shipped dependency path.
+
+Before M1G code starts, the owner must choose three documented design gates:
+
+- Minecraft `AudioStream`/SoundManager renderer vs direct Channel/OpenAL queue;
+- server-normalized WAV layout vs client progressive WAV parsing;
+- preserve source sample rate vs normalize modern finite PCM to 48 kHz.
+
+See `docs/PRE-M1G-PREPARATION.md` for tradeoffs and the complete acceptance plan.
 
 ## Lua finite-file API
 
@@ -106,7 +125,7 @@ local hq = require("hqspeaker")
 hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 ```
 
-Preload/reuse helpers:
+Reusable helpers:
 
 - `prepareFile`
 - `preparedInfo`
@@ -122,21 +141,16 @@ Finite controls:
 - `audioSetLooping(loop)`
 - `audioStop()`
 
-Staging remains import plumbing only. See `docs/LUA-API.md` for the programming reference.
+See `docs/LUA-API.md`.
 
-## HQ raw/feed audio
+## Milestone sequence
 
-HQ `speakPCM` remains an open-ended producer feed with bounded backpressure and separate `hqspeaker_audio_empty` pacing. It does not pretend to have finite duration or arbitrary seek.
-
-## Current milestone sequence
-
-- **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded by owner decision.
-- **M1F:** bounded client-requested encoded range transport — source/test/CI/package complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + audible renderer — next, not started.
-- **M1H:** dynamic listener/late-join/leave-return/underrun recovery.
+- **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
+- **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
+- **M1G:** progressive MP3/common-WAV decode + audible renderer — prepared, not started.
+- **M1H:** dynamic listener/late-join/leave-return/recovery.
 - **M1I:** optional gated native FLAC.
-- **M1J/K:** functional multispeaker shared clocks, then optional active-session sharing optimization.
-- later milestones cover legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
+- later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
 
 ## Build
 
@@ -149,17 +163,16 @@ HQ `speakPCM` remains an open-ended producer feed with bounded backpressure and 
 
 Read current development docs in this order:
 
-1. `docs/M1F-FINALIZATION-2026-09-13.md`
-2. `docs/M1E-FINAL-HARDENING-2026-09-13.md`
-3. `docs/CURRENT-STATE.md`
-4. `docs/KNOWN-ISSUES.md`
-5. `docs/TESTING.md`
-6. `docs/VERIFIED-FACTS.md`
-7. `docs/M1F-IMPLEMENTATION-2026-09-13.md`
-8. `docs/M1E-FINITE-STREAMING-DESIGN.md`
-9. `docs/ROADMAP.md`
+1. `docs/HANDOFF-2026-09-13-PRE-M1G.md`
+2. `docs/PRE-M1G-PREPARATION.md`
+3. `docs/M1F-FINALIZATION-2026-09-13.md`
+4. `docs/CURRENT-STATE.md`
+5. `docs/KNOWN-ISSUES.md`
+6. `docs/TESTING.md`
+7. `docs/VERIFIED-FACTS.md`
+8. `docs/ROADMAP.md`
+9. `docs/M1E-FINITE-STREAMING-DESIGN.md`
 10. `docs/LUA-API.md`
-11. `docs/ARCHITECTURE.md`
-12. `docs/FUTURE-CLEANUP.md`
+11. exact current source/CI
 
-Older dated milestone/handoff documents preserve checkpoint history but do not override current source, finalization evidence, or current-state docs.
+Older milestone/handoff documents preserve checkpoint history but do not override current finalization/preparation records.

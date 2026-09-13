@@ -4,9 +4,11 @@ Date: 2026-09-13
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
-Current branch: `codex/m1f-finalization`
+Current branch: `codex/m1g-preparation`
 
-Current source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
+Preparation base: `8b86d2d1977a23c1c9aeb30a996d3375a05a5b80`
+
+Final M1F source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
 
 Final M1F CI: `34763362365`
 
@@ -14,144 +16,111 @@ Final M1F CI: `34763362365`
 
 M1E and M1F are complete at source/test/CI/package level.
 
-M1E focused final Minecraft acceptance was explicitly skipped by the owner and remains unrecorded.
+M1E focused final Minecraft acceptance was explicitly skipped and remains unrecorded.
 
-M1F focused real-Minecraft range-transport acceptance is unrecorded. M1F audibility was not required.
+M1F focused real-Minecraft range-transport acceptance remains unrecorded. M1F audibility was not required.
 
-M1G is next and has not started.
+M1G has been prepared/re-audited but **implementation has not started**.
+
+## Fresh verification
+
+The previous uncertainty around docs-head run `34763711105` is closed: both NeoForge 21.1.247 and 21.1.248 ultimately passed.
+
+At the owner's request the workflow was run again. Fresh rerun jobs `103742611713` (.247) and `103742612481` (.248) both passed build/tests/package verification/artifact upload.
+
+Do not call this a Minecraft runtime PASS.
 
 ## Product framing
 
 This is a programmable upgrade to the normal CC:T `computercraft:speaker`, not a built-in music player.
 
-Lua decides music/effect/notification/alarm/speech/ambience/etc. Java models technical source capabilities only.
+Lua decides application meaning. Java models technical capabilities only. One physical speaker remains one mono positional source.
 
-One physical speaker = one mono positional source.
+Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` behavior.
 
-Standard CC:T behavior stays foundational/delegated:
-
-- `playNote`
-- `playSound`
-- `playAudio`
-- `stop`
-- native `speaker_audio_empty`
-
-HQ RAW has separate `hqspeaker_audio_empty` pacing.
-
-## Modern local finite API
-
-Recommended:
-
-```lua
-local hq = require("hqspeaker")
-hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
-```
-
-Reusable flow:
+## Modern finite path at the M1G boundary
 
 ```text
-prepareFile -> preparedInfo -> playPrepared -> releasePrepared
+CC file
+-> immutable server MediaAsset
+-> server-owned playback timeline
+-> server-selected encoded anchor
+-> M1F bounded range transport
+-> M1F bounded sliding encoded window
+-> M1G decoder/converter + bounded PCM + positional renderer
 ```
 
-`audioPlayStaged()` was a project prototype and remains removed. Temporary writable staging is only an import bridge into immutable server MediaAssets.
+`HQFiniteMediaClient` is currently transport-only and is the clean modern M1G insertion point.
 
-## M1E final authority contract
+Do not route modern prepared playback back through `FileFiniteAudioStream`, whole-payload `HQAudioStream` finite decode, or `FiniteAudioTrack` whole-track PCM.
 
-Server owns finite generation/state/time/pause/resume/seek/loop/volume/EOF/terminal server errors.
+## MP3 starting facts
 
-Client READY requests fresh state; client ERROR is diagnostic only. Projection failure cannot roll back canonical state. Asset release is retry-safe.
+- exact packaged JLayer version: `1.0.1.4`;
+- inherited live MP3 code proves frame-by-frame JLayer use in this project;
+- temporary M1F `NEED_DATA` must wait/refill on a decoder worker, never become `InputStream` EOF;
+- Layer III seek/rejoin requires earlier decode anchor + silent pre-roll;
+- semantic seek restarts codec state even when coarse encoded anchor is unchanged.
 
-Final M1E code: `521d4323d9216c8a99e8ec60426997c3330c4068`.
+## WAV starting facts
 
-Do not reopen resolved M1E issues without new evidence.
+Current analyzer is historically broader than final target and current `MediaMetadata` lacks a normalized final WAV layout descriptor.
 
-## M1F final transport contract
+Final M1G target is common RIFF/WAVE only:
 
-```text
-server MediaAsset
--> authoritative STATE + encoded anchor
--> client bounded range requests
--> bounded off-thread server reads
--> bounded sliding client encoded window
--> M1G decoder later consumes that window
-```
+- mono/stereo;
+- unsigned 8 PCM;
+- signed 16/24/32 PCM;
+- 32-bit IEEE float;
+- stereo downmix to mono;
+- reject >2 channels, companded/compressed/telephony WAV, 64-bit float, and unusual widths.
 
-Protocol v5 modern range identity:
+## Owner decision gates before M1G code
 
-```text
-source + asset + generation + offset + length/bytes
-```
+Do not choose silently. Read full tradeoffs in `PRE-M1G-PREPARATION.md`.
 
-Current tuning:
+1. **Renderer**
+   - A1: Minecraft `AudioStream` + normal SoundManager;
+   - A2: direct Channel/OpenAL buffer queue.
 
-- max range 128 KiB;
-- client encoded window 512 KiB;
-- per-player outstanding: 4 requests / 512 KiB;
-- IO workers 2;
-- IO queue 64.
+2. **WAV layout**
+   - B1: normalize on server and carry layout to client;
+   - B2: progressively parse layout on client from M1F bytes.
 
-Final M1F behavior/proof:
+3. **Sample rate**
+   - C1: preserve source rate;
+   - C2: normalize all finite PCM to 48 kHz.
 
-- first demand waits for authoritative STATE;
-- pure shared source/asset/generation/range validation;
-- same-dimension/current-range relevance on request/completion;
-- per-player bounded work;
-- reads on dedicated range IO workers;
-- in-flight MediaAsset retain + retry-safe release;
-- stale completion discard;
-- queued shutdown cancellation/accounting cleanup;
-- range shutdown before store close;
-- DATA_AVAILABLE / NEED_DATA / TRUE_ASSET_EOF / CANCELLED_OR_STALE;
-- arbitrary non-zero reset/re-anchor;
-- sliding `advanceTo` discards consumed prefix while preserving unread overlap;
-- repeated refill beyond one complete window remains bounded;
-- integrated `FiniteRangeTransportTest` moves exact bytes from a 2 MiB server asset through the async read service into the client window, slides/refills, then jumps elsewhere;
-- no modern complete-song `.part/.media` files;
-- no modern finite CHUNK/END packets;
-- no `audioPlayStaged()`.
+M1G Java/resource implementation must wait for these choices.
 
-M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`.
+## Non-negotiable M1G rules
 
-M1F CI `34763362365` passed both NeoForge targets.
-
-Baseline .247 JAR SHA-256:
-
-`2979b53f1c9903c491dda0cb3ba4a46cfff0ad4924910a974b3aaaff3e9acc32`
-
-## M1G next
-
-M1G should consume the M1F bounded/sliding encoded window and add:
-
-- progressive MP3 decode;
-- network starvation != decoder EOF;
-- Layer III reservoir pre-roll;
-- common WAV layout/time-to-byte metadata;
-- common WAV integer/float conversion;
-- stereo -> mono downmix; reject >2 channels;
-- bounded mono PCM queue;
-- decoder cancellation/replacement;
-- actual mono positional Minecraft/OpenAL rendering.
-
-Do not repair the obsolete complete-file JavaSound/mp3spi bridge as the new engine.
-
-If M1G exposes a real M1F defect, fix the defect; if it exposes a meaningful architecture choice with tradeoffs, ask the owner before choosing.
+- no whole encoded client file;
+- no whole decoded PCM track;
+- encoded/decoded memory bounded independently of duration;
+- network/disk/codec work off game/audio threads;
+- temporary starvation != EOF;
+- stale decode/PCM discarded on seek/replacement/stop;
+- server M1E state remains canonical;
+- renderer failure is local/diagnostic;
+- one physical speaker = one mono positional source.
 
 ## M1H boundary
 
-M1F validates current relevance but does not implement full listener discovery/recovery. M1H owns late entry, proactive leave cleanup, return/rejoin, dimension/reload safety, underrun recovery, and VS2 moving-speaker lifecycle.
+Full late-entry/proactive-leave/return-rejoin/dimension-resource recovery/robust-underrun/VS2 listener lifecycle remains M1H.
 
 ## Read order
 
-1. `docs/M1F-FINALIZATION-2026-09-13.md`
-2. `docs/CURRENT-STATE.md`
-3. `docs/KNOWN-ISSUES.md`
-4. `docs/TESTING.md`
-5. `docs/VERIFIED-FACTS.md`
-6. `docs/M1F-IMPLEMENTATION-2026-09-13.md`
-7. `docs/M1E-FINITE-STREAMING-DESIGN.md`
+1. `docs/HANDOFF-2026-09-13-PRE-M1G.md`
+2. `docs/PRE-M1G-PREPARATION.md`
+3. `docs/M1F-FINALIZATION-2026-09-13.md`
+4. `docs/CURRENT-STATE.md`
+5. `docs/KNOWN-ISSUES.md`
+6. `docs/TESTING.md`
+7. `docs/VERIFIED-FACTS.md`
 8. `docs/ROADMAP.md`
-9. `docs/LUA-API.md`
-10. `docs/ARCHITECTURE.md`
-11. exact current source and CI
+9. `docs/M1E-FINITE-STREAMING-DESIGN.md`
+10. `docs/LUA-API.md`
+11. exact current source/CI
 
-Older reevaluation/preparation/handoff docs are historical and must not override these finalization records.
+Two old `ARCHITECTURE.md` transitional statements are stale: the current M1F max range is 128 KiB, and modern prepared transport no longer uses whole-file push/client `.part/.media` bridging. Current finalization/preparation docs override those paragraphs.
