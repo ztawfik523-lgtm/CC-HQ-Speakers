@@ -4,12 +4,12 @@
 
 This repository improves the normal CC:Tweaked `speaker` peripheral into a high-quality programmable audio peripheral for the exact ATM10 target stack.
 
-Before changing code, read in this order:
+Before changing implementation, read in this order:
 
-1. `docs/M1E-FINALIZATION-2026-09-13.md`
-2. `docs/CURRENT-STATE.md`
-3. `docs/VERIFIED-FACTS.md`
-4. `docs/M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
+1. `docs/HANDOFF-2026-09-13-PRE-M1F.md`
+2. `docs/LUA-API.md`
+3. `docs/CURRENT-STATE.md`
+4. `docs/VERIFIED-FACTS.md`
 5. `docs/ARCHITECTURE.md`
 6. `docs/M1E-SERVER-AUTHORITY.md`
 7. `docs/M1E-FINITE-STREAMING-DESIGN.md`
@@ -18,29 +18,39 @@ Before changing code, read in this order:
 10. `docs/TESTING.md`
 11. `docs/CC-T-COMPATIBILITY-CONTRACT.md` before changing standard speaker behavior
 12. `docs/FUTURE-CLEANUP.md` before deleting or migrating old code
-13. current branch source and current CI
+13. exact current branch source and current CI
 
-`docs/PRE-M1F-PREPARATION.md`, `docs/NEXT-CHAT-HANDOFF.md`, and the dated older handoffs remain useful historical context, but the M1E finalization document plus exact current source/CI override stale checkpoint wording.
+Older handoffs, `PRE-M1F-PREPARATION.md`, the M1E finalization doc, and dated historical docs remain useful evidence/context but do not override the current handoff, exact current source, or current project decisions.
 
-## Current checkpoint: finish M1E before M1F
+## Current checkpoint: documentation only, before M1F
 
-M1E server-authority semantics are implemented and have been re-reviewed. The current work is the final M1E acceptance checkpoint.
+M1E server-authority source/tests/CI are finalized and re-reviewed.
 
-Do not start M1F until the final focused Minecraft M1E script has actually reported PASS on the final candidate. Do not repair/rewrite the temporary decoder merely to make M1E audible; that remains M1G work.
+The project owner explicitly chose **not to perform the final manual M1E Minecraft acceptance run**. Therefore:
 
-The strengthened focused runtime contract is:
+- never claim M1E has a recorded Minecraft-runtime PASS;
+- preserve the missing runtime-PASS evidence as an explicit gap;
+- do not treat that skipped manual run as a blocker before later M1F implementation unless the owner changes the decision.
+
+M1F implementation has **not started** at this checkpoint.
+
+Do not implement M1F, change M1E semantics, repair the temporary decoder, or start M1G unless explicitly requested after this documentation checkpoint.
+
+## How to explain the project
+
+Explain behavior in normal ComputerCraft/Minecraft terms first. Do not lead with classes, packets, executors, generations, or buffer abstractions when a user-facing description will do.
+
+For finite files, start with:
 
 ```text
-scripts/m1e_server_authority_test.lua <small-mp3-or-wav> [result-file]
+ComputerCraft has a file
+    -> HQ Speakers imports it into server-owned media storage
+    -> the speaker starts a server-owned playback timeline
+    -> each relevant Minecraft client asks for only the small encoded pieces it currently needs
+    -> later the client decodes those pieces into positional sound
 ```
 
-It now writes an auditable PASS/FAIL result file, defaulting to:
-
-```text
-m1e_server_authority_result.txt
-```
-
-Never call M1E Minecraft-runtime PASS unless the final candidate was actually run and the terminal/result file reports PASS.
+Only then give the implementation details needed for the question.
 
 ## Exact target stack
 
@@ -57,11 +67,15 @@ Active branch:
 
 Important checkpoints:
 
+- inherited baseline: `d1a592351c866f9a28ceef00b59e591ee773f3d5`;
+- frozen staged/local-file prototype: `69e34a5346f6ce47580f49ed867c9951bfd338bc`;
+- frozen M1D: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
 - original M1E semantic implementation: `d0e66ab9135359627086c13647d5241ad778643f`;
 - diagnostic Java head used for the 2026-09-12 runtime investigation: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`;
-- finalization code/test candidate before documentation-only follow-up: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`.
+- M1E finalization code/test candidate: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`;
+- last pre-documentation branch head: `ff8fc52e8660249150e056d1dff4307377afe7c4`.
 
-Do not describe every commit after `d0e66ab...` as documentation-only. Several Java commits added runtime diagnostics without intentionally changing server-authority semantics.
+M1E finalization CI run `34725651930` passed both target NeoForge versions with tests/package verification.
 
 ## Product rule
 
@@ -84,6 +98,44 @@ Standard behavior must continue to come from CC:T's real `SpeakerPeripheral` unl
 - native `speaker_audio_empty`
 
 HQ APIs extend that contract; they do not redefine it.
+
+## Lua/API surface
+
+Read `docs/LUA-API.md` before adding, removing, renaming, or changing Lua-facing behavior.
+
+Recommended modern finite helpers:
+
+- `hq.playFile`
+- `hq.prepareFile`
+- `hq.preparedInfo`
+- `hq.playPrepared`
+- `hq.releasePrepared`
+
+Modern finite controls:
+
+- `audioStatus`
+- `audioPause`
+- `audioResume`
+- `audioSeek`
+- `audioSetVolume`
+- `audioSetLooping`
+- `audioStop`
+
+HQ raw/feed uses `speakPCM` and separate `hqspeaker_audio_empty` pacing.
+
+### `audioPlayStaged` decision
+
+`audioPlayStaged()` is **our prototype API**, not an inherited/original HQ Speakers compatibility API.
+
+It is absent from the untouched inherited baseline and appears in this project's staged/local-file prototype.
+
+Project decision on 2026-09-13:
+
+**when M1F implementation begins, remove `audioPlayStaged()` instead of carrying that direct-staged playback route into the new transport.**
+
+New programs should use `hq.playFile()` or prepare/play/release.
+
+Do not remove it during this documentation-only checkpoint.
 
 ## Technical source categories
 
@@ -151,11 +203,22 @@ Client finite telemetry is only:
 
 Client decoder/render failure must never rewrite canonical server playback.
 
-The current complete-file `.part/.media` client bridge and `FileFiniteAudioStream` remain temporary architecture. The 2026-09-12 runtime investigation proved the MP3 bridge is not a trustworthy duration/seek oracle. Keep that defect documented, but do not spend M1E/M1F scope repairing it solely for audibility.
+The current complete-file `.part/.media` client bridge and `FileFiniteAudioStream` remain temporary architecture. The 2026-09-12 runtime investigation proved the MP3 bridge is not a trustworthy duration/seek oracle. Keep that defect documented, but do not spend M1F scope repairing it solely for audibility.
 
-## M1F boundary — clean break after M1E PASS
+The final M1E manual acceptance script exists but was intentionally not run after finalization. Do not call the milestone runtime-verified.
 
-Once M1E runtime acceptance is recorded, M1F is the next implementation milestone and should make a clean break for the modern prepared finite path.
+## M1F boundary — clean break, not started
+
+When explicitly started, M1F should make a clean break for the modern prepared finite path.
+
+In user terms:
+
+```text
+server owns the whole song
+    -> client asks for a small piece near the current playback point
+    -> old pieces are discarded as playback moves
+    -> seek asks for another piece rather than downloading everything in between
+```
 
 M1F owns:
 
@@ -170,9 +233,16 @@ M1F owns:
 - bounded temporary client encoded RAM/window only;
 - arbitrary encoded offsets for seek/rejoin;
 - codec-appropriate server-selected seek/stream anchors;
-- no modern prepared-path `.part/.media` client song files.
+- no modern prepared-path `.part/.media` client song files;
+- removal of the obsolete modern direct-staged `audioPlayStaged()` route.
 
 M1F acceptance does not require audible finite playback or PCM decoding. A codec-agnostic fake/test consumer is sufficient. Its encoded-data contract must distinguish data available, data not arrived yet, true asset EOF, and cancelled/stale state so M1G can consume it progressively without transport redesign.
+
+### M1F shutdown requirement
+
+Background asset reads introduced by M1F must be stopped/drained/cancelled before the shared server media store closes/deletes assets during shutdown.
+
+This is a correctness requirement, not a user-facing product choice.
 
 ## M1G boundary
 
@@ -207,6 +277,8 @@ See `docs/FUTURE-CLEANUP.md`.
 - Avoid polishing concepts explicitly scheduled for deletion.
 - Keep frozen SPR V7.1 acoustics unchanged unless explicitly retuning them.
 - Do not call a Minecraft runtime script PASS unless it was actually executed successfully.
+- Before changing implementation, if a recheck reveals a real design/correctness issue that changes agreed behavior, ask the project owner first.
+- Handle ordinary low-level implementation details without reopening settled product decisions.
 - Do not use `git add .`.
 
 ## Evidence order
@@ -216,12 +288,13 @@ When claims conflict, trust them in this order:
 1. successful Minecraft runtime evidence on the exact target stack;
 2. exact current source code;
 3. exact current CI/build/package evidence;
-4. `docs/M1E-FINALIZATION-2026-09-13.md` for the current checkpoint;
-5. `docs/VERIFIED-FACTS.md`;
-6. `docs/CURRENT-STATE.md`;
-7. compatibility/design docs;
-8. `docs/ROADMAP.md`;
-9. milestone historical docs;
-10. old prototype/P0 material.
+4. `docs/HANDOFF-2026-09-13-PRE-M1F.md` for current sequencing/decisions;
+5. `docs/LUA-API.md` for intended user-facing API;
+6. `docs/VERIFIED-FACTS.md`;
+7. `docs/CURRENT-STATE.md`;
+8. compatibility/design docs;
+9. `docs/ROADMAP.md`;
+10. milestone historical docs;
+11. old prototype/P0 material.
 
 Recommendations and unresolved choices must not be written into `VERIFIED-FACTS.md` as facts.
