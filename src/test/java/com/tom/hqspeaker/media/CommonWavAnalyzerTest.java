@@ -88,6 +88,30 @@ class CommonWavAnalyzerTest {
     }
 
     @Test
+    void rejectsDataChunkWithPartialFrame() {
+        byte[] wav = classicWav(1, 2, 48_000, 16, 1);
+        ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN).putInt(40, 3);
+        IOException error = assertThrows(IOException.class, () -> analyze(wav));
+        assertTrue(error.getMessage().contains("complete audio frames"));
+    }
+
+    @Test
+    void respectsDeclaredRiffContainerBounds() {
+        byte[] wav = classicWav(1, 1, 8_000, 16, 4);
+        ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN).putInt(4, 20);
+        IOException error = assertThrows(IOException.class, () -> analyze(wav));
+        assertTrue(error.getMessage().contains("RIFF container"));
+    }
+
+    @Test
+    void rejectsDeclaredRiffContainerLargerThanFile() {
+        byte[] wav = classicWav(1, 1, 8_000, 16, 4);
+        ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN).putInt(4, wav.length + 100);
+        IOException error = assertThrows(IOException.class, () -> analyze(wav));
+        assertTrue(error.getMessage().contains("truncated RIFF"));
+    }
+
+    @Test
     void restoresChannelToZero() throws Exception {
         Path file = temp.resolve("restore.wav");
         Files.write(file, classicWav(1, 1, 8_000, 16, 4));
