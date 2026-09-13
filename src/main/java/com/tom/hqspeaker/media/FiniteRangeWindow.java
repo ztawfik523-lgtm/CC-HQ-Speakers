@@ -1,5 +1,6 @@
 package com.tom.hqspeaker.media;
 
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -84,9 +85,16 @@ public final class FiniteRangeWindow {
         int newLength = (int) Math.min((long) capacity, totalBytes - newStart);
         int preservedLength = Math.min(overlapLength, newLength);
 
-        byte[] nextBytes = new byte[newLength];
+        // Forward sliding never needs a larger array than the current anchored window. Shift overlap in place to avoid
+        // allocating a new 512 KiB array every time a future decoder consumes a small prefix.
+        if (newLength > bytes.length) {
+            throw new IllegalStateException("forward range window unexpectedly grew");
+        }
         if (preservedLength > 0) {
-            System.arraycopy(bytes, shift, nextBytes, 0, preservedLength);
+            System.arraycopy(bytes, shift, bytes, 0, preservedLength);
+        }
+        if (preservedLength < newLength) {
+            Arrays.fill(bytes, preservedLength, newLength, (byte) 0);
         }
 
         BitSet nextPresent = present.get(shift, shift + preservedLength);
@@ -108,7 +116,6 @@ public final class FiniteRangeWindow {
 
         windowStart = newStart;
         windowLength = newLength;
-        bytes = nextBytes;
         present = nextPresent;
         requested = nextRequested;
         pending.clear();
@@ -215,7 +222,7 @@ public final class FiniteRangeWindow {
             throw new IllegalStateException("requested bytes are not fully available");
         }
         int index = (int) (offset - windowStart);
-        return java.util.Arrays.copyOfRange(bytes, index, index + length);
+        return Arrays.copyOfRange(bytes, index, index + length);
     }
 
     private void clearRequested(long offset, int length) {
