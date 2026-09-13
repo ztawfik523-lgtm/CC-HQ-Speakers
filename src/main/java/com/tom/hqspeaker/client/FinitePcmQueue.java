@@ -58,12 +58,11 @@ public final class FinitePcmQueue {
 
                 int available = ring.length - size;
                 int count = Math.min(length - consumed, available);
-                // Keep reads/writes sample-aligned even around ring wrap.
+                // Capacity, indexes, and every accepted write are sample-aligned, so available should stay even.
                 count -= count & 1;
                 if (count == 0) continue;
 
                 int first = Math.min(count, ring.length - writeIndex);
-                if ((first & 1) != 0) first--;
                 if (first > 0) {
                     System.arraycopy(pcm, offset + consumed, ring, writeIndex, first);
                     writeIndex = (writeIndex + first) % ring.length;
@@ -84,9 +83,8 @@ public final class FinitePcmQueue {
 
     /** Nonblocking renderer-facing read. */
     public synchronized ReadResult read(int maxBytes) {
-        if (maxBytes <= 0) throw new IllegalArgumentException("maxBytes must be positive");
+        if (maxBytes < 2) throw new IllegalArgumentException("maxBytes must fit at least one S16 sample");
         int wanted = maxBytes - (maxBytes & 1);
-        if (wanted <= 0) wanted = 2;
 
         if (size > 0) {
             int count = Math.min(size, wanted);
