@@ -2,13 +2,13 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.config.HQSpeakerServerConfig;
-import com.tom.hqspeaker.media.FiniteMediaAnalyzer;
 import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
 import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.MediaStorageLimits;
+import com.tom.hqspeaker.media.ModernFiniteMediaAnalyzer;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.filesystem.MountConstants;
@@ -120,7 +120,7 @@ public final class HQMediaStaging {
         }
 
         try (SeekableByteChannel committed = store.openRead(asset.id())) {
-            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(committed);
+            MediaMetadata metadata = ModernFiniteMediaAnalyzer.analyze(committed);
             asset.attachMetadata(metadata);
         } catch (IOException | RuntimeException e) {
             releaseReferenceBestEffort(asset.id(), "rejected media asset");
