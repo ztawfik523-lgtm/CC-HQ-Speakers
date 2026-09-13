@@ -16,7 +16,7 @@ M1G is in progress on `codex/m1g-progressive-finite-decode`.
 
 Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`.
 
-The 2026-09-14 full audit changed documentation only and recorded KI-053 through KI-055; source remains at the integrated checkpoint for implementation purposes.
+The 2026-09-14 audits changed documentation only and recorded KI-053 through KI-060; source remains at the integrated checkpoint for implementation purposes.
 
 ## Foundation
 
@@ -73,19 +73,23 @@ M1F bounded sliding encoded window
 
 Integrated work includes protocol v6 descriptor/anchors, common-WAV conversion, JLayer MP3 decode/pre-target discard, decode epochs/cancellation, bounded prebuffer/catch-up, renderer integration, and pause/resume/volume projection.
 
-### Remaining M1G work
+### Remaining M1G work — revised after the deeper audit
 
-1. owner chooses loop-wrap rejoin policy KI-051: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart;
-2. resolve KI-053 same-anchor STATE/window-reset correctness issue without breaking same-anchor semantic seek restart;
-3. add real-MP3 progressive integration coverage across sliding/starvation and focused `FinitePcmAudioStream` coverage;
-4. re-audit timing/cancellation after loop and KI-053 work;
-5. run focused real-Minecraft audible acceptance for modern `hq.playFile()` MP3/common WAV, seek/pause/resume/stop, starvation/refill, bounded memory, positional attenuation, and standard CC:T compatibility.
+1. **Choose and implement a coherent decoder snapshot/reanchor model** for KI-053/KI-056/KI-057. The main choice is a minimal v6/client-ordering patch versus an explicit server-authoritative decode/reanchor revision (likely protocol v7). Do not patch KI-053 in isolation.
+2. **Fix cancellation ordering** so expected SEEK cancellation cannot race into a fatal decoder error; invalidate stale worker identity before cancellation wakes it.
+3. **Make ordinary STATE reconciliation non-destructive** to a healthy decoder while still guaranteeing fresh codec state for semantic seek/rejoin even when the coarse encoded anchor is unchanged.
+4. **Choose modern finite volume/range behavior** for KI-058/KI-059/KI-060: whether volume 0 is muted canonical playback with later catch-up, and whether volume 0..3 should preserve normal CC:T/Minecraft audible-distance semantics. Then fix live attenuation refresh, renderer-start retry/defer behavior, and server relevance accordingly.
+5. **Choose loop-wrap rejoin policy KI-051**: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart. Implement loop on top of the corrected reanchor mechanism rather than creating a second restart path.
+6. **Close deterministic evidence gaps**: real-MP3 JLayer decode across sliding/starvation/pre-roll, focused `FinitePcmAudioStream` tests, decoder cancellation/revision ordering, live volume/start behavior, and repeated seek stress.
+7. **Re-audit timing/cancellation/authority** after the above changes and keep both NeoForge targets green/package-verified.
+8. **Run focused real-Minecraft audible acceptance** for modern `hq.playFile()` MP3/common WAV, controls/seek/starvation, bounded memory, positional attenuation, live volume/range behavior, zero-volume behavior, stop/replacement, loop after KI-051, and standard CC:T compatibility.
 
 M1G non-negotiables remain:
 
 - encoded and decoded memory bounded independently of duration;
 - temporary `NEED_DATA` is never decoder EOF;
-- semantic seek restarts codec state even if the coarse anchor byte is unchanged;
+- semantic seek/rejoin restarts codec state when required even if the coarse anchor byte is unchanged;
+- ordinary server snapshots do not gratuitously restart a healthy decoder;
 - no Minecraft/audio-thread network/disk/codec blocking;
 - cancellation/replacement safety;
 - one physical speaker remains one mono positional source;
@@ -99,6 +103,8 @@ M1G non-negotiables remain:
 - dimension/world/resource reload recovery;
 - robust general underrun rejoin;
 - final VS2 moving-speaker listener lifecycle.
+
+If the owner chooses dynamic volume-dependent listener relevance for KI-059, the necessary enter/leave subset may intentionally move forward from M1H into M1G.
 
 ## M1I — gated native FLAC
 
@@ -126,7 +132,7 @@ Final category/gain, reload lifecycle, stale-channel cleanup, attenuation/VS2 mo
 
 ## M1O/P/Q — hardening, package verification, consolidated runtime acceptance
 
-Includes shutdown/storage hardening such as KI-054, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
+Includes shutdown/storage hardening such as KI-054, practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
 
 ## M2 — Sound Physics Remastered
 
