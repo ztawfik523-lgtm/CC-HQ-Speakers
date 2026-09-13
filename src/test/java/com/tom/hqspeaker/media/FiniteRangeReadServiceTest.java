@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.channels.Channels;
 import java.nio.file.Path;
 import java.util.UUID;
@@ -11,6 +12,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -99,6 +102,9 @@ class FiniteRangeReadServiceTest {
                 UUID player = UUID.randomUUID();
                 assertEquals(FiniteRangeReadService.Submission.INVALID,
                     service.submit(player, asset.id(), source.length, source.length, 1, ignored -> {}));
+                assertEquals(FiniteRangeReadService.Submission.INVALID,
+                    service.submit(player, asset.id(), (long) FiniteRangeLimits.MAX_RANGE_BYTES + 2L, 0L,
+                        FiniteRangeLimits.MAX_RANGE_BYTES + 1, ignored -> {}));
                 assertEquals(FiniteRangeReadService.Submission.ACCEPTED,
                     service.submit(player, asset.id(), source.length, 0L, 512, ignored -> {}));
                 assertEquals(FiniteRangeReadService.Submission.OVER_LIMIT,
@@ -107,6 +113,83 @@ class FiniteRangeReadServiceTest {
                 blocker.countDown();
                 service.close();
             }
+        }
+    }
+
+    @Test
+    void shutdownCancelsQueuedReadAndReleasesLeaseAndAccounting() throws Exception {
+        byte[] source = new byte[2048];
+        MediaAssetStore store = new MediaAssetStore(temp.resolve("shutdown-store"), 1_000_000L, 2_000_000L);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch blockerStarted = new CountDownLatch(1);
+        CountDownLatch blocker = new CountDownLatch(1);
+        executor.submit(() -> {
+            blockerStarted.countDown();
+            try { blocker.await(); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
+
+        FiniteRangeReadService service = new FiniteRangeReadService(store, executor, 4, 1024 * 1024L);
+        AtomicBoolean completionRan = new AtomicBoolean();
+        try {
+            MediaAsset asset = store.importAsset("fixture.bin", source.length,
+                Channels.newChannel(new ByteArrayInputStream(source)));
+            UUID player = UUID.randomUUID();
+
+            assertEquals(FiniteRangeReadService.Submission.ACCEPTED,
+                service.submit(player, asset.id(), source.length, 0L, 1024, read -> completionRan.set(true)));
+            assertEquals(2, store.referenceCount(asset.id()));
+            assertEquals(1, service.outstandingRequests(player));
+            assertEquals(1024L, service.outstandingBytes(player));
+
+            assertTrue(store.release(asset.id()));
+            assertEquals(1, store.referenceCount(asset.id()));
+
+            service.close();
+            assertFalse(completionRan.get());
+            assertEquals(0, service.outstandingRequests(player));
+            assertEquals(0L, service.outstandingBytes(player));
+            assertEquals(0, store.referenceCount(asset.id()));
+        } finally {
+            blocker.countDown();
+            service.close();
+            store.close();
+        }
+    }
+
+    @Test
+    void failedInflightReleaseTransfersToSharedRetryOwner() throws Exception {
+        byte[] source = new byte[1024];
+        MediaAssetStore store = new MediaAssetStore(temp.resolve("retry-store"), 1_000_000L, 2_000_000L);
+        AtomicInteger releaseAttempts = new AtomicInteger();
+        MediaAssetReleaseQueue releases = new MediaAssetReleaseQueue(id -> {
+            if (releaseAttempts.getAndIncrement() == 0) throw new IOException("temporary release failure");
+            return store.release(id);
+        });
+        FiniteRangeReadService service = new FiniteRangeReadService(
+            store, releases, Executors.newSingleThreadExecutor(), 4, 1024 * 1024L);
+        try {
+            MediaAsset asset = store.importAsset("fixture.bin", source.length,
+                Channels.newChannel(new ByteArrayInputStream(source)));
+            UUID player = UUID.randomUUID();
+            CountDownLatch done = new CountDownLatch(1);
+
+            assertEquals(FiniteRangeReadService.Submission.ACCEPTED,
+                service.submit(player, asset.id(), source.length, 0L, 512, read -> done.countDown()));
+            assertTrue(store.release(asset.id()));
+            assertEquals(1, store.referenceCount(asset.id()));
+
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+            assertEquals(1, releases.pendingCount());
+            assertEquals(1, store.referenceCount(asset.id()));
+
+            assertEquals(0, releases.retryPending());
+            assertEquals(0, store.referenceCount(asset.id()));
+            assertEquals(2, releaseAttempts.get());
+        } finally {
+            service.close();
+            store.close();
         }
     }
 }

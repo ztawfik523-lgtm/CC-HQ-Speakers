@@ -4,6 +4,7 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.media.FiniteMediaFormat;
 import com.tom.hqspeaker.media.FinitePlaybackStateMachine;
 import com.tom.hqspeaker.media.FiniteRangeReadService;
+import com.tom.hqspeaker.media.FiniteRangeValidation;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
 import com.tom.hqspeaker.media.MediaAssetStore;
@@ -297,10 +298,10 @@ public final class HQFiniteMediaServer {
     private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
         Session s = session;
         if (s == null || player == null || s.playback.terminal()) return;
-        if (packet.generation() != s.generation || !packet.assetId().equals(s.mediaId)) return;
+        if (!FiniteRangeValidation.requestMatches(
+                source, s.mediaId, s.generation, s.totalBytes,
+                packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
         if (!isRelevant(player)) return;
-        if (packet.offset() < 0L || packet.offset() >= s.totalBytes || packet.length() <= 0
-                || packet.length() > s.totalBytes - packet.offset()) return;
 
         UUID playerId = player.getUUID();
         UUID assetId = s.mediaId;
@@ -325,7 +326,7 @@ public final class HQFiniteMediaServer {
                                             FiniteRangeReadService.ReadResult result) {
         Session s = session;
         if (s == null || s.playback.terminal()) return;
-        if (s.generation != generation || !s.mediaId.equals(assetId)) return;
+        if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
         if (player == null || !isRelevant(player)) return;
@@ -447,10 +448,12 @@ public final class HQFiniteMediaServer {
     }
 
     private boolean isRelevant(ServerPlayer player) {
-        if (player == null || player.level() != level || player.isRemoved()) return false;
+        if (player == null) return false;
         float[] p = computeWorldPos();
         double dx = player.getX() - p[0], dy = player.getY() - p[1], dz = player.getZ() - p[2];
-        return dx * dx + dy * dy + dz * dz <= SPEAKER_RADIUS * SPEAKER_RADIUS;
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        return FiniteRangeValidation.listenerRelevant(
+            player.level() == level, player.isRemoved(), distanceSquared, SPEAKER_RADIUS);
     }
 
     private Map<String, Object> statusOf(Session s, long now) {
