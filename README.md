@@ -11,66 +11,54 @@ Target stack:
 
 ## Product direction
 
-This mod is a **programmable audio peripheral**, not a prebuilt music player. Lua decides whether audio is music, speech, an alarm, a notification, ambience, a soundboard entry, or something else. Java distinguishes sources only where their technical capabilities differ.
+This mod is a **programmable audio peripheral**, not a built-in music player.
 
-### Standard CC:T speaker
+Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java distinguishes sources only where their technical capabilities differ.
 
-The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` behavior is a compatibility requirement.
+The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
 
-### HQ raw/feed audio
+## Finite files
 
-HQ `speakPCM` is an open-ended producer feed with bounded backpressure. It does not pretend to have finite duration or arbitrary seek. HQ RAW uses its own `hqspeaker_audio_empty` retry event rather than replacing CC:T's native `speaker_audio_empty` semantics.
-
-### Finite media
-
-Core finite product target:
+Final core target:
 
 - MP3 / MPEG Layer III
 - common WAV
 
-Wanted but separately gated:
+Later gated extension:
 
-- normal native FLAC, only after its exact analyzer/decoder/seek/package path is proven
+- native FLAC only after its complete analyzer/decode/seek/package/runtime path is proven
 
-Finite files have truthful server-owned duration, position, pause/resume, seek, loop, volume, and EOF.
+Finite playback uses a server-owned timeline for duration, position, pause/resume, seek, loop, volume, and EOF.
 
-The target architecture streams finite encoded data progressively from the server to relevant clients. Clients do not need the whole file before playback and do not maintain a persistent song cache. They keep only bounded temporary encoded/decoded RAM for active playback.
+### Current M1F transport
 
-One physical speaker renders one mono positional source. Mono input stays mono; stereo input is downmixed to mono; more-than-stereo finite input is rejected.
+M1F now implements demand-driven finite transport:
 
-OGG Vorbis, AIFF/AIF, AU/SND, Ogg-FLAC, and unusual WAV encodings are not final finite product requirements. Frozen M1D historically contains analysis support for some of those formats, but the replacement streaming engine is intentionally narrower.
+```text
+ComputerCraft file
+    -> reusable server MediaAsset
+    -> authoritative server playback state
+    -> server-selected encoded anchor
+    -> bounded client range requests
+    -> bounded off-thread server reads
+    -> bounded temporary client encoded RAM
+```
 
-### Live network streams
+The modern prepared path no longer downloads the whole song into client `.part/.media` files.
 
-Live MP3/HLS/TS remain later work. Live sources are open-ended and must not expose fake finite duration/seek. Future live pause/resume means reconnecting to the current live point rather than preserving old stream history.
+Current source/test/CI checkpoint:
 
-## Current development status
+`934e74b8ff619178d703f73df8a16ee97b3fc2af`
 
-Active branch:
+CI run `34731827907` passed NeoForge 21.1.247 and 21.1.248, including tests and package verification.
 
-`codex/m1e-server-authoritative-finite`
+This is not Minecraft runtime proof.
 
-M1E server-authority source/tests/CI are finalized and re-reviewed. The final M1E code/test candidate is:
+M1G has not started. M1G will attach the progressive MP3/common-WAV decoder, bounded mono PCM queue, and positional renderer to the M1F encoded window.
 
-`38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+## Lua finite-file API
 
-GitHub Actions run `34725651930` passed both target NeoForge versions with tests/package verification.
-
-The project owner chose not to perform the final manual M1E Minecraft acceptance run. Therefore M1E is **not recorded as Minecraft-runtime PASS**, even though the project may move on later by explicit decision.
-
-Current checkpoint: **documentation/preparation only. M1F implementation has not started.**
-
-The old whole-file sender/client remains only as a temporary bridge. The next implementation milestones are:
-
-- **M1F:** client-requested bounded encoded streaming with off-thread server IO and no final client disk cache;
-- **M1G:** progressive MP3/common-WAV decoding with bounded RAM and mono output;
-- **M1H:** dynamic listeners, late join, leave/re-enter, seek/underrun recovery;
-- **M1I:** optional/gated native FLAC extension;
-- **M1J:** multispeaker shared clocks with one positional renderer per physical speaker.
-
-## Lua quick start
-
-For a ComputerCraft-visible local file, use the bundled module:
+Recommended one-call use:
 
 ```lua
 local speaker = peripheral.find("speaker")
@@ -79,27 +67,14 @@ local hq = require("hqspeaker")
 hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 ```
 
-For preload/reuse:
+Preload/reuse helpers:
 
-```lua
-local asset = hq.prepareFile(speaker, "/music/song.mp3")
-local info = hq.preparedInfo(speaker, asset)
+- `prepareFile`
+- `preparedInfo`
+- `playPrepared`
+- `releasePrepared`
 
-assert(hq.playPrepared(speaker, asset, { volume = 0.6 }))
-assert(hq.releasePrepared(speaker, asset))
-```
-
-See `docs/LUA-API.md` for the full programming reference, including finite controls, status fields, events, raw PCM backpressure, low-level prepared-media calls, and which inherited/prototype APIs should not be used for new programs.
-
-### Prototype API note
-
-`audioPlayStaged()` was introduced by this project's old staged/local-file prototype. It is **not** an original HQ Speakers compatibility API.
-
-Project decision: remove it when M1F implementation begins. New programs should use `hqspeaker.playFile()` or prepare/play/release.
-
-## Main finite controls
-
-The capability-oriented control surface includes:
+Finite controls:
 
 - `audioStatus()`
 - `audioPause()` / `audioResume()`
@@ -108,7 +83,23 @@ The capability-oriented control surface includes:
 - `audioSetLooping(loop)`
 - `audioStop()`
 
-The bundled `hqspeaker` Lua module provides `prepareFile`, `preparedInfo`, `playPrepared`, `releasePrepared`, and `playFile`.
+The old project-specific prototype command `audioPlayStaged()` was removed in M1F. Staging remains import plumbing only.
+
+See `docs/LUA-API.md` for the programming reference.
+
+## HQ raw/feed audio
+
+HQ `speakPCM` remains an open-ended producer feed with bounded backpressure and separate `hqspeaker_audio_empty` pacing. It does not pretend to have finite duration or arbitrary seek.
+
+## Current milestone sequence
+
+- **M1E:** server-authoritative finite timeline — source/tests/CI implemented; final manual Minecraft PASS was skipped by owner decision and must not be claimed.
+- **M1F:** bounded client-requested encoded range transport — source/test/CI complete.
+- **M1G:** progressive MP3/common-WAV decode + audible renderer — next, not started.
+- **M1H:** dynamic listener/late-join/leave-return/underrun recovery.
+- **M1I:** optional gated native FLAC.
+- **M1J/K:** functional multispeaker shared clocks, then optional active-session sharing optimization.
+- later milestones cover legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
 
 ## Build
 
@@ -117,22 +108,23 @@ The bundled `hqspeaker` Lua module provides `prepareFile`, `preparedInfo`, `play
 ./gradlew clean build -PneoForgeVersion=21.1.248
 ```
 
-CI targets both supported NeoForge versions with Java 21 and verifies packaged mod metadata, mixins, JarJar metadata/dependencies, and the bundled ComputerCraft ROM module.
+CI targets Java 21 on both supported NeoForge versions and verifies packaged metadata/mixins/dependencies plus the bundled ComputerCraft ROM module.
 
 ## Documentation
 
-For a fresh continuation, read in this order:
+Read current development docs in this order:
 
-1. `docs/HANDOFF-2026-09-13-PRE-M1F.md` — current plain-language-first handoff
-2. `docs/LUA-API.md` — Lua/ComputerCraft API reference
-3. `docs/CURRENT-STATE.md` — current implementation truth
-4. `docs/VERIFIED-FACTS.md` — source/CI/runtime facts only
-5. `docs/ARCHITECTURE.md` — accepted architecture
-6. `docs/M1E-SERVER-AUTHORITY.md` — exact M1E behavior
-7. `docs/M1E-FINITE-STREAMING-DESIGN.md` — concrete M1F+ streaming contract
-8. `docs/ROADMAP.md` — milestone order
-9. `docs/KNOWN-ISSUES.md` — unresolved problems
-10. `docs/TESTING.md` — evidence/testing rules
-11. `docs/FUTURE-CLEANUP.md` — parked cleanup inventory
+1. `docs/M1F-IMPLEMENTATION-2026-09-13.md`
+2. `docs/HANDOFF-2026-09-13-M1F.md`
+3. `docs/LUA-API.md`
+4. `docs/CURRENT-STATE.md`
+5. `docs/VERIFIED-FACTS.md`
+6. `docs/ARCHITECTURE.md`
+7. `docs/M1E-SERVER-AUTHORITY.md`
+8. `docs/M1E-FINITE-STREAMING-DESIGN.md`
+9. `docs/ROADMAP.md`
+10. `docs/KNOWN-ISSUES.md`
+11. `docs/TESTING.md`
+12. `docs/FUTURE-CLEANUP.md`
 
-Older handoffs and milestone docs remain evidence/history, but they do not override current source, current CI, or the current handoff.
+Older dated handoffs/preparation docs preserve history but do not override current source/CI and the M1F checkpoint.

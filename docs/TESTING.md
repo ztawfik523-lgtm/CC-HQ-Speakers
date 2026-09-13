@@ -1,178 +1,166 @@
 # Testing
 
-## Rule
+## Evidence rule
 
-Prefer deterministic tests first, then focused Minecraft acceptance, then the final batched runtime pass.
+Prefer deterministic tests first, then focused Minecraft acceptance, then final batched integration acceptance.
 
-A green Gradle build proves compilation/tests/package structure. It does **not** prove audible behavior, client renderer lifecycle, range delivery, SoundEngine integration, resource reload, or physical positional audio.
+A green Gradle/CI build proves compilation/tests/package structure. It does **not** prove audibility, renderer lifecycle, real network timing, SoundEngine integration, reload behavior, or physical positional audio.
 
-Tests are not a late roadmap milestone. Every implementation milestone must add the deterministic tests needed to prove its own contract.
+Target matrix for release-facing source changes:
 
-A project decision may intentionally skip a manual runtime check. When that happens, record it as **skipped/unverified**, never as PASS.
-
-Current checkpoint: documentation/preparation only. M1F implementation has not started.
-
-## Target matrix
-
-Every source change intended for release must build/test on:
-
-- NeoForge 21.1.247
-- NeoForge 21.1.248
 - Java 21
 - CC:Tweaked 1.120.0
+- NeoForge 21.1.247
+- NeoForge 21.1.248
 
-CI should remain green on both NeoForge targets after every milestone head.
+## Current checkpoint
+
+M1F final code/test head before documentation follow-up:
+
+`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+
+CI run:
+
+`34731827907`
+
+Both target NeoForge jobs passed:
+
+- build/tests;
+- packaged-mod verification;
+- candidate artifact upload.
+
+M1F Minecraft runtime acceptance has not been recorded.
+
+M1E's final manual runtime PASS was intentionally skipped by project-owner decision and remains unrecorded.
 
 ## Test layers
 
-### 1. Pure/unit
+### Pure/unit
 
-Use for finite clock/EOF/loop/seek math, media/container parsing, WAV sample conversion/downmix, MP3 seek-anchor/pre-roll helpers, range bounds/request accounting, stale-generation/cancellation rules, bounded buffer/backpressure state, rate/outstanding request limiters, and asset lifetime/refcount behavior.
+Use deterministic tests for:
 
-### 2. Component/state-machine
+- server finite clock/EOF/loop/seek math;
+- media/container parsing;
+- range bounds/accounting;
+- encoded-window availability/re-anchor/retry behavior;
+- stale/cancelled data handling;
+- in-flight asset retention;
+- WAV conversion/downmix when M1G lands;
+- MP3 anchor/pre-roll helpers when M1G lands;
+- bounded buffers/backpressure.
 
-Use small Java components/fakes for server-authoritative state transitions, state snapshot generation/application, M1F async range lifecycle/stale completion, encoded-window demand/availability semantics, MP3 temporary-starvation-vs-real-EOF behavior, decoder cancellation, dynamic relevance/leave-return state, underrun/rejoin rules, and multispeaker sync-clock membership.
+### Component/state-machine
 
-Do not create abstractions only for testing, but extract state when doing so makes races/lifecycle behavior deterministic and reviewable.
+Use small Java components/fakes for:
 
-### 3. Focused Minecraft acceptance
+- authoritative server state transitions;
+- asynchronous range submission/completion/cancellation;
+- stale-generation/relevance behavior;
+- temporary starvation versus real EOF;
+- decoder cancellation;
+- listener leave/rejoin state;
+- multispeaker sync-clock logic.
 
-Use actual CC:T peripherals/client SoundEngine for behavior pure tests cannot prove: standard CC:T signatures/defaults and `speaker_audio_empty`, finite semantic controls, progressive start, late join/leave-return, underrun/rejoin, SoundEngine category/gain, F3+T, dimension/world changes, VS2, multi-client/multispeaker positional rendering, final FLAC if implemented, and shutdown/reconnect.
+### Focused Minecraft acceptance
 
-A milestone only needs the runtime behavior in its own contract. M1E did not require the temporary MP3 decoder to be the final correct renderer.
+Use the actual target stack when the behavior depends on Minecraft/client/network/audio integration:
 
-### 4. Final batched M1 acceptance
+- standard CC:T signatures/events;
+- real finite controls;
+- range transport under a real client/server connection;
+- progressive/audible start after M1G;
+- late join/leave-return after M1H;
+- SoundEngine/OpenAL category/gain/attenuation;
+- F3+T/resource reload;
+- world/dimension/disconnect;
+- VS2 movement;
+- multiple clients/speakers.
 
-M1Q combines the already-tested pieces into one end-to-end pass with large files, multiple clients/speakers, memory/network observation, and tick/sound-thread stall checks. It is a regression/integration pass, not the first place individual features are tested.
+## M1E evidence boundary
 
-## M1E evidence
+M1E source/test/package CI is implemented and its diagnostic runtime logs support server/client authority separation.
 
-Original semantic implementation checkpoint:
+The final focused script exists, but the owner explicitly chose not to run the final manual M1E test. Therefore never report M1E Minecraft-runtime PASS.
 
-`d0e66ab9135359627086c13647d5241ad778643f`
+## M1F deterministic proof
 
-Original semantic source/test/package CI:
+New M1F tests include:
 
-`34658958488` — success on NeoForge 21.1.247 and 21.1.248.
+### `FiniteRangeWindowTest`
 
-2026-09-12 diagnostic Java head:
+Proves:
 
-`c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`
+- a bounded RAM window can start at a non-zero encoded offset;
+- returned bytes match the requested region;
+- allocated window size stays bounded independently of full asset size;
+- re-anchor drops obsolete old data/demand;
+- stale responses are rejected;
+- `NEED_DATA` is distinct from `TRUE_ASSET_EOF`;
+- timed-out demand becomes requestable again;
+- malformed/wrong-length response cannot permanently wedge demand.
 
-Diagnostic-head CI:
+### `FiniteRangeReadServiceTest`
 
-`34686003774` — success on both target NeoForge versions.
+Proves:
 
-M1E finalization code/test candidate:
+- exact arbitrary server byte ranges are read correctly;
+- work is submitted through the dedicated range service rather than server tick transfer code;
+- per-player outstanding request/byte accounting returns to zero;
+- an in-flight read takes its own MediaAsset reference;
+- releasing the original owner while read is queued does not delete the asset underneath that read;
+- the in-flight reference is released after completion;
+- invalid bounds are rejected;
+- configured outstanding limits reject excess work.
 
-`38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+Source review/CI additionally verifies:
 
-Finalization CI:
+- protocol v5 registers bounded range request/data packets;
+- modern finite CHUNK/END packets are removed;
+- modern client no longer contains `.part/.media` file transfer code;
+- `audioPlayStaged()` is removed;
+- server completion rechecks generation/asset/player/relevance before send;
+- `ServerMediaAssets.closeServer()` stops/drains range IO before closing the asset store;
+- first client range demand waits for authoritative STATE/anchor.
 
-`34725651930` — success on both target NeoForge versions with tests/package verification.
+## M1F runtime scope if tested later
 
-Pure Java M1E coverage includes:
+A focused runtime M1F check would prove transport integration, not audibility. Useful observations would be:
 
-- immediate clock progression after `start()` without any renderer handshake;
-- natural EOF for non-looping tracks;
-- no natural EOF while looping;
-- exact-end non-looping seek;
-- exact-end looping wrap;
-- pause/resume;
-- loop-disable rebase.
+- `hq.playFile`/prepared playback starts canonical server state normally;
+- client requests bounded ranges rather than receiving a complete pushed file;
+- no new modern `.part/.media` client song is created;
+- a seek/current-state anchor can cause non-zero encoded demand;
+- stopping/replacing playback prevents stale ranges from reviving old transport state;
+- server tick remains responsive while ranges are read.
 
-### Prepared focused M1E runtime contract
-
-```text
-scripts/m1e_server_authority_test.lua <small-mp3-or-wav> [result-file]
-```
-
-The script checks immediate canonical PLAYING/progression, pause/resume, non-loop exact-end END, replay generation/asset identity, loop exact-end wrap, STOP -> idle, and prepared release.
-
-The final manual run was **not performed**. The project owner chose to skip it and move forward later.
-
-Therefore:
-
-- do not report M1E Minecraft-runtime PASS;
-- keep the 2026-09-12 diagnostic logs as supporting evidence only;
-- do not treat the missing final manual run as a mandatory sequencing gate unless that project decision changes.
-
-### 2026-09-12 supporting diagnostic evidence
-
-The captured runtime logs show the old client transfer reaching READY and then failing on the first PCM read while the server continues through authority/control transitions consistent with the focused script, including exact-end END and loop-wrap behavior.
-
-The old JavaSound/mp3spi decoder is not an M1E acceptance oracle. Its runtime MP3 duration was clearly wrong for the tested fixture and its seek path is known to misuse mp3spi skip semantics. Decoder repair remains M1G work unless a future issue directly blocks the modern architecture.
-
-## M1F proof requirements
-
-M1F has **not started**.
-
-When explicitly started, it uses a clean break for the modern prepared finite path. Its deterministic tests must prove at least:
-
-- request offset/length bounds;
-- active source/generation/asset validation;
-- same-dimension/current-relevance validation;
-- maximum outstanding request/byte accounting;
-- safe in-flight asset lifetime while async IO runs;
-- stale completion after replacement is discarded;
-- stale completion after player leaves/disconnects is discarded;
-- cancellation does not leak retained asset references or accounting;
-- background reads are stopped/drained/cancelled before server media-store shutdown;
-- large asset reads do not run on the server tick;
-- response packet size stays within the chosen bounded cap;
-- exact returned bytes match the requested server asset region;
-- arbitrary encoded offsets can be requested without downloading from byte zero;
-- client encoded RAM remains bounded independently of asset size;
-- the modern path does not require `.part`, `.media`, completed client song files, LRU/sparse cache, or persistent resume;
-- `audioPlayStaged()` is removed from the modern API/transport path rather than preserved as a second prototype transport.
-
-M1F need not prove the final MP3/WAV decoder or audible finite rendering. Progressive decoder correctness is M1G.
-
-A deterministic fake/test consumer is sufficient for the range/window layer. Its availability contract must distinguish:
-
-- data available now;
-- data needed but not arrived yet;
-- true asset EOF;
-- cancelled/stale state.
-
-Recommended synthetic transport proof:
-
-```text
-request a bounded range at a non-zero offset
--> verify exact bytes
--> consume/discard it
--> jump to a distant offset
--> verify old bytes are no longer retained
--> prove memory remains bounded
-```
+Audible MP3/WAV is not an M1F acceptance requirement.
 
 ## M1G proof boundary
 
-M1G, not M1F, must prove:
+M1G must add deterministic/runtime proof for:
 
-- progressive MP3/common-WAV decode;
-- temporary starvation is not EOF;
-- MP3 seek/rejoin pre-roll produces stable output;
-- common WAV formats convert/downmix correctly;
-- bounded PCM queues;
-- decoder cancellation;
-- pause/resume/seek/loop interaction with the local renderer projection;
-- Minecraft SoundEngine integration and actual audible positional output;
-- sound thread never blocks on network/disk/decoder refill.
-
-## API/documentation proof
-
-When a milestone adds/removes/changes Lua-facing functions or events:
-
-- update `LUA-API.md` in the same milestone;
-- keep the bundled `hqspeaker.lua` comments/examples accurate;
-- mark prototype/legacy surfaces explicitly instead of presenting them as recommended API;
-- update README/current-state/handoff references when the recommended workflow changes.
+- progressive MP3 decode from the M1F window;
+- missing network bytes are not decoder EOF;
+- Layer III seek/rejoin pre-roll;
+- common WAV integer/float conversion;
+- stereo-to-mono downmix and >2-channel rejection;
+- bounded mono PCM queue;
+- decoder cancellation/replacement;
+- no sound-thread network/disk/decode blocking;
+- actual positional audible Minecraft playback;
+- pause/resume/seek/loop interaction with renderer projection.
 
 ## Evidence recording
 
-For a real-client acceptance run record exact commit, JAR SHA-256, NeoForge/CC:T versions, pass/fail by section, relevant client/server logs, whether full ATM10 or a reduced exact-stack instance was used, fixture format/size/sample details, and whether network compression was enabled when measuring throughput.
+For meaningful runtime acceptance record:
 
-A skipped test must be recorded as skipped, not inferred from source/CI.
+- exact commit;
+- JAR SHA-256;
+- NeoForge/CC:T versions;
+- fixture format/size/sample facts;
+- exact pass/fail sections;
+- relevant client/server logs;
+- full ATM10 versus reduced exact-stack instance;
+- network compression state when throughput is measured.
 
-A failed broad test should produce a focused source diagnosis before another broad launch.
+Never infer runtime PASS from CI alone.

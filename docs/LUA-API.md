@@ -1,124 +1,95 @@
 # Lua / ComputerCraft API reference
 
-This is the user-facing programming reference for CC:HQ Speakers.
+This is the current user-facing programming reference for CC:HQ Speakers.
 
-The mod upgrades the normal ComputerCraft `speaker` peripheral. Lua decides what the audio means — music, alarms, speech, ambience, notifications, soundboards, or anything else. The Java side exposes audio capabilities; it does not provide a playlist/music-player policy layer.
+The mod upgrades the normal ComputerCraft `speaker`. Lua decides what the audio means; Java exposes audio capabilities and playback controls.
 
-## What to use in new programs
+## Recommended starting point
 
-For normal ComputerCraft sounds and DFPWM audio, keep using the standard CC:T speaker functions.
+For normal Minecraft sounds and standard DFPWM audio, use the normal CC:T speaker API.
 
-For large local finite files such as MP3/WAV, prefer the bundled `hqspeaker` Lua module:
+For a local finite MP3/WAV file:
 
 ```lua
 local speaker = peripheral.find("speaker")
 local hq = require("hqspeaker")
 
-hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
+assert(hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 }))
 ```
 
-For preload/reuse or manual control, use `prepareFile` + `playPrepared` together with the `audio*` finite controls.
+For preload/reuse:
 
-Do **not** build new code around `audioPlayStaged`. It was introduced by this project's old staged-file prototype, is not an original HQ Speakers API, and is scheduled for removal when M1F replaces the prototype transfer path.
+```lua
+local speaker = peripheral.find("speaker")
+local hq = require("hqspeaker")
 
----
+local asset = hq.prepareFile(speaker, "/music/song.mp3")
+local info = hq.preparedInfo(speaker, asset)
+print(info.format, info.duration)
 
-## Standard CC:T speaker functions
+assert(hq.playPrepared(speaker, asset, { volume = 0.6 }))
+assert(hq.releasePrepared(speaker, asset))
+```
 
-These remain the normal ComputerCraft speaker contract and are delegated to CC:T's real speaker implementation.
+The active playback has its own server asset reference, so releasing the preparation reference after a successful play does not stop that playback.
+
+## Standard CC:T functions
+
+These keep normal CC:T semantics:
 
 ### `speaker.playNote(instrument [, volume [, pitch]]) -> boolean`
 
-Play a Minecraft note-block instrument using normal CC:T behavior.
+Play a Minecraft note-block instrument.
 
 ### `speaker.playSound(name [, volume [, pitch]]) -> boolean`
 
-Play a Minecraft/modded sound event using normal CC:T behavior.
+Play a Minecraft/modded sound event.
 
 ### `speaker.playAudio(audio [, volume]) -> boolean`
 
-Play normal CC:T signed 8-bit 48 kHz audio. Keep using the normal `speaker_audio_empty` event for CC:T backpressure.
+Play standard CC:T signed 8-bit 48 kHz audio.
+
+Use native `speaker_audio_empty` for standard `playAudio` pacing.
 
 ### `speaker.stop()`
 
-Stop the active standard/HQ continuous output according to the composite speaker's ownership rules.
+Stop normal CC:T sound/audio and the currently owned HQ continuous output according to the composite speaker contract.
 
-### `speaker_audio_empty`
+## `hqspeaker` module finite helpers
 
-This is the **native CC:T event** for standard `playAudio` pacing. HQ Speakers deliberately does not replace it with its own fake event.
-
----
-
-# Recommended finite-file API: `hqspeaker` module
-
-Load the bundled ROM module with:
+Load with:
 
 ```lua
 local hq = require("hqspeaker")
 ```
 
-The helper accepts a wrapped HQ-capable normal `speaker` peripheral.
+### `hq.playFile(speaker, path [, options]) -> boolean`
 
-## `hq.playFile(speaker, path [, options]) -> boolean`
+Recommended one-call path for a ComputerCraft-local finite file.
 
-The simplest way to play a ComputerCraft-visible finite file.
+Current options:
 
-```lua
-local speaker = peripheral.find("speaker")
-local hq = require("hqspeaker")
+- `volume = number`
 
-assert(hq.playFile(speaker, "/music/song.mp3", {
-    volume = 0.6,
-}))
-```
-
-What it does behind the scenes:
+Behind the scenes:
 
 ```text
-ComputerCraft file
-    -> temporary HQ staging copy
-    -> immutable server MediaAsset
-    -> start playback from that asset
-    -> release the temporary preparation reference
+CC file
+    -> temporary HQ import copy
+    -> reusable immutable server MediaAsset
+    -> start playback
+    -> release temporary preparation ownership
 ```
 
-The active playback owns its own reference, so releasing the temporary preparation reference does not delete the file while it is playing.
+M1F changes how that server asset reaches Minecraft clients internally; the Lua call remains the same.
 
-Arguments:
+### `hq.prepareFile(speaker, path) -> assetId`
 
-- `speaker`: wrapped normal ComputerCraft speaker with HQ support.
-- `path`: ComputerCraft filesystem path.
-- `options.volume`: optional numeric volume.
+Import/analyze a local file without starting playback. Returns a server media asset ID string and gives the calling ComputerCraft computer one preparation-owner reference.
 
-Returns `true` when the prepared playback was accepted, otherwise `false`.
+### `hq.preparedInfo(speaker, assetId) -> table`
 
-The current server clamps finite volume into its supported range. New Lua programs should still pass sensible non-negative values rather than relying on clamping.
-
-## `hq.prepareFile(speaker, path) -> assetId`
-
-Import and analyze a ComputerCraft-visible file without starting playback.
-
-```lua
-local asset = hq.prepareFile(speaker, "/music/song.mp3")
-```
-
-Returns a server media asset ID as a string.
-
-Use this when you want to prepare once and decide later when or where to play the asset.
-
-A prepared asset owns a preparation reference. Release it with `hq.releasePrepared` when the Lua program no longer needs that prepared ownership.
-
-## `hq.preparedInfo(speaker, assetId) -> table`
-
-Return server-derived facts for a prepared asset.
-
-```lua
-local info = hq.preparedInfo(speaker, asset)
-print(info.format)
-print(info.duration)
-```
-
-Current fields:
+Return server-derived media information. Current fields include:
 
 - `format`
 - `duration`
@@ -128,65 +99,28 @@ Current fields:
 - `sizeBytes`
 - `sourceName`
 
-These describe the server asset. Client decoder guesses are not authoritative for finite duration.
+The server metadata is authoritative for finite duration; client decoder guesses are not.
 
-## `hq.playPrepared(speaker, assetId [, options]) -> boolean`
+### `hq.playPrepared(speaker, assetId [, options]) -> boolean`
 
 Start a previously prepared server asset.
 
-```lua
-assert(hq.playPrepared(speaker, asset, {
-    volume = 0.6,
-}))
-```
+### `hq.releasePrepared(speaker, assetId) -> boolean`
 
-The playback takes its own asset reference before returning success. This means the preparation reference may be released after playback starts without stopping the active playback.
+Release this computer's preparation reference. Returns false when that computer did not own the preparation.
 
-## `hq.releasePrepared(speaker, assetId) -> boolean`
+A currently playing speaker keeps its separate playback reference until stop/end/error.
 
-Release this ComputerCraft computer's prepared ownership of the asset.
+## Modern finite controls
 
-```lua
-assert(hq.releasePrepared(speaker, asset))
-```
+### `speaker.audioStatus() -> table`
 
-Returns `true` when this computer owned and released that preparation reference. It does **not** stop an active playback that already owns a separate playback reference.
+For active/terminal modern prepared finite playback, useful fields include:
 
-A random computer cannot release another computer's prepared ownership merely by knowing the asset ID.
-
-## Preload/reuse example
-
-```lua
-local speaker = peripheral.find("speaker")
-local hq = require("hqspeaker")
-
-local asset = hq.prepareFile(speaker, "/music/song.mp3")
-local info = hq.preparedInfo(speaker, asset)
-
-print(("Prepared %s, %.2f seconds"):format(info.format, info.duration))
-
-assert(hq.playPrepared(speaker, asset, { volume = 0.5 }))
-
--- The current playback has its own reference now.
-assert(hq.releasePrepared(speaker, asset))
-```
-
----
-
-# Finite playback controls
-
-These functions operate on the HQ continuous source currently owned by the speaker. For the modern prepared finite path, the server owns the canonical timeline.
-
-## `speaker.audioStatus() -> table`
-
-Return current HQ audio status.
-
-For an active or terminal modern prepared finite playback, useful fields include:
-
-- `state`: `playing`, `paused`, `ended`, or `error`.
-- `kind`: `finite`.
-- `assetId`: present for prepared-asset playback.
-- `generation`: playback generation.
+- `state`: `playing`, `paused`, `ended`, or `error`
+- `kind = "finite"`
+- `assetId`
+- `generation`
 - `format`
 - `position`
 - `duration`
@@ -195,197 +129,170 @@ For an active or terminal modern prepared finite playback, useful fields include
 - `bitsPerSample`
 - `volume`
 - `looping`
+- `totalBytes`
 - `canPause`
 - `canSeek`
 - `canLoop`
-- `error`: present when the server playback itself is in error.
+- `error` when server playback itself failed
 
-The current M1E bridge also exposes transfer-oriented fields such as `transferredBytes` and `totalBytes`. `transferredBytes` is **transitional**, not a stable long-term API promise: M1F replaces the whole-file transfer model with demand-driven ranges.
+M1F removed the old whole-file transfer, so `transferredBytes` is no longer a modern finite status field.
 
-When no HQ continuous source owns the speaker, `audioStatus()` reports an idle status with:
+With no HQ continuous owner, the composite reports the general idle shape:
 
-- `state = "idle"`
-- `kind = "none"`
-- `observed = false`
-- `canPause = false`
-- `canSeek = false`
-- `canLoop = false`
+```lua
+{
+  state = "idle",
+  kind = "none",
+  observed = false,
+  canPause = false,
+  canSeek = false,
+  canLoop = false,
+}
+```
 
-For HQ RAW ownership, the status uses `kind = "raw"` and does not claim finite pause/seek/loop capabilities.
+### `speaker.audioPause() -> boolean`
 
-Legacy finite/live ownership may still return the inherited legacy status shape until those paths are migrated in their later milestones.
+Pause finite playback. The server timeline freezes immediately.
 
-## `speaker.audioPause() -> boolean`
+### `speaker.audioResume() -> boolean`
 
-Pause the current finite playback if supported.
+Resume paused finite playback.
 
-The canonical server position freezes immediately. A client renderer is not allowed to become the playback clock.
+### `speaker.audioSeek(seconds) -> boolean`
 
-## `speaker.audioResume() -> boolean`
+Change canonical server position.
 
-Resume a paused finite playback if supported.
+Non-looping exact-duration seek ends playback. Looping exact-duration seek wraps to the start.
 
-## `speaker.audioSeek(seconds) -> boolean`
+Under M1F the client is given the current server-selected encoded anchor and requests bounded data from there rather than downloading everything before the target.
 
-Seek the current finite playback.
+### `speaker.audioSetVolume(volume) -> boolean`
 
-The server changes the canonical finite position immediately. In the final streamed design the client will discard irrelevant buffered data and request new encoded data around the new server position.
+Change finite playback volume.
 
-For a non-looping finite playback, seeking exactly to duration ends it. With looping enabled, exact-duration seek wraps to the beginning.
+### `speaker.audioSetLooping(loop) -> boolean`
 
-## `speaker.audioSetVolume(volume) -> boolean`
+Change finite looping.
 
-Change the current finite playback volume.
-
-## `speaker.audioSetLooping(loop) -> boolean`
-
-Enable or disable looping for the current finite playback.
-
-## `speaker.audioStop()`
+### `speaker.audioStop()`
 
 Stop the currently owned HQ continuous source.
 
-The standard `speaker.stop()` is still available and also requests CC:T's native speaker stop behavior.
+## HQ finite state event
 
----
+### `hqspeaker_audio_state`
 
-# HQ raw/feed audio
-
-## `speaker.speakPCM(samples [, volume]) -> boolean`
-
-Feed signed 16-bit PCM samples to the HQ raw path.
-
-This is an **open-ended producer feed**, not a finite song API. It does not truthfully have finite duration, arbitrary seek, or natural EOF.
-
-The modern composite limits one accepted call to 131072 contiguous samples and applies bounded server-side backpressure.
-
-When a valid call is rejected because HQ RAW capacity is full, retry after `hqspeaker_audio_empty`.
-
-## `speaker.speakMaxSamples() -> number`
-
-Returns the current modern composite per-call HQ RAW sample maximum: `131072`.
-
-## `hqspeaker_audio_empty`
-
-HQ RAW backpressure event. This is separate from CC:T's native `speaker_audio_empty` event.
-
-Use:
-
-- `speaker_audio_empty` for standard CC:T `playAudio`;
-- `hqspeaker_audio_empty` for HQ `speakPCM` retry pacing.
-
----
-
-# HQ finite state event
-
-## `hqspeaker_audio_state`
-
-The modern finite server queues this event to attached computers when authoritative finite state changes.
-
-Typical use:
+Authoritative finite server state changes are queued to attached computers:
 
 ```lua
 while true do
-    local _, state = os.pullEvent("hqspeaker_audio_state")
-    print(state.state, state.position or 0)
+  local _, state = os.pullEvent("hqspeaker_audio_state")
+  print(state.state, state.position or 0)
 end
 ```
 
-During active/terminal modern finite playback, the event carries the same server-owned finite status fields described above.
+This is server semantic state, not proof that a particular Minecraft client currently hears sound.
 
-One current implementation detail is worth documenting precisely: when a finite playback is explicitly stopped, the finite server queues an idle event with `kind = "finite"`; after composite ownership is cleared, a later `speaker.audioStatus()` call reports the general no-owner idle shape with `kind = "none"`.
+When finite playback is explicitly stopped, the finite server's immediate event uses an idle finite state; after composite ownership clears, a later `audioStatus()` uses the general `kind = "none"` idle shape.
 
-Do not infer client audibility from this event. It represents canonical server playback state, not whether one particular Minecraft client has decoded or rendered sound successfully.
+## HQ raw/feed audio
 
----
+### `speaker.speakPCM(samples [, volume]) -> boolean`
 
-# Low-level prepared-media peripheral functions
+Open-ended HQ signed 16-bit PCM producer feed.
 
-Most programs should use the `hqspeaker` module instead. These functions are documented because the module itself uses them and advanced programs may deliberately work at this level.
+It is not a finite song and does not expose truthful duration/arbitrary seek/natural EOF.
 
-## `speaker.audioMountPath() -> string`
+Current modern composite per-call limit: `131072` contiguous samples.
 
-Return this computer's temporary writable HQ staging mount path.
+### `speaker.speakMaxSamples() -> number`
 
-The staging mount is only an **import mechanism**. It is not the final media library and should not be treated as persistent playback storage.
+Returns `131072` for the current modern composite.
 
-## `speaker.audioMaxStagedBytes() -> number`
+### `hqspeaker_audio_empty`
 
-Return the current maximum size accepted by the temporary staging/import path for one asset.
+HQ RAW capacity event. Use this for `speakPCM` retry pacing.
 
-## `speaker.audioPrepareStaged(path [, consume]) -> assetId`
+Do not confuse it with native `speaker_audio_empty`, which belongs to standard CC:T `playAudio`.
 
-Import and analyze one file already copied into the HQ staging mount.
+## Low-level prepared/import functions
 
-- `path` is relative to the HQ staging mount.
-- `consume` defaults to `true` through the Lua helper and means the temporary staged copy should be removed after successful import.
+Most programs should use the `hqspeaker` module. These remain available because the module itself uses them.
 
-Returns a reusable server asset ID.
+### `speaker.audioMountPath() -> string`
 
-Prefer `hq.prepareFile()` unless you specifically need to manage the staging copy yourself.
+Return this computer's temporary HQ writable import mount.
 
-## `speaker.audioPreparedInfo(assetId) -> table`
+### `speaker.audioMaxStagedBytes() -> number`
 
-Low-level equivalent used by `hq.preparedInfo()`.
+Return the current per-asset staging/import size limit.
 
-## `speaker.audioPlayPrepared(assetId [, volume]) -> boolean`
+### `speaker.audioPrepareStaged(path [, consume]) -> assetId`
 
-Low-level equivalent used by `hq.playPrepared()`.
+Import/analyze a file already copied into that temporary mount and return a reusable server asset ID.
 
-## `speaker.audioReleasePrepared(assetId) -> boolean`
+The mount is import plumbing, not a playback library/cache.
 
-Low-level equivalent used by `hq.releasePrepared()`.
+### `speaker.audioPreparedInfo(assetId) -> table`
 
----
+Low-level equivalent of `hq.preparedInfo`.
 
-# Prototype API scheduled for removal
+### `speaker.audioPlayPrepared(assetId [, volume]) -> boolean`
 
-## `speaker.audioPlayStaged(...)`
+Low-level equivalent of `hq.playPrepared`.
 
-**Do not use in new programs.**
+### `speaker.audioReleasePrepared(assetId) -> boolean`
 
-This command did not come from the original HQ Speakers mod. This project introduced it during the old staged/local-file prototype so a temporary uploaded file could be played directly.
+Low-level equivalent of `hq.releasePrepared`.
 
-That model has since been superseded by:
+## Removed prototype API
+
+### `speaker.audioPlayStaged(...)`
+
+This API is **removed as of M1F**.
+
+It was introduced by this project's earlier staged-file prototype and was not part of the inherited HQ Speakers API.
+
+Use:
 
 ```text
-stage/import -> server MediaAsset -> playPrepared
+hq.playFile(...)
 ```
 
-Project decision as of 2026-09-13: when M1F implementation begins, remove `audioPlayStaged()` rather than carrying this prototype path into the new range-streaming transport.
+or:
 
-Use `hq.playFile()` for the normal one-call experience, or `hq.prepareFile()` + `hq.playPrepared()` for preload/reuse.
+```text
+prepareFile -> playPrepared -> releasePrepared
+```
 
----
+There is no compatibility reason to preserve a second direct-staged playback transport.
 
-# Inherited legacy HQ APIs
+## Inherited legacy HQ APIs
 
-The repository still contains older HQ Speakers finite/live functions such as `speakMp3`, `speakWav`, `speakOgg`, `speakAudio`, `speakFile`, `speakPacked`, `speakStream`, `speakHLS`, `speakTS`, older multispeaker helpers, metadata helpers, and related size/status functions.
+Older inherited functions such as `speakMp3`, `speakWav`, `speakOgg`, `speakAudio`, `speakFile`, `speakPacked`, `speakStream`, `speakHLS`, `speakTS`, metadata helpers, and older multi-speaker helpers still exist in parts of the inherited codebase.
 
-They are **not the model for the new large local finite-file engine**.
+They are not the model for the new large local finite-file path.
 
-Important project direction:
+Project direction:
 
-- useful legacy compatibility frontends are reviewed/migrated later in M1L;
-- large local files should use the prepared/server-asset path;
+- large local files use server MediaAssets through the helpers above;
+- useful old finite compatibility entrypoints are reviewed later in M1L;
 - OGG/AIFF/AU are not final finite-core requirements;
-- live MP3/HLS/TS is later M3 work;
-- do not infer the final supported-format promise from old inherited helper names.
+- live MP3/HLS/TS is later M3 work.
 
-This reference intentionally does not present those inherited surfaces as the recommended modern API while their migration/final status is unresolved.
+## Current implementation caveat
 
----
+M1F transport is source/test/CI complete, but M1G has not started.
 
-# Current milestone caveat
+So the modern prepared-file path currently has:
 
-As of the pre-M1F documentation checkpoint:
+```text
+server MediaAsset
+-> server timeline
+-> client-requested encoded ranges
+-> bounded client encoded RAM
+```
 
-- M1E server-authority source/tests/CI are implemented;
-- the final manual M1E Minecraft PASS was **not performed** because the project owner chose to skip that manual test and move forward later;
-- therefore M1E must not be described as runtime-verified;
-- M1F implementation has **not started**;
-- the current prepared client still contains the temporary whole-file transfer/decoder bridge;
-- M1F will replace transport;
-- M1G will provide the final progressive MP3/common-WAV decoder and audible renderer.
+but it does **not yet** have the final progressive decoder/PCM renderer attached to that RAM window.
 
-The public Lua workflow (`playFile`, prepare/play/release, finite controls) is the intended programming shape even though the internal finite transport underneath it is still being replaced.
+Do not expect M1F alone to make prepared MP3/WAV audible. M1G owns that work.

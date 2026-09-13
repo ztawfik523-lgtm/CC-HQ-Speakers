@@ -1,229 +1,133 @@
 # Future cleanup inventory
 
-This file is a parking lot for code, protocol, metadata, tests, and documentation which may become obsolete as the replacement finite engine lands.
+This is a parking lot for obsolete/legacy code and release cleanup. It is not permission to expand the active milestone.
 
-It is **not** permission to expand the active milestone. Clean something here only when its replacement owns the required callers/behavior or the item directly blocks the current milestone.
+Current checkpoint: M1F source/test/CI complete; M1G not started.
 
-Current checkpoint: documentation/preparation only. M1F implementation has not started.
+## Modern prepared path cleanup state after M1F
 
-## Prototype API moving into active M1F scope
+M1F already removed these from the modern prepared path:
 
-### `audioPlayStaged()`
+- whole-file finite CHUNK/END transfer;
+- client `.part/.media` accumulation;
+- tick-thread whole-file server reads;
+- direct prototype `audioPlayStaged()`;
+- active modern use of `FileFiniteAudioStream`.
 
-This command was introduced by this project's staged/local-file prototype. It is not part of the untouched inherited HQ Speakers API.
+Do not restore them for temporary audibility.
 
-It directly plays a temporary staged file, which conflicts with the modern model:
+## Old complete-file decoder classes/dependencies
 
-```text
-ComputerCraft file
-    -> temporary staging/import
-    -> reusable server MediaAsset
-    -> playback
-```
+`FileFiniteAudioStream` may remain as source even though M1F's modern prepared client no longer uses it.
 
-Project decision on 2026-09-13:
+Known old defects include wrong mp3spi duration/seek behavior and redundant seek paths.
 
-**remove `audioPlayStaged()` when M1F implementation begins.**
+Target:
 
-This is no longer merely optional future cleanup because M1F is explicitly replacing the modern staged/whole-file transport. New programs use `hq.playFile()` or prepare/play/release.
+- M1G proves the progressive MP3/common-WAV replacement;
+- then remove dead complete-file decoder code/provider dependencies if no remaining supported caller needs them.
 
-Do not remove it during the documentation-only checkpoint.
+Current JarJar dependencies include mp3spi/JLayer/tritonus-related pieces. Do not delete dependencies until M1G package/runtime proof shows exactly what remains required.
 
-## Temporary prepared-finite bridge
+## Old client cache artifacts
 
-### `FileFiniteAudioStream`
+Older development builds may have left an `hqspeaker-cache` directory or `.part/.media` files on disk.
 
-Current role: complete-file client decoder for the transitional prepared finite path.
+Active M1F does not use them.
 
-Known reasons it is not a final foundation:
-
-- requires a complete local file;
-- JavaSound/mp3spi MP3 duration is not authoritative;
-- current MP3 seek path mixes incompatible decoded/encoded progress semantics;
-- seek can report the requested target after incomplete positioning;
-- current client restart path can seek the same newly-created stream twice;
-- runtime diagnostic showed first PCM read ending immediately.
-
-Target cleanup: once M1G progressive MP3/common-WAV decoding fully replaces it, remove it from the modern prepared path and delete it if no remaining legacy caller needs it.
-
-Do **not** repair/polish it during M1F solely to preserve temporary audibility.
-
-### `HQFiniteMediaClient` whole-file cache/transfer state
-
-Current transitional behavior includes:
-
-- `hqspeaker-cache` client directory;
-- `.part` accumulation;
-- completed `.media` file;
-- complete transfer before decoder construction;
-- local renderer projection tied to the file bridge.
-
-Target cleanup:
-
-- M1F replaces modern prepared-file transfer with bounded in-memory encoded ranges;
-- M1G replaces the decoder/render portion;
-- remove obsolete disk-transfer/cache code when no longer referenced.
-
-If a one-time stale-development-cache cleanup is later added, use narrowly-scoped path checks. Never delete arbitrary user files/directories.
-
-## Transitional finite protocol
-
-### Old whole-file packets
-
-Review/remove as M1F replaces the modern prepared path:
-
-- `HQFiniteMediaBeginPacket` fields which only exist for the old file bridge;
-- `HQFiniteMediaChunkPacket`;
-- `HQFiniteMediaEndPacket`.
-
-M1F introduces demand-driven range request/data transport and whatever minimal stream/anchor description it needs. Do not keep old chunk-push packets merely for an obsolete modern prepared path.
-
-### `HQFiniteMediaStatusPacket.READY`
-
-READY currently means the complete-file bridge has constructed its decoder and wants fresh authoritative state.
-
-After M1F/M1G, review whether READY still represents a useful client condition. Server authority must never regress into waiting for it.
-
-### `HQFiniteMediaControlPacket` / `HQFiniteMediaStatePacket`
-
-Do not delete automatically:
-
-- STATE is the current authoritative semantic snapshot and may remain useful;
-- CONTROL may become partly redundant as the new stream/descriptor handling settles.
-
-Do not merge immutable stream description and moving authoritative state without a reason.
-
-## M1F lifecycle cleanup requirement
-
-When M1F introduces background range reads, shutdown must stop/drain/cancel those reads before the shared server media store closes and removes its asset files.
-
-This is an active correctness requirement for M1F, not optional later cleanup.
+If a one-time cleanup is later added, restrict deletion narrowly to the mod-owned old cache path; never delete arbitrary user files.
 
 ## Legacy finite engine
 
-Retained inherited pieces include:
-
-- `HQAudioStream`;
-- `FiniteAudioTrack`;
-- finite portions of `HQSpeakerAudioPacket`;
-- old byte-taking APIs such as `speakMp3`, `speakOgg`, `speakWav`.
+Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared M1F path.
 
 Target M1L:
 
-- keep only compatibility frontends worth preserving;
-- route useful ones into the new asset engine where sensible;
-- remove obsolete OGG-specific finite promises rather than rebuilding Vorbis into the new core;
-- large local files remain `hq.playFile`/prepared-asset territory.
+- preserve only compatibility frontends worth keeping;
+- route them into the new asset/transport/decoder engine where sensible;
+- remove obsolete whole-packet/whole-PCM implementation;
+- do not rebuild OGG Vorbis merely to preserve an old helper name.
 
-Do not polish the old whole-file/whole-PCM engine during M1F.
+## Protocol/state review after M1G/M1H
 
-## Legacy multispeaker bypasses
+Current modern finite protocol v5 includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
 
-Inherited `*All` / `*At` helpers can bypass normal ownership/state rules and older shared-group code may depend on expected-member counts.
+Review later rather than deleting blindly:
 
-Targets:
+- whether READY remains useful once the progressive decoder/renderer is attached;
+- whether CONTROL can be simplified when STATE/renderer lifecycle is final;
+- whether immutable BEGIN fields should move/expand for M1G layout facts;
+- whether listener lifecycle needs a specific cancel/subscription message in M1H.
 
-- M1J: functional shared server clocks and one positional renderer per physical block;
-- M1K: optional active-session transfer/decode sharing after correctness.
+Server authority must never regress into waiting for client readiness.
 
-Do not patch obsolete expected-member architecture during M1F.
+## M1F tuning values
+
+Current 128 KiB range responses, 512 KiB encoded client window, per-player outstanding caps, two IO workers, and queue size 64 are implementation safety values.
+
+M1O should benchmark packet size/compression, queueing, memory, many-player demand, cancellation storms, and seek spam before release tuning is frozen.
 
 ## Historical format surface
 
-Frozen M1D analyzes MP3, OGG Vorbis, WAV, AIFF, and AU. That remains historical evidence, not the final product promise.
+Frozen M1D analyzes formats broader than the final product target.
 
-Once M1G owns active prepared/local finite playback:
+Once M1G owns active prepared playback:
 
-- final core advertisement becomes MP3 + implemented common WAV;
-- remove active prepared/local OGG/AIFF/AU requirements;
-- keep frozen milestone docs/commits reproducible;
-- M1I may add native `.flac` only if its gated contract passes.
+- advertise MP3 + implemented common WAV only;
+- remove active OGG/AIFF/AU prepared/local promises;
+- preserve frozen milestone docs/commits as history;
+- M1I may add native FLAC only if fully proven.
 
-Review extension lists, helper text, README claims, Lua docs, and metadata which still advertise obsolete formats.
+## Multispeaker bypasses
 
-## Decoder dependencies
+Inherited `*All` / `*At` helpers and expected-member shared groups remain legacy.
 
-Current packaged decoder stack includes mp3spi, JLayer, and tritonus-share.
+Target:
 
-M1G currently expects the shipped JLayer family for progressive MP3 unless another path is proven better.
-
-After M1G is stable, review whether mp3spi/tritonus remain necessary. Do not remove dependencies before replacement package/runtime proof.
+- M1J functional shared server clocks with one positional renderer per physical speaker;
+- M1K optional in-memory active-session sharing optimization;
+- migrate/remove bypass helpers that no longer fit final ownership.
 
 ## Diagnostic instrumentation
 
-The M1E branch contains Java diagnostics added while investigating the finite runtime path.
+Older M1E runtime diagnostic logging was useful for authority/decoder investigation.
 
-After the replacement path is proven:
-
-- remove/downgrade noisy first-buffer/wire diagnostics which no longer help;
-- retain concise useful failure logging;
-- do not leave high-volume debug logging in release paths.
-
-## Client-local playback projection
-
-The current client retains a local finite playback clock/projection. M1G/M1H should review whether the final renderer needs the same model or a clearer projection based on server state + local buffer/render timing.
-
-Canonical authority remains server-side either way.
-
-## Custom HQ block/product duplication
-
-The repository still registers `hqspeaker:hq_speaker` even though the product direction upgrades the normal `computercraft:speaker`.
-
-Target M4: remove it if it has no supported distinct purpose, or explicitly justify/document it. Consider existing worlds/registry data before removal.
+After the new progressive renderer is proven, remove/downgrade noisy per-buffer/wire diagnostics while retaining concise operational failure logs.
 
 ## Live/HLS/TS inherited code
 
-Known later issues include double gain, HLS progression, non-incremental TS behavior, unsupported TS decode paths, incomplete live state/lifecycle, and old shared-session behavior.
+Known later issues include double gain, HLS sequence/window progression, non-incremental TS behavior, unsupported codecs, and old shared-session lifecycle.
 
-Target M3. Do not mix these into finite M1F/M1G except for narrowly shared infrastructure.
+Target M3. Do not mix them into finite M1G unless a narrowly shared primitive truly requires it.
 
 ## Sound/OpenAL cleanup
 
 Target M1N:
 
-- appropriate sound category;
-- one logical gain stage plus Minecraft scaling;
+- correct sound category;
+- one logical gain stage plus Minecraft master/category scaling;
 - F3+T/resource reload recovery;
-- stale-channel cleanup;
+- stale channel cleanup;
 - correct attenuation and VS2 movement;
 - one mono positional source per physical speaker.
 
-## Test/script cleanup
+## Product/registry cleanup
 
-Historical scripts are evidence for their milestone, not permanent active contracts.
+The repo still registers a separate `hqspeaker:hq_speaker` even though the product direction upgrades normal CC speakers.
 
-Later review may remove/archive old renderer-authority assumptions, obsolete format fixtures, or superseded scripts once their evidence value is preserved.
+Target M4: remove it with proper world/registry migration consideration, or explicitly justify/document it.
 
-The final M1E manual script remains **unrun**, not passed.
+## Documentation/test cleanup
 
-## Documentation cleanup
+Historical scripts/handoffs are evidence, not current contracts.
 
-Current continuation entry points are:
+Later cleanup may archive redundant handoffs and old renderer-authority scripts after current evidence is secure. Do not rewrite historical evidence to pretend newer architecture existed earlier.
 
-- `HANDOFF-2026-09-13-PRE-M1F.md`
-- `LUA-API.md`
-- `CURRENT-STATE.md`
-
-Older handoffs/preparation docs should stay visibly historical/superseded.
-
-When Lua-facing behavior changes, update `LUA-API.md` and the bundled `hqspeaker.lua` comments in the same milestone.
-
-## Packaging/metadata cleanup
+## Packaging/license cleanup
 
 Before public release:
 
-- resolve top-level MPL-2.0 vs NeoForge metadata LGPL-3.0 mismatch from actual provenance;
-- update mod description so it no longer advertises obsolete format/live behavior;
-- verify packaged mixins, dependencies, ROM module, and protocol metadata;
-- remove unused decoder/provider dependencies only after proof.
-
-## Rule for promoting cleanup into active work
-
-Promote an item out of this file only when:
-
-- it directly blocks the current milestone;
-- a replacement is ready and leaving the old path creates ambiguity/risk;
-- runtime evidence identifies it as an active defect in supported behavior;
-- release packaging cannot proceed safely without it.
-
-Until then, this file is a reminder, not a scope-expansion list.
+- resolve top-level MPL-2.0 versus NeoForge metadata LGPL-3.0 from actual provenance;
+- update mod description to final supported feature/format set;
+- verify final protocol/mixins/dependencies/ROM module;
+- remove unused decoder/provider dependencies only after replacement proof.

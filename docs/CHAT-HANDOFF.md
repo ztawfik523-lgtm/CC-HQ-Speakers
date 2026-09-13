@@ -4,10 +4,11 @@ Date: 2026-09-13
 
 Current continuation entry point:
 
-`HANDOFF-2026-09-13-PRE-M1F.md`
+`HANDOFF-2026-09-13-M1F.md`
 
 Then read:
 
+- `M1F-IMPLEMENTATION-2026-09-13.md`
 - `LUA-API.md`
 - `CURRENT-STATE.md`
 - `VERIFIED-FACTS.md`
@@ -19,6 +20,18 @@ Then read:
 - `KNOWN-ISSUES.md`
 - `FUTURE-CLEANUP.md`
 
-The current handoff records that the final manual M1E test was skipped, M1E therefore has no recorded final runtime PASS, `audioPlayStaged()` is approved for removal when M1F begins, and M1F implementation has not started.
+Current implementation branch:
 
-Older handoffs and preparation/finalization docs remain historical context. Current source, current CI, and the current handoff take precedence.
+`codex/m1f-demand-driven-finite`
+
+M1F code/test head before docs:
+
+`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+
+CI run `34731827907` passed both NeoForge target versions.
+
+M1F is source/test/CI complete but not Minecraft-runtime verified. M1G has not started.
+
+The final manual M1E runtime PASS was skipped by explicit project-owner decision; do not rewrite that as a PASS.
+
+Older pre-M1F handoffs and preparation docs are historical context only. Exact current source/CI and the M1F checkpoint take precedence.
