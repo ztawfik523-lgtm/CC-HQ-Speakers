@@ -199,8 +199,12 @@ public final class HQFiniteMediaClient {
 
             if (session.begin.descriptor().kind() == FiniteDecodeDescriptor.Kind.WAV) {
                 session.decoderTask = DECODERS.submit(() -> runWavDecoder(session, epoch, input, pcm, startOffset));
+            } else {
+                double anchorTime = session.anchorTime;
+                double targetTime = session.targetPosition;
+                session.decoderTask = DECODERS.submit(() -> runMp3Decoder(
+                    session, epoch, input, pcm, anchorTime, targetTime));
             }
-            // MP3 gets the same epoch/input/PCM boundary; the JLayer worker is the next M1G slice.
         } catch (RuntimeException e) {
             session.encodedInput = null;
             session.pcmQueue = null;
@@ -212,6 +216,17 @@ public final class HQFiniteMediaClient {
                                       FinitePcmQueue pcm, long startOffset) {
         try {
             ProgressiveWavDecoder.decode(input, pcm, session.begin.descriptor().wavLayout(), startOffset);
+        } catch (IOException | RuntimeException e) {
+            Minecraft.getInstance().execute(() -> decoderFailed(session, epoch, e));
+        }
+    }
+
+    private static void runMp3Decoder(Session session, long epoch, FiniteEncodedInputStream input,
+                                      FinitePcmQueue pcm, double anchorTime, double targetTime) {
+        try {
+            ProgressiveMp3Decoder.decode(input, pcm,
+                session.begin.descriptor().sampleRate(), session.begin.descriptor().channels(),
+                anchorTime, targetTime);
         } catch (IOException | RuntimeException e) {
             Minecraft.getInstance().execute(() -> decoderFailed(session, epoch, e));
         }
