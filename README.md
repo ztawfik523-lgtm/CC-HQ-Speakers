@@ -17,16 +17,34 @@ Lua decides whether audio is music, speech, alarms, notifications, ambience, sou
 
 The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
 
+One physical speaker remains one mono positional source.
+
 ## Current development status
 
-The project is currently on an **M1E/M1F reevaluation hold**.
+M1E server-authoritative finite playback is complete at the source/test/CI level.
 
-The core architecture remains:
+Final M1E code candidate:
+
+`521d4323d9216c8a99e8ec60426997c3330c4068`
+
+Exact M1E code CI:
+
+`34757923455`
+
+Both NeoForge 21.1.247 and 21.1.248 passed build, tests, packaged-mod verification, and artifact upload.
+
+Baseline 21.1.247 final-hardening JAR SHA-256:
+
+`da7e537955afbed98e00ba09b89301005fc09fe951ca4b2903d5dc69cd977c82`
+
+The final focused Minecraft M1E acceptance script was explicitly skipped by the owner, so there is **no recorded final M1E runtime PASS**. CI is not being presented as runtime proof.
+
+The core architecture is:
 
 ```text
 ComputerCraft file
     -> reusable server MediaAsset
-    -> authoritative server playback state
+    -> server-authoritative finite playback state
     -> server-selected encoded anchor
     -> bounded client range requests
     -> bounded off-thread server reads
@@ -34,25 +52,27 @@ ComputerCraft file
     -> later progressive decode/PCM/rendering
 ```
 
-Current Java/source head:
+M1F range transport is implemented but remains provisional for its sliding-window consumer boundary and remaining deterministic acceptance work. M1G has not started.
 
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
+Read `docs/M1E-FINAL-HARDENING-2026-09-13.md` and `docs/CURRENT-STATE.md` before continuing implementation.
 
-CI run `34731827907` passed NeoForge 21.1.247 and 21.1.248, including tests/package verification/artifact upload.
+## M1E finite server authority
 
-That evidence remains valid, but the earlier labels `M1E finalized` and `M1F source/test/CI complete` are superseded by the 2026-09-13 reevaluation.
+Prepared finite playback now has hardened server-owned semantics:
 
-The reevaluation found:
+- successful playback starts canonical time immediately;
+- server owns PLAYING / PAUSED / ENDED / ERROR;
+- server owns position, duration, pause/resume, seek, loop, volume, and natural EOF;
+- non-looping exact-duration seek ends;
+- looping exact-duration seek wraps to zero;
+- server ERROR freezes position;
+- client READY requests current state only;
+- client ERROR is diagnostic only;
+- prepared-start construction finishes before canonical session installation;
+- client delivery is best-effort and isolated per recipient;
+- MediaAsset final-release failures transfer to retry-safe ownership.
 
-- packet-send exception paths are not fully isolated from authoritative server transitions;
-- `playPrepared()` rollback can leave installed finite session state inconsistent after a thrown start;
-- playback asset-reference bookkeeping can forget ownership before a failed final release succeeds;
-- the M1F encoded window can re-anchor but lacks the intended sliding consume/discard API;
-- current deterministic M1F tests cover only part of the original acceptance matrix.
-
-No Java was changed during that reevaluation.
-
-Read `docs/M1E-M1F-REEVALUATION-2026-09-13.md` before continuing implementation.
+A slow or broken client cannot canonically pause, rewind, end, or prevent server playback from progressing.
 
 ## Finite files
 
@@ -65,11 +85,11 @@ Later gated extension:
 
 - native FLAC only after its complete analyzer/decode/seek/package/runtime path is proven
 
-Finite playback uses a server-owned timeline for duration, position, pause/resume, seek, loop, volume, and EOF.
-
 The modern prepared path no longer downloads the whole song into client `.part/.media` files. Protocol v5 uses bounded client-requested encoded ranges.
 
-M1G has **not started** and should not start until the owner chooses how to close/defer the reopened M1E/M1F issues.
+M1F currently uses bounded server range IO and bounded client encoded RAM. It still needs a true sliding consume/discard encoded window and the remaining transport acceptance coverage before the M1F milestone should be called complete.
+
+M1G will own progressive MP3/common-WAV decoding and actual audible positional rendering. Do not repair the obsolete complete-file JavaSound/mp3spi bridge merely for temporary M1F audibility.
 
 ## Lua finite-file API
 
@@ -108,9 +128,9 @@ HQ `speakPCM` remains an open-ended producer feed with bounded backpressure and 
 
 ## Current milestone sequence
 
-- **M1E:** server-authoritative finite timeline — semantic design implemented; hardening/acceptance reopened; final focused Minecraft PASS skipped/unrecorded.
-- **M1F:** bounded client-requested encoded range transport — architecture implemented and CI-green; acceptance/completeness reopened.
-- **M1G:** progressive MP3/common-WAV decode + audible renderer — not started; currently blocked on reevaluation decision.
+- **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded by owner decision.
+- **M1F:** bounded client-requested encoded range transport — architecture implemented; completion/acceptance still provisional.
+- **M1G:** progressive MP3/common-WAV decode + audible renderer — not started.
 - **M1H:** dynamic listener/late-join/leave-return/underrun recovery.
 - **M1I:** optional gated native FLAC.
 - **M1J/K:** functional multispeaker shared clocks, then optional active-session sharing optimization.
@@ -129,13 +149,13 @@ CI targets Java 21 on both supported NeoForge versions and verifies packaged met
 
 Read current development docs in this order:
 
-1. `docs/M1E-M1F-REEVALUATION-2026-09-13.md`
-2. `docs/HANDOFF-2026-09-13-M1E-M1F-REEVALUATION.md`
-3. `docs/CURRENT-STATE.md`
-4. `docs/KNOWN-ISSUES.md`
-5. `docs/TESTING.md`
-6. `docs/VERIFIED-FACTS.md`
-7. `docs/M1E-SERVER-AUTHORITY.md`
+1. `docs/M1E-FINAL-HARDENING-2026-09-13.md`
+2. `docs/CURRENT-STATE.md`
+3. `docs/KNOWN-ISSUES.md`
+4. `docs/TESTING.md`
+5. `docs/VERIFIED-FACTS.md`
+6. `docs/M1E-SERVER-AUTHORITY.md`
+7. `docs/M1E-M1F-REEVALUATION-2026-09-13.md` — historical audit; M1E findings resolved, M1F findings remain relevant
 8. `docs/M1F-IMPLEMENTATION-2026-09-13.md`
 9. `docs/M1E-FINITE-STREAMING-DESIGN.md`
 10. `docs/ROADMAP.md`
@@ -143,4 +163,4 @@ Read current development docs in this order:
 12. `docs/ARCHITECTURE.md`
 13. `docs/FUTURE-CLEANUP.md`
 
-Older dated finalization/handoff docs preserve history but do not override current source or the reevaluation status.
+Older dated finalization/handoff docs preserve checkpoint history but do not override current source, final-hardening evidence, or current-state docs.
