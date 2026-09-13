@@ -12,11 +12,11 @@ Preparation base:
 
 `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
-Current green integrated M1G source head:
+Current green integrated M1G **source** checkpoint:
 
 `957832348eaa6e497282d923f2312c9c7d7c550f`
 
-CI:
+Source CI:
 
 `34778546164`
 
@@ -26,6 +26,8 @@ Artifacts:
 
 - 21.1.247 artifact `10324148909` — ZIP SHA-256 `7555b34fe1c44e87b35161fa12ea67a7f38c6e409a879a8725863b78757d27db`;
 - 21.1.248 artifact `10324273482` — ZIP SHA-256 `f308b9a52a5688e011e1e9d10b2da06d01cc5f5957b9368ed355c4fc302e12c1`.
+
+The source checkpoint was followed only by documentation reconciliation. Pre-handoff documentation head `7ec70d4674b237f055d450e1290a652f7c23b65d` passed CI `34780519972` on both NeoForge 21.1.247 and 21.1.248, including build/tests/package verification/artifact upload.
 
 Green CI is not Minecraft runtime proof. Focused M1G audible Minecraft acceptance is still unrecorded.
 
@@ -45,9 +47,9 @@ ComputerCraft file
     -> one positional BLOCKS SoundManager source per physical speaker
 ```
 
-## M1G locked decisions
+## Locked M1G decisions
 
-The owner choices remain:
+These choices are already resolved and should not be reopened without new substantive evidence:
 
 - **A1:** normal Minecraft `AudioStream` / `SoundManager` renderer;
 - **B1:** server-normalized common-WAV layout carried to clients;
@@ -81,19 +83,37 @@ Current source includes:
 
 The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared engine.
 
-## Current correctness boundary: looping
+## NEXT CHAT STOP CONDITION — ask the owner first
 
-The next substantive M1G decision is loop-wrap rejoin.
+Before making further M1G source changes, the next chat must ask the owner to choose the remaining **loop-wrap rejoin architecture**.
 
-The server clock already owns looping and wraps canonically. The client renderer deliberately does **not** locally modulo its projected clock. Consequently, after one local decode reaches physical asset EOF during a looping server session, the client needs a defined way to obtain a fresh authoritative position/anchor and start a new decoder epoch.
+The server clock already owns canonical looping. The client intentionally does not locally modulo server time. After one local decode reaches physical asset EOF during a looping server session, the client needs a defined way to get a fresh canonical position/anchor and create a new decode epoch.
 
-Reasonable designs have meaningful tradeoffs and must not be selected silently:
+### L1 — client EOF refresh
 
-1. **Client EOF refresh:** when local PCM/decoder EOF is reached while server looping is true, request fresh STATE and restart from the server-selected current anchor. Simplest and strongly server-authoritative, but may introduce a loop-boundary roundtrip/prebuffer gap.
-2. **Server wrap STATE:** detect canonical loop wraps server-side and proactively project a fresh STATE at each wrap. Tighter synchronization with no client guessing, but adds explicit wrap tracking/fanout and more server lifecycle logic.
-3. **Client local modulo/restart:** predict wraps from the last server snapshot and duration, then restart locally with occasional reconciliation. Lowest boundary latency, but weakens the M1E rule that the server clock is canonical and risks drift.
+At local EOF while `looping == true`, request fresh authoritative STATE and restart from the server-selected current anchor.
 
-Do not implement one until the owner chooses.
+Pros: simplest; strongest fit with M1E server authority; no client-owned loop clock; no server wrap counter.
+
+Cons: roundtrip + prebuffer can cause a loop-boundary gap, especially for short loops.
+
+### L2 — server wrap STATE
+
+Server detects canonical loop-wrap crossings and proactively projects fresh STATE at each wrap.
+
+Pros: server remains explicit loop authority; restart can be projected at the wrap; potentially tighter loop boundary.
+
+Cons: adds wrap tracking/fanout to server tick semantics; needs careful behavior for very short media, missed wraps, and projection failures.
+
+### L3 — client local modulo/restart
+
+Client predicts wraps from duration + last server snapshot, restarts locally, then reconciles later.
+
+Pros: lowest boundary latency and no per-wrap roundtrip.
+
+Cons: weakens the chosen server-authoritative model; client drift/reconciliation becomes correctness state; more client timing machinery.
+
+**Do not choose or implement L1/L2/L3 silently. Ask the owner first.**
 
 ## Evidence boundaries
 
@@ -101,6 +121,7 @@ Do not implement one until the owner chooses.
 M1E final focused Minecraft acceptance: skipped / no recorded PASS
 M1F focused Minecraft transport acceptance: not recorded
 M1G integrated source/tests/package: green at 957832348eaa6e497282d923f2312c9c7d7c550f
+M1G documentation checkpoint before final handoff updates: green at 7ec70d4674b237f055d450e1290a652f7c23b65d
 M1G loop-wrap rejoin: unresolved owner choice
 M1G audible Minecraft PASS: not recorded
 ```
@@ -111,13 +132,13 @@ Full late-entry discovery, proactive leave cleanup, leave/return rejoin, dimensi
 
 ## Current read order
 
-1. `M1G-DESIGN-DECISIONS-2026-09-13.md`
-2. `HANDOFF-2026-09-13-M1G-START.md`
+1. `HANDOFF-2026-09-13-M1G-START.md`
+2. `M1G-DESIGN-DECISIONS-2026-09-13.md`
 3. `CURRENT-STATE.md`
 4. `TESTING.md`
 5. `KNOWN-ISSUES.md`
-6. `M1F-FINALIZATION-2026-09-13.md`
-7. `VERIFIED-FACTS.md`
+6. `VERIFIED-FACTS.md`
+7. `M1F-FINALIZATION-2026-09-13.md`
 8. `ROADMAP.md`
 9. `LUA-API.md`
 10. exact current source and CI
