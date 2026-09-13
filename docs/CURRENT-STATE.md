@@ -2,11 +2,18 @@
 
 ## Current checkpoint
 
-The project is at the **final M1E acceptance checkpoint**. M1F has not started.
+The project is at a **documentation-only pre-M1F checkpoint**.
 
-Read `M1E-FINALIZATION-2026-09-13.md` first. It records the final recheck, the exact code/test candidate, the strengthened runtime acceptance harness, and the gate that must pass before M1F begins.
+M1E server-authority source/tests/CI are finalized and re-reviewed. The project owner explicitly chose **not to perform the final manual M1E Minecraft acceptance run** and to move on later instead.
 
-The older `PRE-M1F-PREPARATION.md` remains useful for the clean-break/decoder decisions but is no longer the current status document.
+That means two things must remain true at the same time:
+
+- M1E must **not** be described as Minecraft-runtime verified or as having a recorded PASS;
+- the skipped manual test is no longer being treated as a sequencing gate by project decision.
+
+M1F implementation has **not started**. This checkpoint is documentation/preparation only.
+
+Read `LUA-API.md` for the current ComputerCraft programming surface and `HANDOFF-2026-09-13-PRE-M1F.md` for the fresh plain-language continuation handoff.
 
 ## Active references
 
@@ -21,17 +28,19 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`
 - original M1E semantic implementation: `d0e66ab9135359627086c13647d5241ad778643f`
 - 2026-09-12 runtime-diagnostic Java head: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`
-- M1E finalization code/test candidate before documentation-only follow-up: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+- M1E finalization code/test candidate: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
+- last pre-documentation branch head: `ff8fc52e8660249150e056d1dff4307377afe7c4`
 - active branch: `codex/m1e-server-authoritative-finite`
 
-Known green CI anchors:
+Known green CI anchors include:
 
 - M1D run `34635484316` — NeoForge 21.1.247 and 21.1.248 passed;
 - original M1E run `34658958488` — both targets passed;
 - diagnostic head run `34686003774` — both targets passed;
-- preparation head run `34721674149` — both targets passed.
+- M1E finalization candidate run `34725651930` — both targets passed;
+- documentation head run `34725867558` at `ff8fc52e...` — both targets passed.
 
-The finalization candidate adds only acceptance coverage: one deterministic clock test and a stronger runtime script. It does not change M1E server semantics, M1F transport, or the decoder.
+The M1E finalization candidate changed acceptance coverage, not server semantics, transport, or decoder behavior.
 
 Target stack:
 
@@ -41,6 +50,22 @@ Target stack:
 - NeoForge 21.1.247 baseline
 - NeoForge 21.1.248 compatibility
 - future SPR 1.21.1-1.5.1 compatibility
+
+## How to explain the project
+
+Explain behavior in ComputerCraft/Minecraft terms first, then implementation details only when useful.
+
+The basic finite-file story is:
+
+```text
+ComputerCraft has a file
+    -> HQ Speakers imports it into server-owned media storage
+    -> the speaker starts a server-owned playback timeline
+    -> relevant clients ask for only the small encoded pieces they currently need
+    -> later the client decodes those pieces and plays positional sound
+```
+
+Do not lead explanations with class names, packet names, executor terminology, or internal state-machine abstractions when a user-facing description is sufficient.
 
 ## Product identity
 
@@ -54,6 +79,48 @@ Technical source categories remain:
 - live/open-ended network streams later.
 
 Do not add Java concepts such as music/effect/notification roles or a playlist manager.
+
+## Current Lua/API direction
+
+The modern user-facing finite workflow is documented in `LUA-API.md`.
+
+Recommended high-level helpers:
+
+- `hq.playFile(speaker, path [, options])`
+- `hq.prepareFile(speaker, path)`
+- `hq.preparedInfo(speaker, assetId)`
+- `hq.playPrepared(speaker, assetId [, options])`
+- `hq.releasePrepared(speaker, assetId)`
+
+Modern finite controls remain:
+
+- `audioStatus()`
+- `audioPause()`
+- `audioResume()`
+- `audioSeek(seconds)`
+- `audioSetVolume(volume)`
+- `audioSetLooping(loop)`
+- `audioStop()`
+
+Lower-level staging/import functions remain documented because the Lua module uses them, but normal programs should prefer the `hqspeaker` helpers.
+
+### `audioPlayStaged()` decision
+
+`audioPlayStaged()` is **our old prototype API**, not an original HQ Speakers compatibility surface.
+
+Source provenance:
+
+- it is absent from the untouched inherited baseline;
+- it appears in this project's frozen staged/local-file prototype;
+- the current source itself labels it historical direct-staged behavior.
+
+Project decision on 2026-09-13:
+
+**remove `audioPlayStaged()` when M1F implementation begins.**
+
+Do not preserve a second old direct-staged playback transport just for that prototype function. New programs should use `hq.playFile()` or prepare/play/release.
+
+No code removal has happened yet at this documentation checkpoint.
 
 ## Final finite direction
 
@@ -77,7 +144,7 @@ Not final product requirements:
 
 One physical speaker renders one mono positional source. Mono stays mono; stereo is downmixed; >2 channels are rejected.
 
-The final finite path remains:
+The target finite path remains:
 
 ```text
 ComputerCraft file
@@ -114,13 +181,13 @@ Frozen M1D analyzes committed bytes and provides server metadata including scann
 
 M1E's server-authority semantics are implemented and were rechecked before finalization.
 
-Current guarantees:
+Current source guarantees:
 
 - semantic states are `PLAYING`, `PAUSED`, `ENDED`, `ERROR`;
 - there is no canonical server `LOADING` state for client buffering;
 - successful finite play starts the canonical server clock immediately;
 - the clock does not wait for READY or any renderer handshake;
-- `successfulRenderers`, canonical `observed`, and the no-renderer timeout are gone;
+- renderer observation/authority and its no-renderer timeout are gone;
 - server duration/clock determines natural non-looping EOF;
 - looping uses wrapped server position;
 - non-looping `seek(duration)` ends immediately at duration;
@@ -133,21 +200,17 @@ Current guarantees:
 
 Protocol v4 carries authoritative mutable truth in `HQFiniteMediaStatePacket`. BEGIN remains temporary setup for the old bridge.
 
-## M1E runtime evidence and remaining gate
+### Runtime evidence status
 
-The 2026-09-12 diagnostic logs show the expected server sequence through PLAYING, PAUSED, resume, exact-end ENDED, replay, loop enable, and exact-end loop wrap near zero. The old MP3 decoder fails locally, but the server timeline continues independently.
+The 2026-09-12 diagnostic logs strongly support the authority separation: the server continued its own PLAYING/PAUSED/resume/end/loop timeline while the old client decoder failed.
 
-That is strong supporting runtime evidence, but the captured logs do not preserve the ComputerCraft terminal PASS result.
+The strengthened final acceptance script exists and the M1E finalization candidate passed CI/package verification, but the project owner chose not to run that final manual Minecraft script.
 
-The final focused script is now:
+Therefore:
 
-```text
-scripts/m1e_server_authority_test.lua <small-mp3-or-wav> [result-file]
-```
-
-It verifies the original authority contract plus replay generation/asset identity and STOP -> idle. It writes PASS/FAIL to `m1e_server_authority_result.txt` by default so the final verdict is auditable.
-
-**M1F must not start until the final M1E candidate actually produces PASS in that script/result file.**
+- do **not** write “M1E runtime PASS”;
+- do **not** erase the known runtime-evidence gap;
+- do not block future M1F implementation on that skipped manual run unless the project owner later changes that decision.
 
 ## Temporary decoder finding
 
@@ -161,17 +224,26 @@ The MP3 bridge is known unreliable:
 - it can report the requested target after incomplete positioning;
 - renderer restart currently performs a redundant second seek.
 
-These defects remain documented and deferred. Do not repair the bridge merely to make M1E/M1F audible.
+These defects remain documented and deferred. Do not repair the bridge merely to keep M1F audible.
 
 Agreed rule:
 
 **keep decoder needs in mind architecturally, but do not expect the temporary decoder to work correctly before M1G.**
 
-## M1F boundary — agreed clean break
+## M1F boundary — agreed clean break, not started
 
 M1F has not started.
 
-After M1E runtime PASS, M1F should make a clean break for the modern prepared finite path rather than maintain the old whole-file prepared bridge in parallel.
+When explicitly started, M1F makes a clean break for the modern prepared finite path rather than maintaining the old whole-file prepared bridge in parallel.
+
+In player terms:
+
+```text
+server owns the whole song
+    -> client asks for a small piece near where playback is now
+    -> old pieces are discarded
+    -> seek asks for a different piece instead of downloading everything in between
+```
 
 M1F owns:
 
@@ -185,9 +257,13 @@ M1F owns:
 - arbitrary encoded offsets;
 - no persistent client song files/cache.
 
-M1F does not require audible finite playback, PCM decoding, MP3 pre-roll, WAV conversion, or a final renderer. Those are M1G.
+M1F does **not** require audible finite playback, PCM decoding, MP3 pre-roll, WAV conversion, or a final renderer. Those are M1G.
 
-Its client encoded-data layer must nevertheless distinguish temporary missing data from true asset EOF so M1G can consume it progressively without redesigning the transport boundary.
+Its client encoded-data layer must still distinguish temporary missing data from true asset EOF so M1G can consume it progressively without redesigning transport.
+
+### Shutdown/lifetime requirement noticed during recheck
+
+When M1F adds background server reads, shutdown must stop/drain those reads before the server media store deletes/closes its assets. This is an implementation requirement, not a user-facing design choice.
 
 ## M1G boundary
 
@@ -203,16 +279,16 @@ M1G owns:
 
 ## Parked cleanup
 
-Do not mix unrelated legacy cleanup into M1E finalization or M1F unless it directly blocks the milestone.
+Do not mix unrelated legacy cleanup into M1F unless it directly blocks the milestone.
 
 `FUTURE-CLEANUP.md` tracks the old file decoder/cache, transitional packets, legacy finite engine, byte APIs, multispeaker bypasses, old format surfaces, dependency review, diagnostic logging, custom HQ block, live/HLS/TS issues, OpenAL cleanup, tests/docs, packaging, and license metadata.
 
-## Read order
+## Current read order
 
-1. `M1E-FINALIZATION-2026-09-13.md`
-2. `CURRENT-STATE.md`
-3. `VERIFIED-FACTS.md`
-4. `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
+1. `HANDOFF-2026-09-13-PRE-M1F.md`
+2. `LUA-API.md`
+3. `CURRENT-STATE.md`
+4. `VERIFIED-FACTS.md`
 5. `ARCHITECTURE.md`
 6. `M1E-SERVER-AUTHORITY.md`
 7. `M1E-FINITE-STREAMING-DESIGN.md`
@@ -220,4 +296,7 @@ Do not mix unrelated legacy cleanup into M1E finalization or M1F unless it direc
 9. `KNOWN-ISSUES.md`
 10. `TESTING.md`
 11. `FUTURE-CLEANUP.md`
-12. exact current branch source and current CI
+12. `M1E-FINALIZATION-2026-09-13.md`
+13. exact current branch source and current CI
+
+Older handoffs and the old pre-M1F preparation file remain historical/deep context only.
