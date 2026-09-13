@@ -40,9 +40,11 @@ Locked choices A1/B1/C1/D1/E1 remain unchanged.
 
 An ordinary STATE can reset an already-slid encoded window back to an unchanged coarse anchor while preserving the existing decoder epoch. The live decoder cursor can therefore end up ahead of the reset window. Any fix must preserve the separate rule that semantic seek recreates decoder state even when the selected anchor byte is unchanged.
 
-### KI-054 — shutdown deletion retry
+### KI-054 — shutdown deletion retry and registry lifetime
 
 `MediaAssetStore.close()` clears completed-entry bookkeeping before attempting completed-file deletion. A failed shutdown deletion is therefore not retained for a later `close()` retry, although next-start orphan pruning normally recovers the managed file.
+
+`ServerMediaAssets.closeServer()` removes the stopped server from its static registry only after `store.close()` succeeds. If that close throws, registry removal is skipped; the current server-stop hook logs the exception and does not schedule another retry. In a long-lived JVM/integrated-server restart scenario, the stopped server/services can therefore remain reachable until process exit or another explicit successful close.
 
 ### KI-055 — evidence/script mismatch
 
