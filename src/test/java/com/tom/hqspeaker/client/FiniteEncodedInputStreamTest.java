@@ -62,7 +62,7 @@ class FiniteEncodedInputStreamTest {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<Integer> waiting = executor.submit(input::read);
+            Future<Integer> waiting = executor.submit(() -> input.read());
             assertThrows(TimeoutException.class, () -> waiting.get(100, TimeUnit.MILLISECONDS));
             input.cancel();
             ExecutionException failure = assertThrows(ExecutionException.class,
