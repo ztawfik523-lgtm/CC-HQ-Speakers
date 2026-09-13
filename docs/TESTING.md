@@ -8,7 +8,9 @@ A green Gradle build proves compilation/tests/package structure. It does **not**
 
 Tests are not a late roadmap milestone. Every implementation milestone must add the deterministic tests needed to prove its own contract.
 
-For the current checkpoint, read `M1E-FINALIZATION-2026-09-13.md` first. M1E is at its final focused Minecraft acceptance gate; M1F has not started.
+A project decision may intentionally skip a manual runtime check. When that happens, record it as **skipped/unverified**, never as PASS.
+
+Current checkpoint: documentation/preparation only. M1F implementation has not started.
 
 ## Target matrix
 
@@ -37,13 +39,13 @@ Do not create abstractions only for testing, but extract state when doing so mak
 
 Use actual CC:T peripherals/client SoundEngine for behavior pure tests cannot prove: standard CC:T signatures/defaults and `speaker_audio_empty`, finite semantic controls, progressive start, late join/leave-return, underrun/rejoin, SoundEngine category/gain, F3+T, dimension/world changes, VS2, multi-client/multispeaker positional rendering, final FLAC if implemented, and shutdown/reconnect.
 
-A milestone only needs the runtime behavior in its own contract. In particular, M1E does not require the temporary decoder to be a correct final MP3 renderer.
+A milestone only needs the runtime behavior in its own contract. M1E did not require the temporary MP3 decoder to be the final correct renderer.
 
 ### 4. Final batched M1 acceptance
 
 M1Q combines the already-tested pieces into one end-to-end pass with large files, multiple clients/speakers, memory/network observation, and tick/sound-thread stall checks. It is a regression/integration pass, not the first place individual features are tested.
 
-## M1E proof
+## M1E evidence
 
 Original semantic implementation checkpoint:
 
@@ -61,13 +63,15 @@ Diagnostic-head CI:
 
 `34686003774` — success on both target NeoForge versions.
 
-M1E finalization code/test candidate before documentation-only follow-up:
+M1E finalization code/test candidate:
 
 `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`
 
-The finalization candidate changes only M1E acceptance coverage. It does not change `HQFiniteMediaServer`, packet semantics, transport, or decoder behavior.
+Finalization CI:
 
-Pure Java M1E coverage now includes:
+`34725651930` — success on both target NeoForge versions with tests/package verification.
+
+Pure Java M1E coverage includes:
 
 - immediate clock progression after `start()` without any renderer handshake;
 - natural EOF for non-looping tracks;
@@ -77,59 +81,33 @@ Pure Java M1E coverage now includes:
 - pause/resume;
 - loop-disable rebase.
 
-### Final focused M1E runtime contract
+### Prepared focused M1E runtime contract
 
 ```text
 scripts/m1e_server_authority_test.lua <small-mp3-or-wav> [result-file]
 ```
 
-The optional result path defaults to:
+The script checks immediate canonical PLAYING/progression, pause/resume, non-loop exact-end END, replay generation/asset identity, loop exact-end wrap, STOP -> idle, and prepared release.
 
-```text
-m1e_server_authority_result.txt
-```
+The final manual run was **not performed**. The project owner chose to skip it and move forward later.
 
-The script checks:
+Therefore:
 
-- `playPrepared` becomes canonical `playing` immediately;
-- active status retains the prepared asset ID and server metadata duration;
-- server position advances independently of renderer readiness;
-- pause freezes canonical position;
-- resume advances it again;
-- non-looping `seek(duration)` enters `ended` immediately at exact duration;
-- replay after terminal END is legal while the prepared owner still exists;
-- replay uses the same asset ID and a newer generation;
-- looping `seek(duration)` wraps near zero and remains `playing`;
-- `audioStop()` returns status to `idle`;
-- prepared asset release succeeds.
-
-A successful result file begins with:
-
-```text
-PASS
-fixture=<path>
-M1E server-authority contract passed
-```
-
-A failure begins with `FAIL` and records the Lua traceback.
-
-Do not report M1E Minecraft-runtime PASS until the final candidate actually produces PASS in the terminal/result file on the target stack.
+- do not report M1E Minecraft-runtime PASS;
+- keep the 2026-09-12 diagnostic logs as supporting evidence only;
+- do not treat the missing final manual run as a mandatory sequencing gate unless that project decision changes.
 
 ### 2026-09-12 supporting diagnostic evidence
 
 The captured runtime logs show the old client transfer reaching READY and then failing on the first PCM read while the server continues through authority/control transitions consistent with the focused script, including exact-end END and loop-wrap behavior.
 
-That is useful supporting evidence but it is not a substitute for the final PASS result.
-
-The old JavaSound/mp3spi decoder is not an M1E acceptance oracle. Its runtime MP3 duration was clearly wrong for the tested fixture and its seek path is known to misuse mp3spi skip semantics. Decoder repair remains M1G work unless a future issue directly blocks the server-authority contract.
-
-The older `scripts/m1d_media_analysis_test.lua` includes frozen-M1D renderer-observation assumptions and is not the active M1E semantic contract.
+The old JavaSound/mp3spi decoder is not an M1E acceptance oracle. Its runtime MP3 duration was clearly wrong for the tested fixture and its seek path is known to misuse mp3spi skip semantics. Decoder repair remains M1G work unless a future issue directly blocks the modern architecture.
 
 ## M1F proof requirements
 
-M1F has not started. Do not begin it until M1E runtime PASS is recorded.
+M1F has **not started**.
 
-When it starts, M1F uses a clean break for the modern prepared finite path. Its deterministic tests must prove at least:
+When explicitly started, it uses a clean break for the modern prepared finite path. Its deterministic tests must prove at least:
 
 - request offset/length bounds;
 - active source/generation/asset validation;
@@ -139,16 +117,34 @@ When it starts, M1F uses a clean break for the modern prepared finite path. Its 
 - stale completion after replacement is discarded;
 - stale completion after player leaves/disconnects is discarded;
 - cancellation does not leak retained asset references or accounting;
+- background reads are stopped/drained/cancelled before server media-store shutdown;
 - large asset reads do not run on the server tick;
 - response packet size stays within the chosen bounded cap;
 - exact returned bytes match the requested server asset region;
 - arbitrary encoded offsets can be requested without downloading from byte zero;
 - client encoded RAM remains bounded independently of asset size;
-- the modern path does not require `.part`, `.media`, completed client song files, LRU/sparse cache, or persistent resume.
+- the modern path does not require `.part`, `.media`, completed client song files, LRU/sparse cache, or persistent resume;
+- `audioPlayStaged()` is removed from the modern API/transport path rather than preserved as a second prototype transport.
 
 M1F need not prove the final MP3/WAV decoder or audible finite rendering. Progressive decoder correctness is M1G.
 
-A deterministic fake/test consumer is sufficient for the range/window layer. Its availability contract must distinguish data available now, data not arrived yet, true asset EOF, and cancelled/stale state.
+A deterministic fake/test consumer is sufficient for the range/window layer. Its availability contract must distinguish:
+
+- data available now;
+- data needed but not arrived yet;
+- true asset EOF;
+- cancelled/stale state.
+
+Recommended synthetic transport proof:
+
+```text
+request a bounded range at a non-zero offset
+-> verify exact bytes
+-> consume/discard it
+-> jump to a distant offset
+-> verify old bytes are no longer retained
+-> prove memory remains bounded
+```
 
 ## M1G proof boundary
 
@@ -164,10 +160,19 @@ M1G, not M1F, must prove:
 - Minecraft SoundEngine integration and actual audible positional output;
 - sound thread never blocks on network/disk/decoder refill.
 
+## API/documentation proof
+
+When a milestone adds/removes/changes Lua-facing functions or events:
+
+- update `LUA-API.md` in the same milestone;
+- keep the bundled `hqspeaker.lua` comments/examples accurate;
+- mark prototype/legacy surfaces explicitly instead of presenting them as recommended API;
+- update README/current-state/handoff references when the recommended workflow changes.
+
 ## Evidence recording
 
 For a real-client acceptance run record exact commit, JAR SHA-256, NeoForge/CC:T versions, pass/fail by section, relevant client/server logs, whether full ATM10 or a reduced exact-stack instance was used, fixture format/size/sample details, and whether network compression was enabled when measuring throughput.
 
-For the final M1E acceptance, preserve the `m1e_server_authority_result.txt` contents (or chosen result path) alongside the exact candidate/JAR identity.
+A skipped test must be recorded as skipped, not inferred from source/CI.
 
 A failed broad test should produce a focused source diagnosis before another broad launch.
