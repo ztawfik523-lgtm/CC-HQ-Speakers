@@ -21,6 +21,7 @@ References:
 - frozen M1D source/test/CI head: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
 - M1E semantic implementation checkpoint: `d0e66ab9135359627086c13647d5241ad778643f`;
 - pre-preparation M1E diagnostic Java head: `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7`;
+- M1E finalization code/test candidate: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`;
 - current implementation branch: `codex/m1e-server-authoritative-finite`.
 
 ### FACT-PLATFORM-001
@@ -46,6 +47,8 @@ The final frozen M1D head `4a2cd5de96228fc091226c7e72fb669b82be258c` completed G
 The M1E semantic implementation checkpoint `d0e66ab9135359627086c13647d5241ad778643f` completed GitHub Actions run `34658958488` successfully on both NeoForge 21.1.247 and 21.1.248. This is source/test/package evidence for the M1E authority implementation, not Minecraft runtime proof.
 
 The later diagnostic Java head `c7f5a70de4bade2f992591fcf8cdae9b28fe76a7` completed GitHub Actions run `34686003774` successfully on both NeoForge 21.1.247 and 21.1.248. Those later Java changes add runtime diagnostics; they do not make M1E a Minecraft-runtime PASS.
+
+The M1E finalization code/test candidate `38cb2a4ce2eac599c58aab9322b23a4e7667e45c` completed GitHub Actions run `34725651930` successfully on both NeoForge 21.1.247 and 21.1.248, including tests, packaged-mod verification, and candidate-JAR upload. That candidate changed acceptance coverage rather than the server-authority implementation.
 
 ### FACT-PLATFORM-003
 
@@ -240,6 +243,10 @@ Once asset import succeeds, failure to remove the temporary staging file does no
 
 On server shutdown, speaker/prepared ownership is cleaned before shared media-store close. Failed store close remains reachable so cleanup may be retried.
 
+### FACT-M1C-012
+
+The untouched inherited baseline `d1a592351c866f9a28ceef00b59e591ee773f3d5` does not contain `HQSpeakerCompositePeripheral` or the later `audioPlayStaged()` entrypoint. The frozen staged/local-file prototype `69e34a5346f6ce47580f49ed867c9951bfd338bc` contains `HQSpeakerCompositePeripheral.audioPlayStaged(...)`. Therefore `audioPlayStaged()` originates in this project's staged-file prototype rather than the untouched inherited HQ Speakers baseline.
+
 ## M1D server media-analysis facts
 
 ### FACT-M1D-001
@@ -352,6 +359,10 @@ Current `FileFiniteAudioStream.JavaSoundDecoder.seek()` calculates the desired s
 
 Current `HQFiniteMediaClient` renderer restart also performs a seek in `restartStreamOnly()` and then seeks the same stream again in `startRenderer()`.
 
+### FACT-M1E-012
+
+The finalization acceptance script/tests exist at candidate `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`, but no successful post-finalization Minecraft execution/result for that candidate is recorded in the repository/runtime evidence reviewed for the pre-M1F documentation checkpoint. M1E therefore has no recorded final Minecraft-runtime PASS.
+
 ## Frozen/prototype and transitional transport facts
 
 ### FACT-PROTO-001
@@ -396,7 +407,7 @@ Speaker/prepared ownership is cleaned before shared media-store close on `Server
 
 Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLifetimeTest`, `MediaAssetStoreTest`, `FiniteMediaAnalyzerTest`, and `MediaStorageLimitsTest`.
 
-`FinitePlaybackClockTest` includes explicit natural-end tests: non-looping reaches known duration, while looping never reports natural EOF. Existing exact-end seek, loop-rebase, and pause/resume cases remain.
+`FinitePlaybackClockTest` includes explicit natural-end tests: non-looping reaches known duration, while looping never reports natural EOF. Existing exact-end seek, loop-rebase, and pause/resume cases remain. At the M1E finalization candidate it also explicitly verifies that a started finite clock advances without a renderer handshake.
 
 `FiniteMediaAnalyzerTest` uses synthetic container/frame structures for WAV, AIFF, AU, OGG Vorbis, and MP3. It covers ID3v2 handling, non-Vorbis/truncated OGG rejection, WAV first-data/block-alignment/float-width behavior, AIFF width/offset/truncation behavior, bounded seek metadata, JavaSound conversion parity for accepted PCM fixtures, and channel reset after success/failure.
 
@@ -406,7 +417,7 @@ Current pure Java tests include retained finite/HLS/path/clock tests, `RawFeedLi
 
 `scripts/p0_cc_speaker_contract.lua`, `scripts/m1a_output_contract.lua`, `scripts/m1c_local_import_test.lua`, `scripts/m1d_media_analysis_test.lua`, and `scripts/m1e_server_authority_test.lua` exist as runtime contracts for their respective milestones.
 
-The M1D script includes frozen-M1D renderer-observation expectations. The M1E script instead checks immediate server-authoritative progression, pause/resume, non-looping exact-end EOF, and looping exact-end wrap.
+The M1D script includes frozen-M1D renderer-observation expectations. The finalization version of the M1E script checks immediate server-authoritative progression, pause/resume, non-looping exact-end EOF, replay generation/asset identity, looping exact-end wrap, stop-to-idle, prepared release, and can write an auditable PASS/FAIL result file.
 
 None of these should be reported as a runtime pass until actually executed successfully in Minecraft on the target stack.
 
