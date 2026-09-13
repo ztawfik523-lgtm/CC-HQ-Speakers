@@ -90,14 +90,14 @@ If a seek selects the same coarse MP3 anchor as before, verify the semantic seek
 
 Create a controlled slow/throttled transport condition or otherwise force bounded temporary starvation.
 
-Verify:
+Verify the behavior M1G actually owns:
 
 - temporary missing encoded data does not become terminal EOF;
-- renderer starvation is temporary silence rather than permanent sound death;
-- refill resumes/rejoins without stale decoder output;
+- renderer starvation is temporary silence rather than immediate terminal sound EOF;
+- when data returns, the existing live decoder/renderer epoch can continue without stale output from a cancelled/replaced epoch;
 - server canonical time continues independently.
 
-Robust general long-underrun rejoin remains M1H; record the exact behavior observed rather than overclaiming.
+Do **not** require or claim a general current-server-time catch-up after a long already-started renderer underrun. Current M1G only performs catch-up before renderer start; robust long-underrun rejoin/catch-up remains M1H. Record any audible lag observed after a long starvation rather than treating it as an M1G pass/fail requirement.
 
 ## Gate 6 — loop
 
@@ -128,7 +128,7 @@ With one physical `computercraft:speaker`:
 
 ## Gate 9 — storage/shutdown observation
 
-During normal stop/server shutdown, verify no obvious retained active media/range work remains. KI-054 specifically requires deterministic deletion-failure testing in code; a normal runtime shutdown cannot prove that edge case resolved.
+During normal stop/server shutdown, verify no obvious retained active media/range work remains. KI-054 specifically requires deterministic deletion-failure testing in code, including the failed-close registry-retention path; a normal runtime shutdown cannot prove that edge case resolved.
 
 ## Record
 
