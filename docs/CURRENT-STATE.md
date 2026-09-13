@@ -55,43 +55,57 @@ The deepest current issue is not just KI-053 by itself: decoder re-anchor intent
 - **KI-056:** `CONTROL SEEK` cancels the current decoder before invalidating its epoch token, so the expected cancellation can race into `decoderFailed()` and kill a valid session before replacement STATE arrives.
 - **KI-057:** STATE currently acts as both a timeline snapshot and an implicit re-anchor command. A changed time-derived anchor can restart healthy playback after ordinary controls (especially exact WAV anchors), while a same-anchor semantic seek still depends on the preceding CONTROL packet to communicate restart intent. This should be solved as one coherent snapshot-vs-reanchor/decoder-revision design rather than by patching only KI-053.
 - **KI-058:** live modern-finite volume changes update gain state but not the live channel attenuation distance. CC:T 1.120.0 has an explicit `linearAttenuation(...)` workaround for the same Minecraft behavior.
-- **KI-059:** the server uses a fixed 32-block finite relevance radius although supported volume reaches 3 and normal 16-block attenuation semantics can make volume 3 audible to about 48 blocks. The owner must choose fixed-max delivery, dynamic relevance/lifecycle, or an intentional audible-range cap.
-- **KI-060:** renderer startup is latched before `SoundManager` proves the sound actually started. Minecraft supports `SoundInstance.canStartSilent()` for long-lived silent sounds, so the owner should choose between keeping an inaudible stream active or deferring local start and catching up on unmute.
+- **KI-059:** the server uses a fixed 32-block finite relevance radius although supported volume reaches 3 and normal 16-block attenuation semantics can make volume 3 audible to about 48 blocks. Future SPR compatibility also means transport relevance should not be permanently hard-coded to vanilla distance.
+- **KI-060:** renderer startup is latched before `SoundManager` proves the sound actually started. Minecraft supports `SoundInstance.canStartSilent()` for long-lived silent sounds, but with volume-aware listener lifecycle a globally zero-volume finite session can instead keep only canonical server time alive and suspend client transport/decode until unmuted.
 - **KI-055:** there is still no real-MP3 progressive JLayer fixture test across range progression/starvation and no focused `FinitePcmAudioStreamTest`; historical Lua scripts are not modern prepared-path proof.
 - **KI-061:** every speaker gets a random persistent ComputerCraft staging save-directory, but staging cleanup does not clear leftover files. Low-level/interrupted staging can therefore accumulate unreachable files across speaker recreation/restarts.
 - **KI-054:** shutdown deletion failure loses completed-file retry bookkeeping and can skip `ServerMediaAssets` registry removal. This is lower-frequency shutdown hardening.
 
 See `KNOWN-ISSUES.md` and `TESTING.md`. These findings are documented only; source is still at the green integrated checkpoint above.
 
-## Remaining owner decisions
+## Owner direction after tradeoff review
+
+These are design directions selected/provisionally selected by the owner after the deeper audit; source has not yet been changed.
 
 ### Decoder snapshot/re-anchor model
 
-Two broad approaches are reasonable:
+The owner prefers the **explicit decode/reanchor revision** approach if it indeed costs less over the life of the project even though it is a larger immediate patch.
 
-- **Minimal v6/client patch:** keep protocol v6, make ordinary STATE preserve a healthy epoch, make expected cancellation invalidate the local epoch before waking workers, and continue relying on CONTROL SEEK for semantic seek intent. Smaller change, but more ordering/projection coupling remains.
-- **Explicit decode/reanchor revision:** add a server-authoritative decode/reanchor revision (protocol update) which changes only when a fresh codec epoch is required. STATE becomes self-sufficient for seek/rejoin intent, while ordinary pause/resume/volume/loop snapshots do not restart a healthy decoder. More protocol/test churn, but cleaner semantics and a better base for loop/rejoin work.
+The audit supports that direction: an explicit server-authoritative revision removes the current dependency on the combination/order of CONTROL SEEK and STATE, makes same-anchor seek self-describing, lets ordinary pause/resume/volume snapshots preserve healthy decoder state, and gives loop/rejoin work one common restart primitive. The alternative minimal-v6 repair remains possible, but retains more special-case ordering and future maintenance risk.
 
-Do not silently choose between these.
+### Volume-aware listener relevance
 
-### Loop-wrap rejoin
+The owner prefers **dynamic volume-aware relevance** rather than a fixed radius, and wants the delivery envelope configurable with future Sound Physics Remastered compatibility in mind.
 
-The server clock already owns canonical looping. After local physical EOF during a looping session, choose one architecture before implementing loop-wrap behavior:
+The intended separation should be:
 
-- **L1:** client EOF requests fresh authoritative STATE. Strongest authority model; possible roundtrip/prebuffer gap.
-- **L2:** server detects canonical wraps and proactively projects STATE. Potentially tighter boundary; more server wrap/fanout state.
-- **L3:** client predicts/restarts locally and reconciles later. Lowest latency; weaker server-authority purity and added drift/reconciliation state.
+- vanilla-style audible distance remains based on the sound/volume contract;
+- server transport relevance follows a volume-aware base distance;
+- a configurable delivery-distance multiplier/cap provides safety headroom for server policy and future acoustic mods instead of baking a permanent 48-block ceiling into the protocol;
+- the required enter/leave/re-enter subset of M1H therefore moves forward into this work.
 
-### Volume/range behavior
+SPR compatibility should later be able to influence this relevance policy without changing the core finite protocol.
 
-Decide whether modern finite volume should mirror normal Minecraft/CC:T distance semantics through volume 3. If yes, the fixed 32-block server relevance rule must change or be replaced by a lifecycle-aware policy.
+### Volume zero
 
-For volume 0, canonical server time already continues. Two local renderer implementations are reasonable:
+Canonical playback time should continue at volume zero.
 
-- allow `FiniteSpeakerSound` to start silent and keep consuming in sync;
-- defer renderer creation while inaudible and catch up to current server time on unmute.
+A literal always-running silent renderer is valid if `FiniteSpeakerSound` is allowed to start silent, but if the server stops sending encoded ranges the decoder cannot actually keep consuming in sync. Because dynamic relevance already requires explicit listener membership/rejoin, the cleaner optimization is to treat global finite volume zero as **transport/render hibernation**: keep the authoritative server session/clock alive, send no media ranges while nobody can hear it, and on unmute re-admit listeners with authoritative current STATE/reanchor and resume from current server time.
 
-The first is simpler but keeps an audio source active while silent; the second saves that source but adds lifecycle/catch-up logic.
+This preserves the owner's desired semantics while avoiding a permanently silent Minecraft/OpenAL/SPR source and wasted decode/network work. Client-local BLOCKS/MASTER slider zero is different because the server cannot know that setting; it should not alter server transport policy.
+
+## Remaining loop-wrap choice
+
+The original three choices are still valid, but the tradeoff review identified a fourth middle-ground design:
+
+- **L1 — client EOF refresh:** physical EOF asks the server for fresh authoritative STATE/reanchor. Strong authority and simple state; boundary pays roundtrip + prebuffer latency.
+- **L2 — server wrap projection:** server detects/tracks wraps and pushes a new reanchor. Server remains explicit authority, but wrap tracking/fanout and very short-loop handling become server responsibilities; a projection sent only at/after wrap can still arrive too late for a seamless boundary.
+- **L3 — client clock prediction:** client predicts the wrap from duration/snapshot and restarts locally. Lowest boundary latency, but introduces a second timing model and drift/reconciliation correctness state.
+- **L4 — server-authorized local EOF rollover with authoritative fallback:** the server's authoritative `looping=true` is the permission to roll over, but the client does not predict wall-clock wrap time. At actual decoded physical EOF it starts the next local decode cycle immediately, ideally with bounded loop-head prebuffer, while authoritative revision/STATE is still used for seek, loop-disable, rejoin and recovery. If the client is materially behind because of starvation, it falls back to a fresh authoritative reanchor instead of blindly starting at zero. This avoids a mandatory roundtrip on healthy loop boundaries without inventing a separate client clock, but it needs a loop-aware decoder/PCM rollover path and careful stale-state cancellation.
+
+L4 is now a real candidate and should be weighed against L1-L3 before implementation.
+
+Separately, perfectly sample-gapless MP3 looping is not guaranteed by transport/restart architecture alone: MP3 encoders can add leading delay and trailing padding. True gapless MP3 requires reading/using suitable encoder gapless metadata (for example LAME/Xing delay/padding when present) or accepting that some MP3 files can contain a small encoded gap. WAV does not have that codec-padding problem.
 
 ## Evidence boundaries
 
@@ -104,11 +118,11 @@ M1G live volume/range/start correctness: open KI-058/KI-059/KI-060
 M1G staging lifecycle cleanup: open KI-061
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused FinitePcmAudioStream coverage: incomplete
-M1G loop-wrap rejoin: unresolved owner choice
+M1G loop-wrap rejoin: L1/L2/L3/L4 owner choice still open
 M1G audible Minecraft PASS: unrecorded
 ```
 
-Full late-entry/leave-return/dimension-reload/general-underrun/final-VS2 lifecycle remains M1H unless a subset is intentionally pulled forward for dynamic volume-aware relevance.
+Full late-entry/leave-return/dimension-reload/general-underrun/final-VS2 lifecycle remains M1H except for the listener membership subset intentionally pulled forward for dynamic volume-aware relevance.
 
 ## Read order
 
