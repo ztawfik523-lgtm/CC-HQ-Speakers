@@ -62,29 +62,70 @@ Locked architecture choices are recorded in `M1G-DESIGN-DECISIONS-2026-09-13.md`
 - D1 narrow PCM/float WAVEX;
 - E1 coarse conservative MP3 pre-roll.
 
-### First M1G source/test checkpoint
+## Green M1G start checkpoint
 
-Production commit `7cca8a13ebfeb91000c669ffb41b711e4ebfa4a5` routes newly prepared assets through the modern MP3/common-WAV acceptance gate.
+Current source checkpoint:
 
-CI run `34772886101` passed both NeoForge 21.1.247 and 21.1.248, including tests, packaged-mod verification, and artifact upload.
+`fc99ec093528f1a8d6a975fab52c270e498dbb04`
 
-Implemented/tested foundation:
+CI:
 
-- `WavLayout` normalized sample/data layout;
-- `CommonWavAnalyzer` for classic common WAV and the chosen narrow `WAVE_FORMAT_EXTENSIBLE` subset;
-- `ModernFiniteMediaAnalyzer` gates new prepared/local assets to MP3/common WAV;
-- `FiniteDecodeDescriptor` prevents historical OGG/AIFF/AU analyzer support from silently becoming M1G decoder support;
-- `FiniteDecodeAnchorSelector` defines exact WAV frame anchors and E1 MP3 pre-roll anchors;
-- `MediaMetadata` optionally carries normalized WAV layout;
-- `HQMediaStaging.prepareAsset(...)` uses the modern gate.
+`34773448121`
 
-New deterministic tests:
+Both NeoForge 21.1.247 and 21.1.248 passed build, the full test suite, packaged-mod verification, and artifact upload.
 
-- `CommonWavAnalyzerTest` — classic PCM/float normalization, narrow WAVEX PCM/float, valid/container-width rejection, surround/companded/unusual-width rejection, channel reset;
-- `FiniteDecodeDescriptorTest` — MP3/WAV mapping and historical-container rejection;
-- `FiniteDecodeAnchorSelectorTest` — E1 pre-roll, unsorted seek points, exact WAV frame mapping.
+Artifacts:
 
-This checkpoint is **not audible M1G**. No progressive client decoder, bounded PCM producer, or new renderer is wired yet.
+- 21.1.247 `10322129018`, ZIP SHA-256 `dc9fe86f88278faa259d821ddd0ba6e57baa1456cae10c27e5d5b93470ec8e85`;
+- 21.1.248 `10323026559`, ZIP SHA-256 `89923941f23217360682f7f70c86b3872e634dc6b9923fd2d243312baabc3935`.
+
+This checkpoint supersedes the earlier format-only checkpoint `7cca8a13...` for current M1G-start evidence.
+
+### Format/layout/anchor tests now passing
+
+- `CommonWavAnalyzerTest`
+  - classic PCM/float normalization;
+  - narrow WAVEX PCM/float;
+  - valid/container-width rejection;
+  - surround/companded/unusual-width rejection;
+  - declared RIFF-container bound enforcement;
+  - partial-frame data rejection;
+  - channel reset to byte zero.
+- `FiniteDecodeDescriptorTest`
+  - MP3 mapping;
+  - normalized WAV mapping;
+  - historical OGG/AIFF/AU-style breadth cannot silently become modern decoder support;
+  - WAV without normalized layout rejected.
+- `FiniteDecodeAnchorSelectorTest`
+  - E1 earlier MP3 pre-roll anchor;
+  - selection does not assume sorted seek points;
+  - exact WAV frame/time/byte mapping.
+
+### Encoded-input tests now passing
+
+`FiniteEncodedInputStreamTest` proves:
+
+- temporary starvation waits on a worker instead of becoming EOF;
+- accepted range bytes wake and resume the read;
+- true asset EOF is the only normal `-1`;
+- cancel wakes a blocked decoder epoch;
+- progressive consumption advances the bounded M1F window;
+- the implementation re-probes under the notification monitor to close the probe-to-wait lost-wakeup race.
+
+This class is intentionally a decoder-worker primitive. It is not yet wired into `HQFiniteMediaClient`.
+
+### PCM-queue tests now passing
+
+`FinitePcmQueueTest` proves:
+
+- empty live queue = STARVED, not EOF;
+- renderer read is nonblocking;
+- normal PCM drains exactly before EOF;
+- decoder producer backpressure blocks only when the fixed-capacity ring is full and resumes when data is consumed;
+- cancel discards stale PCM and wakes a blocked producer;
+- mono-S16 sample alignment is enforced.
+
+This queue is not yet wired into an audible renderer.
 
 ## Remaining M1G deterministic/component evidence
 
@@ -98,17 +139,15 @@ Prove:
 - MP3 STATE uses the conservative E1 pre-roll anchor;
 - semantic seek invalidates the local decode epoch even if the encoded anchor byte is unchanged.
 
-### Encoded input bridge
+### Client epoch integration
 
 Prove:
 
-- DATA_AVAILABLE supplies exact bytes;
-- NEED_DATA waits without becoming EOF;
-- accepted range data wakes the waiting decoder;
-- TRUE_ASSET_EOF is the only normal physical EOF;
-- cancel/re-anchor wakes and aborts stale decoder work;
-- no wait occurs on Minecraft/audio threads;
-- advancing consumption frees the M1F window without exceeding its cap.
+- range arrival signals the active encoded input;
+- seek/replacement/stop cancels the old encoded input and PCM queue;
+- stale workers cannot publish to the new epoch;
+- M1F request pumping continues as decoder consumption advances the encoded window;
+- client control/STATE ordering cannot accidentally preserve old codec state.
 
 ### MP3 progressive decoder
 
@@ -136,19 +175,7 @@ For each supported representation, use deterministic sample vectors and prove co
 - correct stereo-to-mono downmix;
 - safe clamp/quantization to mono S16;
 - source sample rate is preserved;
-- malformed/truncated layout inputs fail boundedly.
-
-### PCM queue
-
-Prove:
-
-- hard byte/frame cap;
-- decoder backpressure when full;
-- renderer reads are nonblocking;
-- empty queue while decoder is alive is starvation/underrun, not EOF;
-- final local EOF is distinguishable;
-- seek/replace/stop clears old PCM immediately;
-- stale decoder worker cannot refill a replaced queue.
+- malformed/truncated runtime data fails boundedly.
 
 ### Renderer adapter
 
@@ -156,6 +183,7 @@ Deterministic tests should cover all pure lifecycle behavior possible without a 
 
 - start only after required prebuffer/format availability;
 - bounded time-sized `AudioStream.read(...)` output rather than blindly filling a huge request;
+- STARVED produces nonblocking local underrun behavior rather than codec/network EOF;
 - pause/resume state projection;
 - seek/replacement renderer invalidation;
 - volume updates do not mutate decode identity;
@@ -202,6 +230,7 @@ M1F deterministic/component acceptance: PASS
 M1F focused Minecraft transport: not recorded
 M1G preparation: complete
 M1G implementation: STARTED / in progress
-M1G first format-layout-anchor CI: PASS on both targets
+M1G format/layout/anchor + encoded-input + PCM-queue checkpoint: PASS on both targets
+M1G progressive decoder/renderer: not integrated yet
 M1G audible runtime PASS: not recorded
 ```
