@@ -10,7 +10,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, package verification, and artifact upload. Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-Repository/source audits on 2026-09-14 reconciled stale documentation and found additional client-sync/renderer issues. No implementation change was made by those audits.
+Repository/source audits on 2026-09-14 reconciled stale documentation and found additional client-sync, renderer and storage-lifecycle issues. No implementation change was made by those audits.
 
 Green CI is not Minecraft runtime proof. Focused audible M1G Minecraft acceptance remains unrecorded.
 
@@ -56,9 +56,10 @@ The deepest current issue is not just KI-053 by itself: decoder re-anchor intent
 - **KI-057:** STATE currently acts as both a timeline snapshot and an implicit re-anchor command. A changed time-derived anchor can restart healthy playback after ordinary controls (especially exact WAV anchors), while a same-anchor semantic seek still depends on the preceding CONTROL packet to communicate restart intent. This should be solved as one coherent snapshot-vs-reanchor/decoder-revision design rather than by patching only KI-053.
 - **KI-058:** live modern-finite volume changes update gain state but not the live channel attenuation distance. CC:T 1.120.0 has an explicit `linearAttenuation(...)` workaround for the same Minecraft behavior.
 - **KI-059:** the server uses a fixed 32-block finite relevance radius although supported volume reaches 3 and normal 16-block attenuation semantics can make volume 3 audible to about 48 blocks. The owner must choose fixed-max delivery, dynamic relevance/lifecycle, or an intentional audible-range cap.
-- **KI-060:** renderer startup is latched before `SoundManager` proves the sound actually started. A known Minecraft zero-volume-start case can therefore leave a finite session permanently silent locally. Desired volume-zero semantics should be chosen explicitly.
+- **KI-060:** renderer startup is latched before `SoundManager` proves the sound actually started. Minecraft supports `SoundInstance.canStartSilent()` for long-lived silent sounds, so the owner should choose between keeping an inaudible stream active or deferring local start and catching up on unmute.
 - **KI-055:** there is still no real-MP3 progressive JLayer fixture test across range progression/starvation and no focused `FinitePcmAudioStreamTest`; historical Lua scripts are not modern prepared-path proof.
-- **KI-054:** shutdown deletion failure still loses completed-file retry bookkeeping and can skip `ServerMediaAssets` registry removal. This is lower-frequency hardening, not the first M1G playback fix.
+- **KI-061:** every speaker gets a random persistent ComputerCraft staging save-directory, but staging cleanup does not clear leftover files. Low-level/interrupted staging can therefore accumulate unreachable files across speaker recreation/restarts.
+- **KI-054:** shutdown deletion failure loses completed-file retry bookkeeping and can skip `ServerMediaAssets` registry removal. This is lower-frequency shutdown hardening.
 
 See `KNOWN-ISSUES.md` and `TESTING.md`. These findings are documented only; source is still at the green integrated checkpoint above.
 
@@ -85,7 +86,12 @@ The server clock already owns canonical looping. After local physical EOF during
 
 Decide whether modern finite volume should mirror normal Minecraft/CC:T distance semantics through volume 3. If yes, the fixed 32-block server relevance rule must change or be replaced by a lifecycle-aware policy.
 
-Also decide whether volume 0 means “muted playback continues canonically and unmuting later joins current server time.” That behavior fits server authority but needs a renderer-start workaround rather than starting a Minecraft sound at effective volume zero.
+For volume 0, canonical server time already continues. Two local renderer implementations are reasonable:
+
+- allow `FiniteSpeakerSound` to start silent and keep consuming in sync;
+- defer renderer creation while inaudible and catch up to current server time on unmute.
+
+The first is simpler but keeps an audio source active while silent; the second saves that source but adds lifecycle/catch-up logic.
 
 ## Evidence boundaries
 
@@ -95,13 +101,14 @@ M1F focused Minecraft transport acceptance: unrecorded
 M1G integrated source/tests/package: green at 957832348eaa6e497282d923f2312c9c7d7c550f
 M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
 M1G live volume/range/start correctness: open KI-058/KI-059/KI-060
+M1G staging lifecycle cleanup: open KI-061
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused FinitePcmAudioStream coverage: incomplete
 M1G loop-wrap rejoin: unresolved owner choice
 M1G audible Minecraft PASS: unrecorded
 ```
 
-Full late-entry/leave-return/dimension-reload/general-underrun/final-VS2 lifecycle remains M1H.
+Full late-entry/leave-return/dimension-reload/general-underrun/final-VS2 lifecycle remains M1H unless a subset is intentionally pulled forward for dynamic volume-aware relevance.
 
 ## Read order
 
