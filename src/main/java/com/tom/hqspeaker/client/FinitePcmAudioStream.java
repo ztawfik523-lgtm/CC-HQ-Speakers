@@ -53,7 +53,11 @@ public final class FinitePcmAudioStream implements AudioStream {
 
     @Override
     public void close() {
+        if (closed) return;
         closed = true;
+        // SoundEngine may close a stream independently of the server session (for example on reload). Drop this local
+        // epoch's producer-side queue too so a decoder cannot remain permanently blocked on PCM nobody will consume.
+        queue.cancel();
     }
 
     public boolean closed() {
