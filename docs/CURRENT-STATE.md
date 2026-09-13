@@ -10,7 +10,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, package verification, and artifact upload. Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-A full repository/source/docs audit on 2026-09-14 reconciled stale current documentation and recorded additional findings. A second source-grounded pass refined the shutdown/lifecycle wording and runtime-starvation acceptance wording. No implementation change was made by either pass.
+Repository/source audits on 2026-09-14 reconciled stale documentation and found additional client-sync/renderer issues. No implementation change was made by those audits.
 
 Green CI is not Minecraft runtime proof. Focused audible M1G Minecraft acceptance remains unrecorded.
 
@@ -43,19 +43,37 @@ One physical speaker remains one mono positional source. Lua owns application me
 
 ## Integrated source
 
-M1G source now includes the MP3/common-WAV prepared gate, protocol-v6 decode descriptor, exact WAV/E1 MP3 anchors, starvation-aware `FiniteEncodedInputStream`, bounded `FinitePcmQueue`, progressive WAV conversion, progressive JLayer MP3 decoding, decoder-epoch cancellation, bounded prebuffer/catch-up, `FinitePcmAudioStream`, and positional `FiniteSpeakerSound` through `SoundSource.BLOCKS`.
+M1G source includes the MP3/common-WAV prepared gate, protocol-v6 decode descriptor, exact WAV/E1 MP3 anchors, starvation-aware `FiniteEncodedInputStream`, bounded `FinitePcmQueue`, progressive WAV conversion, progressive JLayer MP3 decoding, decoder-epoch cancellation, bounded prebuffer/catch-up, `FinitePcmAudioStream`, and positional `FiniteSpeakerSound` through `SoundSource.BLOCKS`.
 
 Pause/resume/volume use the Minecraft channel-control path. Seek/replacement/stop discard old decoder/PCM/renderer state. Temporary PCM starvation becomes bounded silence rather than fake EOF.
 
-## Open findings from the 2026-09-14 audit
+## Current correctness/evidence blockers
 
-- **KI-053:** an ordinary STATE whose coarse anchor is unchanged can reset an already-slid client encoded window without restarting the existing decoder epoch. That can rewind useful range state behind the decoder cursor. Semantic seek must still restart codec state even when the coarse anchor byte is unchanged.
-- **KI-054:** `MediaAssetStore.close()` clears completed-entry bookkeeping before shutdown deletion attempts, so a failed shutdown deletion is not retained for a later `close()` retry. Because `ServerMediaAssets.closeServer()` removes its server-registry entry only after `store.close()` succeeds, such a failure also skips registry removal; the current server-stop hook logs the exception without scheduling another retry. Next-start orphan pruning normally recovers the managed file, but a stopped server/services object can remain reachable in a long-lived JVM until process exit or another explicit close retry.
-- **KI-055:** current evidence is uneven. There is no real-MP3 progressive JLayer fixture test across window progression/starvation and no focused `FinitePcmAudioStreamTest`; several Lua scripts are historical/legacy rather than modern prepared-path acceptance.
+The deepest current issue is not just KI-053 by itself: decoder re-anchor intent is not represented explicitly enough.
 
-See `KNOWN-ISSUES.md` and `TESTING.md`. These findings are documented only; they have not been fixed.
+- **KI-053:** an ordinary same-anchor STATE can reset an already-slid encoded window without restarting the decoder, potentially putting the live cursor outside the reset window.
+- **KI-056:** `CONTROL SEEK` cancels the current decoder before invalidating its epoch token, so the expected cancellation can race into `decoderFailed()` and kill a valid session before replacement STATE arrives.
+- **KI-057:** STATE currently acts as both a timeline snapshot and an implicit re-anchor command. A changed time-derived anchor can restart healthy playback after ordinary controls (especially exact WAV anchors), while a same-anchor semantic seek still depends on the preceding CONTROL packet to communicate restart intent. This should be solved as one coherent snapshot-vs-reanchor/decoder-revision design rather than by patching only KI-053.
+- **KI-058:** live modern-finite volume changes update gain state but not the live channel attenuation distance. CC:T 1.120.0 has an explicit `linearAttenuation(...)` workaround for the same Minecraft behavior.
+- **KI-059:** the server uses a fixed 32-block finite relevance radius although supported volume reaches 3 and normal 16-block attenuation semantics can make volume 3 audible to about 48 blocks. The owner must choose fixed-max delivery, dynamic relevance/lifecycle, or an intentional audible-range cap.
+- **KI-060:** renderer startup is latched before `SoundManager` proves the sound actually started. A known Minecraft zero-volume-start case can therefore leave a finite session permanently silent locally. Desired volume-zero semantics should be chosen explicitly.
+- **KI-055:** there is still no real-MP3 progressive JLayer fixture test across range progression/starvation and no focused `FinitePcmAudioStreamTest`; historical Lua scripts are not modern prepared-path proof.
+- **KI-054:** shutdown deletion failure still loses completed-file retry bookkeeping and can skip `ServerMediaAssets` registry removal. This is lower-frequency hardening, not the first M1G playback fix.
 
-## Remaining owner decision — loop-wrap rejoin
+See `KNOWN-ISSUES.md` and `TESTING.md`. These findings are documented only; source is still at the green integrated checkpoint above.
+
+## Remaining owner decisions
+
+### Decoder snapshot/re-anchor model
+
+Two broad approaches are reasonable:
+
+- **Minimal v6/client patch:** keep protocol v6, make ordinary STATE preserve a healthy epoch, make expected cancellation invalidate the local epoch before waking workers, and continue relying on CONTROL SEEK for semantic seek intent. Smaller change, but more ordering/projection coupling remains.
+- **Explicit decode/reanchor revision:** add a server-authoritative decode/reanchor revision (protocol update) which changes only when a fresh codec epoch is required. STATE becomes self-sufficient for seek/rejoin intent, while ordinary pause/resume/volume/loop snapshots do not restart a healthy decoder. More protocol/test churn, but cleaner semantics and a better base for loop/rejoin work.
+
+Do not silently choose between these.
+
+### Loop-wrap rejoin
 
 The server clock already owns canonical looping. After local physical EOF during a looping session, choose one architecture before implementing loop-wrap behavior:
 
@@ -63,7 +81,11 @@ The server clock already owns canonical looping. After local physical EOF during
 - **L2:** server detects canonical wraps and proactively projects STATE. Potentially tighter boundary; more server wrap/fanout state.
 - **L3:** client predicts/restarts locally and reconciles later. Lowest latency; weaker server-authority purity and added drift/reconciliation state.
 
-Do not choose L1/L2/L3 silently.
+### Volume/range behavior
+
+Decide whether modern finite volume should mirror normal Minecraft/CC:T distance semantics through volume 3. If yes, the fixed 32-block server relevance rule must change or be replaced by a lifecycle-aware policy.
+
+Also decide whether volume 0 means “muted playback continues canonically and unmuting later joins current server time.” That behavior fits server authority but needs a renderer-start workaround rather than starting a Minecraft sound at effective volume zero.
 
 ## Evidence boundaries
 
@@ -71,6 +93,8 @@ Do not choose L1/L2/L3 silently.
 M1E final focused Minecraft acceptance: skipped / unrecorded
 M1F focused Minecraft transport acceptance: unrecorded
 M1G integrated source/tests/package: green at 957832348eaa6e497282d923f2312c9c7d7c550f
+M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
+M1G live volume/range/start correctness: open KI-058/KI-059/KI-060
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused FinitePcmAudioStream coverage: incomplete
 M1G loop-wrap rejoin: unresolved owner choice
@@ -81,12 +105,12 @@ Full late-entry/leave-return/dimension-reload/general-underrun/final-VS2 lifecyc
 
 ## Read order
 
-1. `HANDOFF-2026-09-13-M1G-START.md`
-2. `M1G-DESIGN-DECISIONS-2026-09-13.md`
-3. `CURRENT-STATE.md`
-4. `KNOWN-ISSUES.md`
-5. `TESTING.md`
-6. `VERIFIED-FACTS.md`
+1. `CURRENT-STATE.md`
+2. `KNOWN-ISSUES.md`
+3. `TESTING.md`
+4. `VERIFIED-FACTS.md`
+5. `HANDOFF-2026-09-13-M1G-START.md`
+6. `M1G-DESIGN-DECISIONS-2026-09-13.md`
 7. `ROADMAP.md`
 8. `LUA-API.md`
 9. `M1F-FINALIZATION-2026-09-13.md`
