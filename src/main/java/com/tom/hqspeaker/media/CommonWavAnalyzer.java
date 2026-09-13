@@ -33,19 +33,24 @@ public final class CommonWavAnalyzer {
                 throw new IOException("not a RIFF/WAVE file");
             }
 
+            long riffPayloadBytes = readU32Le(channel, 4L);
+            long riffEnd = checkedAdd(8L, riffPayloadBytes, "RIFF size overflows file bounds");
+            if (riffEnd < 12L) throw new IOException("invalid RIFF/WAVE size");
+            if (riffEnd > size) throw new EOFException("truncated RIFF/WAVE container");
+
             Format format = null;
             long dataOffset = -1L;
             long dataBytes = -1L;
             long pos = 12L;
             ByteBuffer header = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN);
 
-            while (pos + 8L <= size) {
+            while (pos + 8L <= riffEnd) {
                 readFully(channel, pos, header);
                 String id = new String(header.array(), 0, 4, StandardCharsets.US_ASCII);
                 long chunkSize = Integer.toUnsignedLong(header.getInt(4));
                 long data = pos + 8L;
                 long rawEnd = checkedAdd(data, chunkSize, "WAV chunk size overflows file bounds");
-                if (rawEnd > size) throw new EOFException("truncated WAV chunk " + id);
+                if (rawEnd > riffEnd) throw new EOFException("WAV chunk extends past RIFF container: " + id);
 
                 if ("fmt ".equals(id)) {
                     if (format != null) throw new IOException("WAV contains multiple fmt chunks");
@@ -58,19 +63,19 @@ public final class CommonWavAnalyzer {
                 }
 
                 long next = rawEnd;
-                if ((chunkSize & 1L) != 0L && next < size) next++;
-                if (next <= pos) throw new IOException("invalid WAV chunk progression");
+                if ((chunkSize & 1L) != 0L && next < riffEnd) next++;
+                if (next <= pos || next > riffEnd) throw new IOException("invalid WAV chunk progression");
                 pos = next;
             }
 
             if (format == null || dataOffset < 0L || dataBytes <= 0L) {
                 throw new IOException("WAV is missing fmt/data chunks");
             }
-
-            long completeFrames = dataBytes / format.blockAlign;
-            if (completeFrames <= 0L) throw new IOException("WAV contains no complete audio frames");
-            long usableBytes = Math.multiplyExact(completeFrames, (long) format.blockAlign);
-            if (usableBytes > size - dataOffset) throw new EOFException("truncated WAV data chunk");
+            if (dataBytes % format.blockAlign != 0L) {
+                throw new IOException("WAV data chunk does not contain complete audio frames");
+            }
+            long frames = dataBytes / format.blockAlign;
+            if (frames <= 0L) throw new IOException("WAV contains no complete audio frames");
 
             WavLayout layout = new WavLayout(
                 format.representation,
@@ -78,7 +83,7 @@ public final class CommonWavAnalyzer {
                 format.channels,
                 format.blockAlign,
                 dataOffset,
-                usableBytes
+                dataBytes
             );
             return new MediaMetadata(
                 FiniteMediaFormat.WAV,
@@ -160,6 +165,12 @@ public final class CommonWavAnalyzer {
             throw new IOException("unsupported common floating-point WAV sample size " + bits);
         }
         throw new IOException("unsupported common WAV encoding tag " + formatTag);
+    }
+
+    private static long readU32Le(SeekableByteChannel channel, long offset) throws IOException {
+        ByteBuffer value = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
+        readFully(channel, offset, value);
+        return Integer.toUnsignedLong(value.getInt(0));
     }
 
     private static boolean asciiEquals(SeekableByteChannel channel, long offset, String expected) throws IOException {
