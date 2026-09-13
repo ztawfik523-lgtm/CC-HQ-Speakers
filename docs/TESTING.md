@@ -55,7 +55,25 @@ Current tests materially cover:
 - storage-limit overflow protection;
 - CC/path/config helper behavior.
 
-## M1G deterministic gaps still open
+## M1G correctness work before runtime acceptance
+
+The 2026-09-14 deeper client audit found that KI-053 is part of a larger decoder-epoch/reanchor problem. Do not close it with only a window-reset conditional.
+
+### Decoder epoch / authoritative reanchor coordination
+
+Before runtime acceptance, deterministic coverage should prove all of the following:
+
+- cancelling a decoder for semantic SEEK invalidates the old worker token before cancellation can wake/report failure (KI-056);
+- an expected old-worker cancellation cannot remove/fail the replacement session;
+- ordinary authoritative STATE reconciliation does not tear down a healthy decoder merely because its time-derived WAV/MP3 anchor differs (KI-057);
+- an ordinary same-anchor STATE after the encoded window slid forward does not reset/rewind the active window (KI-053);
+- semantic seek always creates fresh codec state even when the selected encoded anchor byte is unchanged;
+- authoritative seek/reanchor intent remains correct even if a best-effort CONTROL projection and STATE projection do not both arrive;
+- repeated seek/cancel/state ordering does not revive stale decoder/PCM/renderer epochs.
+
+If the chosen design introduces a server-authoritative decode/reanchor revision, test monotonic revision changes and stale/out-of-order revision rejection directly. If the owner chooses the smaller v6 patch instead, add explicit packet-order/projection-loss tests because that approach retains more CONTROL/STATE coupling.
+
+A small pure coordination/state object extracted from `HQFiniteMediaClient` would make these cases much easier to prove without booting Minecraft; that is a testing/structure recommendation, not a currently implemented component.
 
 ### Real MP3 progressive integration
 
@@ -70,7 +88,7 @@ Add coverage which proves:
 - true EOF differs from cancellation;
 - output PCM stays bounded;
 - E1 earlier-anchor decode suppresses pre-target PCM;
-- same-anchor semantic seek still creates fresh codec state.
+- same-anchor semantic seek creates fresh codec state through the chosen reanchor model.
 
 ### Renderer adapter
 
@@ -86,19 +104,29 @@ Add pure deterministic coverage for:
 
 Actual Minecraft SoundManager/channel behavior still requires runtime acceptance.
 
-### KI-053 regression
+### Live volume / attenuation / renderer-start behavior
 
-Add a test for the audited same-anchor STATE/window-reset hazard:
+KI-058 through KI-060 need targeted proof after the owner chooses the intended volume/range semantics.
 
-1. establish a decoder epoch;
-2. slide the encoded window forward;
-3. apply an ordinary STATE carrying the same coarse anchor;
-4. prove the existing decoder cursor/window are not rewound or invalidated;
-5. separately prove a semantic SEEK with the same anchor still restarts decoder state.
+Deterministically cover where possible:
+
+- changing finite volume updates both logical sound volume and live channel attenuation distance when normal CC:T/Minecraft distance semantics are intended;
+- volume updates do not restart a healthy decoder epoch;
+- a failed/deferred renderer start does not permanently latch the client into `rendererStarted` with no active sound;
+- the chosen volume-zero behavior is explicit and repeatable;
+- if volume-zero renderer creation is deferred, unmuting catches up to current canonical server time before audible start rather than replaying stale buffered audio.
+
+Minecraft runtime coverage must include volume values below/at/above one and movement across the corresponding audible-distance boundaries.
 
 ### KI-054 shutdown deletion failure
 
-Add deterministic failure injection for `MediaAssetStore.close()` so a failed completed-file deletion has a defined retry/cleanup outcome rather than relying only on next-start orphan pruning.
+Add deterministic failure injection for `MediaAssetStore.close()` so a failed completed-file deletion has a defined retry/cleanup outcome rather than relying only on next-start orphan pruning. Also prove the `ServerMediaAssets` registry cannot retain a stopped server indefinitely after the chosen close-failure handling.
+
+This is lower-frequency hardening and can be sequenced after the M1G playback-correctness cluster if the owner prefers to stay focused.
+
+### Practical media-bound hardening
+
+The modern WAV parser currently accepts any positive `int` sample rate. Before release hardening, define and test a practical accepted sample-rate range so malformed/extreme WAV metadata cannot reach the Minecraft/OpenAL streaming path with absurd buffer/rate values. This is not currently the first M1G blocker.
 
 ## Lua/runtime scripts: current versus historical
 
@@ -120,22 +148,25 @@ Before calling M1G audibly proven, record at least:
 2. supported common WAV becomes audible;
 3. playback starts after bounded prebuffer rather than complete-track transfer;
 4. long-track encoded + decoded RAM remains bounded;
-5. pause/resume audibly follows server state;
-6. forward/backward seek audibly rejoins current server time;
+5. pause/resume audibly follows server state without gratuitous decoder restarts;
+6. forward/backward/repeated seek audibly rejoins current server time and never dies from expected decoder cancellation;
 7. MP3 seek works through E1 pre-roll without decoder corruption;
 8. stop/replacement cancels old sound promptly;
 9. temporary starvation/refill does not become permanent EOF;
 10. sound is positional/attenuated from the physical `computercraft:speaker`;
-11. standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain compatible;
-12. no complete client song `.part/.media` file is created.
+11. live volume changes alter gain and, if selected, audible distance consistently with the intended CC:T/Minecraft semantics;
+12. test the chosen volume-zero -> unmute behavior explicitly;
+13. test the chosen server relevance policy at its distance boundaries (for example around 32 and 48 blocks if normal volume-3 range is preserved);
+14. standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain compatible;
+15. no complete client song `.part/.media` file is created.
 
-Loop-wrap acceptance is blocked until the owner chooses KI-051 L1/L2/L3 and that policy is implemented.
+Loop-wrap acceptance is blocked until the owner chooses KI-051 L1/L2/L3 and that policy is implemented on top of the corrected reanchor model.
 
 Record exact source commit, docs commit if relevant, JAR SHA-256, target versions, fixture facts, pass/fail sections, relevant client/server logs, test-instance type, and network compression state if throughput is measured.
 
 ## M1H evidence boundary
 
-Do not require M1G to prove full late-entry/proactive-leave/return-rejoin/dimension/resource-reload/general-underrun/final-VS2 lifecycle. Those remain M1H.
+Do not require M1G to prove full late-entry/proactive-leave/return-rejoin/dimension/resource-reload/general-underrun/final-VS2 lifecycle. Those remain M1H unless the owner deliberately pulls dynamic relevance forward to solve KI-059.
 
 ## Current evidence language
 
@@ -145,6 +176,8 @@ M1E final focused Minecraft: skipped / unrecorded
 M1F source/test/CI/package/component: PASS
 M1F focused Minecraft transport: unrecorded
 M1G integrated source/tests/package: PASS at 957832348eaa6e497282d923f2312c9c7d7c550f
+M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
+M1G live volume/range/start correctness: open KI-058/KI-059/KI-060
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused renderer-adapter coverage: incomplete
 M1G loop-wrap policy: owner choice required
