@@ -13,7 +13,8 @@ import java.util.UUID;
 /** Authoritative finite playback snapshot sent by the server. */
 public record HQFiniteMediaStatePacket(
     UUID source, UUID mediaId, long generation, PlaybackState state,
-    double position, double duration, float volume, boolean looping, String error
+    double position, double duration, float volume, boolean looping,
+    long anchorOffset, double anchorTime, String error
 ) implements CustomPacketPayload {
     public enum PlaybackState { PLAYING, PAUSED, ENDED, ERROR }
     private static final int MAX_ERROR = 256;
@@ -25,7 +26,8 @@ public record HQFiniteMediaStatePacket(
         @Override public HQFiniteMediaStatePacket decode(RegistryFriendlyByteBuf buf) {
             return new HQFiniteMediaStatePacket(
                 buf.readUUID(), buf.readUUID(), buf.readVarLong(), buf.readEnum(PlaybackState.class),
-                buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readBoolean(), buf.readUtf(MAX_ERROR));
+                buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readBoolean(),
+                buf.readVarLong(), buf.readDouble(), buf.readUtf(MAX_ERROR));
         }
 
         @Override public void encode(RegistryFriendlyByteBuf buf, HQFiniteMediaStatePacket p) {
@@ -37,6 +39,8 @@ public record HQFiniteMediaStatePacket(
             buf.writeDouble(p.duration());
             buf.writeFloat(p.volume());
             buf.writeBoolean(p.looping());
+            buf.writeVarLong(Math.max(0L, p.anchorOffset()));
+            buf.writeDouble(p.anchorTime());
             String e = p.error() == null ? "" : p.error();
             buf.writeUtf(e.length() <= MAX_ERROR ? e : e.substring(0, MAX_ERROR), MAX_ERROR);
         }
@@ -47,22 +51,20 @@ public record HQFiniteMediaStatePacket(
             && Double.isFinite(position) && position >= 0.0
             && Double.isFinite(duration) && duration > 0.0
             && position <= duration + 1.0e-6
-            && Float.isFinite(volume);
+            && Float.isFinite(volume)
+            && anchorOffset >= 0L
+            && Double.isFinite(anchorTime) && anchorTime >= 0.0 && anchorTime <= position + 1.0e-6;
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
     public static void handle(HQFiniteMediaStatePacket packet, IPayloadContext context) {
         if (!packet.sensible()) {
-            HQSpeakerMod.warn("M1E finite STATE rejected as nonsensical source=" + packet.source()
+            HQSpeakerMod.warn("M1F finite STATE rejected as nonsensical source=" + packet.source()
                 + " generation=" + packet.generation() + " state=" + packet.state()
                 + " position=" + packet.position() + " duration=" + packet.duration());
             return;
         }
-        HQSpeakerMod.log("M1E finite wire STATE received source=" + packet.source()
-            + " generation=" + packet.generation() + " state=" + packet.state()
-            + " position=" + packet.position() + " duration=" + packet.duration()
-            + " volume=" + packet.volume() + " looping=" + packet.looping());
         HQFiniteMediaClient.state(packet);
     }
 }

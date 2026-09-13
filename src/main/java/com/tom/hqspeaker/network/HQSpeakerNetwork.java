@@ -9,7 +9,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class HQSpeakerNetwork {
 
-    private static final String PROTOCOL_VERSION = "4";
+    private static final String PROTOCOL_VERSION = "5";
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
@@ -21,13 +21,13 @@ public class HQSpeakerNetwork {
         registrar.playToServer(HQSpeakerStatusPacket.TYPE, HQSpeakerStatusPacket.STREAM_CODEC, HQSpeakerStatusPacket::handle);
 
         registrar.playToClient(HQFiniteMediaBeginPacket.TYPE, HQFiniteMediaBeginPacket.STREAM_CODEC, HQFiniteMediaBeginPacket::handle);
-        registrar.playToClient(HQFiniteMediaChunkPacket.TYPE, HQFiniteMediaChunkPacket.STREAM_CODEC, HQFiniteMediaChunkPacket::handle);
-        registrar.playToClient(HQFiniteMediaEndPacket.TYPE, HQFiniteMediaEndPacket.STREAM_CODEC, HQFiniteMediaEndPacket::handle);
         registrar.playToClient(HQFiniteMediaControlPacket.TYPE, HQFiniteMediaControlPacket.STREAM_CODEC, HQFiniteMediaControlPacket::handle);
         registrar.playToClient(HQFiniteMediaStatePacket.TYPE, HQFiniteMediaStatePacket.STREAM_CODEC, HQFiniteMediaStatePacket::handle);
         registrar.playToServer(HQFiniteMediaStatusPacket.TYPE, HQFiniteMediaStatusPacket.STREAM_CODEC, HQFiniteMediaStatusPacket::handle);
+        registrar.playToServer(HQFiniteMediaRangeRequestPacket.TYPE, HQFiniteMediaRangeRequestPacket.STREAM_CODEC, HQFiniteMediaRangeRequestPacket::handle);
+        registrar.playToClient(HQFiniteMediaRangeDataPacket.TYPE, HQFiniteMediaRangeDataPacket.STREAM_CODEC, HQFiniteMediaRangeDataPacket::handle);
 
-        HQSpeakerMod.log("Network registered with 11 payloads.");
+        HQSpeakerMod.log("Network registered with M1F protocol v5 and 11 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {

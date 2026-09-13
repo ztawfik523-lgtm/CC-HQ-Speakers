@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * The physical CC speaker exposed to Lua.
  *
  * Standard speaker calls stay on CC:T's original SpeakerPeripheral. HQ-specific continuous sources have one
- * explicit owner so old/staged finite state cannot accidentally capture controls belonging to a later source.
+ * explicit owner so old/prepared finite state cannot accidentally capture controls belonging to a later source.
  * ComputerCraft may call this peripheral from multiple computer threads, so ownership-changing entry points are
  * synchronized to keep stop -> start -> owner changes in one order.
  */
@@ -103,8 +103,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         boolean queueHasData = legacy.speakIsPlaying();
 
-        // Count down accepted RAW audio at the real 48 kHz playback rate. This prevents the server from feeding the
-        // client one multi-second PCM chunk every Minecraft tick just because packet slots are free.
         if (rawLifetime.tick(queueHasData)) {
             legacy.speakStop();
             rawCapacityWaiters.clear();
@@ -113,8 +111,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             return;
         }
 
-        // hqspeaker_audio_empty means the rejected speakPCM call can now be retried: both the server packet queue and
-        // the duration-based RAW buffer have room for that computer's requested sample count.
         if (!rawCapacityWaiters.isEmpty() && legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT) {
             for (Map.Entry<IComputerAccess, Integer> entry : rawCapacityWaiters.entrySet()) {
                 IComputerAccess computer = entry.getKey();
@@ -158,11 +154,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         legacyComputerViews.clear();
     }
 
-    /**
-     * Legacy HQ used speaker_audio_empty as a generic queue heartbeat. That breaks CC:T's documented playAudio
-     * contract, so those synthetic events are swallowed. M1A emits hqspeaker_audio_empty itself from actual HQ RAW
-     * capacity instead.
-     */
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
             IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
@@ -182,20 +173,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return staging.mountPath(computer);
     }
 
-    /** Prepare a staged CC file as a reusable server media asset without starting playback. */
     @LuaFunction
     public final String audioPrepareStaged(IComputerAccess computer, String path,
                                            Optional<Boolean> consume) throws LuaException {
         return staging.prepareAsset(computer, path, consume.orElse(true));
     }
 
-    /** Server-derived format/duration facts for a prepared asset. */
     @LuaFunction
     public final Map<String, Object> audioPreparedInfo(String assetId) throws LuaException {
         return staging.preparedInfo(assetId);
     }
 
-    /** Start a prepared asset. The playback takes its own reference before this method returns true. */
     @LuaFunction(mainThread = true)
     public final synchronized boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
         beginReplacingHQ(Owner.STAGED_FINITE);
@@ -204,20 +192,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return started;
     }
 
-    /** Release the prepared-owner reference held by the calling computer. */
     @LuaFunction
     public final boolean audioReleasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         return staging.releasePrepared(computer, assetId);
-    }
-
-    /** Historical direct-staged entrypoint retained while the prototype transport still exists. */
-    @LuaFunction(mainThread = true)
-    public final synchronized boolean audioPlayStaged(IComputerAccess computer, String path,
-                                                      Optional<Double> volume, Optional<Boolean> consume) throws LuaException {
-        beginReplacingHQ(Owner.STAGED_FINITE);
-        boolean started = finite.playStaged(computer, path, volume.orElse(1.0), consume.orElse(true));
-        if (started) owner = Owner.STAGED_FINITE;
-        return started;
     }
 
     @LuaFunction
@@ -309,8 +286,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private void beginReplacingHQ(Owner requested) {
         if (requested == Owner.RAW && owner == Owner.RAW) return;
         stopCurrentHQ();
-        // CC:T stop clears playSound/playAudio but deliberately leaves pending notes alone, so notes retain native
-        // independence while an explicit HQ continuous-source start takes ownership of the main output.
         vanilla.stop();
     }
 
@@ -363,8 +338,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             };
         }
 
-        // Stop is a source capability, not a finite-only capability. It truthfully ends whichever HQ continuous
-        // source currently owns the speaker. Standard stop() additionally stops CC:T's native sound/audio state.
         if ("audioStop".equals(name)) {
             stopCurrentHQ();
             return MethodResult.of();
@@ -382,8 +355,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
 
         if (owner == Owner.LEGACY_FINITE) return invokeLegacy(name, computer, context, args);
-
-        // RAW and live streams have no finite duration/seek/loop contract. Live pause/reconnect is a later milestone.
         return MethodResult.of(false);
     }
 

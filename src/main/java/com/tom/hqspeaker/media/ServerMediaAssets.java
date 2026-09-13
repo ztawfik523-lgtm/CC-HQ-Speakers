@@ -10,11 +10,12 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** One reusable encoded-media store per running Minecraft server. */
+/** One reusable encoded-media store plus bounded range-IO service per running Minecraft server. */
 public final class ServerMediaAssets {
     private static final Map<MinecraftServer, ServerMediaAssets> SERVERS = new IdentityHashMap<>();
 
     private final MediaAssetStore store;
+    private final FiniteRangeReadService rangeReads;
 
     private ServerMediaAssets(MinecraftServer server) throws IOException {
         Path root = server.getWorldPath(LevelResource.ROOT)
@@ -25,6 +26,7 @@ public final class ServerMediaAssets {
             HQSpeakerServerConfig.maxAssetBytes(),
             HQSpeakerServerConfig.maxTotalBytes()
         );
+        rangeReads = new FiniteRangeReadService(store);
     }
 
     public static synchronized ServerMediaAssets get(MinecraftServer server) throws IOException {
@@ -37,18 +39,26 @@ public final class ServerMediaAssets {
         return created;
     }
 
-    /** Close and forget the asset store for one stopped server. A failed close remains reachable for retry. */
+    /**
+     * Stop/drain finite range IO before the asset store is allowed to remove files or release its root lock.
+     * A failed close remains reachable for retry.
+     */
     public static synchronized void closeServer(MinecraftServer server) throws IOException {
         if (server == null) return;
         ServerMediaAssets assets = SERVERS.get(server);
         if (assets == null) return;
 
+        assets.rangeReads.close();
         assets.store.close();
         SERVERS.remove(server, assets);
     }
 
     public MediaAssetStore store() {
         return store;
+    }
+
+    public FiniteRangeReadService rangeReads() {
+        return rangeReads;
     }
 
     public long maxAssetBytes() {
