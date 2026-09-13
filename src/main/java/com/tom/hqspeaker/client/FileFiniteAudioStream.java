@@ -1,7 +1,6 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
-import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import net.minecraft.client.sounds.AudioStream;
 import org.lwjgl.stb.STBVorbis;
 import org.lwjgl.stb.STBVorbisInfo;
@@ -20,8 +19,8 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Incremental finite decoder backed by the encoded client cache file.
- * It intentionally never materialises the whole decoded track in RAM.
+ * Legacy complete-file finite decoder retained temporarily for inherited code only.
+ * Modern M1G prepared playback does not use this class.
  */
 public final class FileFiniteAudioStream implements AudioStream {
     private interface Decoder extends AutoCloseable {
@@ -37,9 +36,8 @@ public final class FileFiniteAudioStream implements AudioStream {
     private final Decoder decoder;
     private boolean firstReadLogged;
 
-    public FileFiniteAudioStream(Path file, HQFiniteMediaBeginPacket.MediaFormat declaredFormat, boolean looping) throws IOException {
-        boolean ogg = declaredFormat == HQFiniteMediaBeginPacket.MediaFormat.OGG
-            || (declaredFormat == HQFiniteMediaBeginPacket.MediaFormat.AUDIO_FILE && hasMagic(file, new byte[]{ 'O', 'g', 'g', 'S' }));
+    public FileFiniteAudioStream(Path file, boolean looping) throws IOException {
+        boolean ogg = hasMagic(file, new byte[]{ 'O', 'g', 'g', 'S' });
         decoder = ogg ? new VorbisDecoder(file, looping) : new JavaSoundDecoder(file, looping);
     }
 
@@ -56,17 +54,17 @@ public final class FileFiniteAudioStream implements AudioStream {
             ByteBuffer out = decoder.read(maxBytes);
             if (!firstReadLogged) {
                 firstReadLogged = true;
-                HQSpeakerMod.log("M1E finite decoder first PCM read maxBytes=" + maxBytes
+                HQSpeakerMod.log("legacy finite decoder first PCM read maxBytes=" + maxBytes
                     + " returned=" + (out == null ? "null" : out.remaining())
                     + " format=" + decoder.format()
                     + " stats=" + pcmStats(out));
             }
             return out;
         } catch (IOException e) {
-            HQSpeakerMod.error("M1E finite decoder PCM read failed: " + safeMessage(e));
+            HQSpeakerMod.error("legacy finite decoder PCM read failed: " + safeMessage(e));
             throw e;
         } catch (RuntimeException e) {
-            HQSpeakerMod.error("M1E finite decoder PCM read runtime failure: " + safeMessage(e));
+            HQSpeakerMod.error("legacy finite decoder PCM read runtime failure: " + safeMessage(e));
             throw e;
         }
     }
