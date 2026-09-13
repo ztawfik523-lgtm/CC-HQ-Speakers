@@ -395,8 +395,9 @@ public final class HQFiniteMediaServer {
         long bestOffset = 0L;
         double bestSeconds = 0.0;
         for (MediaSeekPoint point : s.metadata.seekPoints()) {
-            if (point.seconds() > position + 1.0e-9) break;
-            if (point.byteOffset() >= 0L && point.byteOffset() < s.totalBytes && point.seconds() >= bestSeconds) {
+            if (point.seconds() <= position + 1.0e-9
+                    && point.byteOffset() >= 0L && point.byteOffset() < s.totalBytes
+                    && point.seconds() >= bestSeconds) {
                 bestOffset = point.byteOffset();
                 bestSeconds = point.seconds();
             }

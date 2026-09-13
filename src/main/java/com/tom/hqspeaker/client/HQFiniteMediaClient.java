@@ -88,8 +88,9 @@ public final class HQFiniteMediaClient {
 
         Session session = new Session(packet);
         SESSIONS.put(packet.source(), session);
+        // Wait for the fresh authoritative STATE before requesting bytes so the first demand starts at the
+        // server-selected current/seek anchor instead of assuming byte zero from BEGIN alone.
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
-        pump(session, System.nanoTime());
     }
 
     private static void state0(HQFiniteMediaStatePacket packet) {

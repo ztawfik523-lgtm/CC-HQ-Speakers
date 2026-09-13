@@ -47,6 +47,8 @@ public final class FiniteRangeReadService implements AutoCloseable {
     private final long maxBytesPerPlayer;
     private final Map<UUID, Account> accounts = new HashMap<>();
     private boolean closed;
+    private boolean shutdownStarted;
+    private boolean closeComplete;
 
     public FiniteRangeReadService(MediaAssetStore store) {
         this(store, productionExecutor(),
@@ -134,15 +136,19 @@ public final class FiniteRangeReadService implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        List<Runnable> queued;
+        boolean startShutdown;
         synchronized (this) {
-            if (closed) return;
+            if (closeComplete) return;
             closed = true;
+            startShutdown = !shutdownStarted;
+            shutdownStarted = true;
         }
 
-        queued = new ArrayList<>(executor.shutdownNow());
-        for (Runnable runnable : queued) {
-            if (runnable instanceof RangeTask task) task.cancelQueued();
+        if (startShutdown) {
+            List<Runnable> queued = new ArrayList<>(executor.shutdownNow());
+            for (Runnable runnable : queued) {
+                if (runnable instanceof RangeTask task) task.cancelQueued();
+            }
         }
 
         try {
@@ -158,6 +164,7 @@ public final class FiniteRangeReadService implements AutoCloseable {
             if (!accounts.isEmpty()) {
                 throw new IOException("finite range IO stopped with outstanding player accounting");
             }
+            closeComplete = true;
         }
     }
 

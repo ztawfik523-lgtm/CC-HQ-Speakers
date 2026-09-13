@@ -58,4 +58,16 @@ class FiniteRangeWindowTest {
         assertEquals(first.offset(), retry.offset());
         assertEquals(first.length(), retry.length());
     }
+
+    @Test
+    void malformedResponseDoesNotWedgeDemand() {
+        FiniteRangeWindow window = new FiniteRangeWindow(1000L, 256);
+        FiniteRangeWindow.Range request = window.nextRequest(128, 1L).orElseThrow();
+
+        assertFalse(window.accept(request.offset(), new byte[request.length() - 1]));
+        assertEquals(0, window.pendingRequests());
+
+        FiniteRangeWindow.Range retry = window.nextRequest(128, 2L).orElseThrow();
+        assertEquals(request, retry);
+    }
 }

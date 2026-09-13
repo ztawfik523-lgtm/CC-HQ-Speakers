@@ -92,10 +92,16 @@ public final class FiniteRangeWindow {
     /** Accept one exact response which was requested for the current window. Stale/unsolicited data is discarded. */
     public synchronized boolean accept(long offset, byte[] data) {
         if (cancelled || data == null || data.length == 0) return false;
-        Pending expected = pending.remove(offset);
-        if (expected == null || expected.length() != data.length) return false;
-        if (offset < windowStart || offset + data.length > windowStart + windowLength) return false;
+        Pending expected = pending.get(offset);
+        if (expected == null) return false;
+        if (expected.length() != data.length
+                || offset < windowStart || offset + data.length > windowStart + windowLength) {
+            pending.remove(offset);
+            clearRequested(offset, expected.length());
+            return false;
+        }
 
+        pending.remove(offset);
         int index = (int) (offset - windowStart);
         System.arraycopy(data, 0, bytes, index, data.length);
         present.set(index, index + data.length);
