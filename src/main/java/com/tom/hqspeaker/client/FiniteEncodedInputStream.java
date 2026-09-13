@@ -59,7 +59,7 @@ public final class FiniteEncodedInputStream extends InputStream {
                     return -1;
                 }
                 case CANCELLED_OR_STALE -> throw new IOException("finite encoded input cancelled or stale");
-                case NEED_DATA -> awaitData();
+                case NEED_DATA -> awaitDataIfStillNeeded(length);
             }
         }
     }
@@ -75,9 +75,15 @@ public final class FiniteEncodedInputStream extends InputStream {
         }
     }
 
-    private void awaitData() throws IOException {
+    /**
+     * Re-check while holding the notification monitor before waiting. This prevents losing a range-arrival wakeup in
+     * the gap between the caller's NEED_DATA probe and actually entering Object.wait().
+     */
+    private void awaitDataIfStillNeeded(int requestedBytes) throws IOException {
         synchronized (signal) {
             if (cancelled) throw new IOException("finite encoded input cancelled or stale");
+            FiniteRangeWindow.Probe current = window.probe(cursor, requestedBytes);
+            if (current.availability() != FiniteRangeWindow.Availability.NEED_DATA) return;
             try {
                 signal.wait();
             } catch (InterruptedException e) {
