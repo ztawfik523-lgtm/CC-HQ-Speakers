@@ -54,6 +54,10 @@ The exposed peripheral type is `speaker`; standard `playNote`, `playSound`, `pla
 
 The exact target CC:T 1.120.0 client speaker implementation explicitly updates live channel linear attenuation when speaker volume changes because Minecraft's sound-engine volume refresh does not update attenuation distance. Its calculation is `Math.max(volume, 1) * sound.getSound().getAttenuationDistance()`.
 
+### FACT-CCT-003
+
+Minecraft 1.21.1 exposes `SoundInstance.canStartSilent()` for long-lived sounds which should be allowed to start while currently silent. Current `FiniteSpeakerSound` does not override it.
+
 ## Asset/import facts
 
 ### FACT-ASSET-001
@@ -67,6 +71,10 @@ Active prepared/playback/range release paths preserve retry ownership when final
 ### FACT-ASSET-003
 
 `MediaAssetStore.close()` currently clears completed-entry bookkeeping before shutdown deletion attempts. If one of those deletions fails, a subsequent `close()` has no retained completed-entry list to retry; next-start orphan pruning can remove managed leftovers. `ServerMediaAssets.closeServer()` removes its static server entry only after `store.close()` returns successfully, so a thrown store-close failure also skips registry removal. The current `ServerStoppedEvent` handler catches/logs that failure and does not schedule another close retry. This was documented by the 2026-09-14 audit and is not fixed in source.
+
+### FACT-ASSET-004
+
+Each `HQMediaStaging` instance creates a ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Its cleanup path unmounts attached computers/releases prepared ownership but does not clear arbitrary leftover files in that mount. CC:T 1.120.0 implements `createSaveDirMount()` as a persistent disk-backed `WritableFileMount` rooted at the requested subdirectory; unmounting does not delete it. This is KI-061 and is not fixed in source.
 
 ## M1E facts
 
@@ -188,6 +196,10 @@ Modern finite live volume updates mutate the sound instance's volume and refresh
 
 `HQFiniteMediaClient.tryStartRenderer()` sets `rendererStarted = true` before calling `SoundManager.play(sound)` and has no path which clears/retries that latch merely because the sound failed to become active. This is KI-060.
 
+### FACT-AUDIT-012
+
+NeoForge 1.21.1 payload handlers execute on the main thread by default unless registration explicitly requests the network thread. The current modern packet registration does not opt into network-thread execution, so the audit did not identify a packet-handler game-state threading bug from that registration pattern.
+
 ## Current unresolved decisions
 
 ### FACT-M1G-NEXT-001
@@ -200,7 +212,7 @@ The current protocol has no explicit server-authoritative decoder/reanchor revis
 
 ### FACT-M1G-NEXT-003
 
-The owner has not yet chosen how modern finite server relevance should relate to volume-dependent audible distance, nor the exact local renderer behavior for canonical playback at volume zero.
+The owner has not yet chosen how modern finite server relevance should relate to volume-dependent audible distance, nor whether volume-zero playback should keep a silent local renderer active or defer local renderer creation and catch up on unmute.
 
 ## Later milestone facts
 
