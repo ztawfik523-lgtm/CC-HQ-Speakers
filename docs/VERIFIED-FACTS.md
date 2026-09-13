@@ -50,6 +50,10 @@ Packaged dependencies include JLayer `1.0.1.4`, mp3spi `1.9.5.4`, and Tritonus S
 
 The exposed peripheral type is `speaker`; standard `playNote`, `playSound`, `playAudio`, and `stop` delegate to CC:T's real speaker behavior. Native `speaker_audio_empty` remains CC:T-owned, while HQ RAW uses `hqspeaker_audio_empty`.
 
+### FACT-CCT-002
+
+The exact target CC:T 1.120.0 client speaker implementation explicitly updates live channel linear attenuation when speaker volume changes because Minecraft's sound-engine volume refresh does not update attenuation distance. Its calculation is `Math.max(volume, 1) * sound.getSound().getAttenuationDistance()`.
+
 ## Asset/import facts
 
 ### FACT-ASSET-001
@@ -124,7 +128,7 @@ STATE anchor selection provides exact frame-aligned WAV anchors and conservative
 
 ### FACT-M1G-008
 
-`HQFiniteMediaClient` owns local decode epochs; seek/replacement/stop invalidate old encoded waits, decode work, PCM, and renderer state. Range arrivals wake the active encoded input.
+`HQFiniteMediaClient` owns local decode epochs; seek/replacement/stop cancel old encoded waits, decode work, PCM, and renderer state. Range arrivals wake the active encoded input.
 
 ### FACT-M1G-009
 
@@ -154,21 +158,53 @@ The inherited complete-file JavaSound/mp3spi finite bridge is not the modern pre
 
 ### FACT-AUDIT-004
 
-The 2026-09-14 audit and second verification pass updated documentation only; no implementation/test-script fix was made.
+The 2026-09-14 audits updated documentation only; no implementation/test-script fix was made.
 
 ### FACT-AUDIT-005
 
 After the modern renderer has started, an empty live PCM queue is represented as short local silence until PCM returns. Current M1G does not implement general long-underrun catch-up/rejoin to the then-current server position; that broader recovery remains M1H.
 
-## Current unresolved decision
+### FACT-AUDIT-006
+
+`CONTROL SEEK` currently calls `cancelDecodeEpoch()` before any new decode epoch number is installed. `cancelDecodeEpoch()` can wake/cancel the old worker, while `decoderFailed()` treats an old-worker failure as current whenever `session.decodeEpoch` still equals that worker's epoch. Until the replacement STATE starts a new epoch, expected seek cancellation can therefore race with `decoderFailed()` and fail the client session. This is KI-056 and is not fixed in source.
+
+### FACT-AUDIT-007
+
+The server sends authoritative STATE after successful pause/resume/seek/volume/loop transitions, and `statePacket()` recomputes the codec anchor from the then-current canonical position. The client currently restarts when that encoded anchor changes. Exact WAV anchors therefore can change on ordinary non-seek STATE updates, and coarse MP3 anchors can change as playback advances. This is part of KI-057.
+
+### FACT-AUDIT-008
+
+Same-coarse-anchor semantic seek restart currently depends on the preceding SEEK control setting a client-local restart flag. STATE itself carries no explicit decoder/reanchor revision separate from its time-derived anchor. This is the other half of KI-057 and is not fixed in source.
+
+### FACT-AUDIT-009
+
+Modern finite live volume updates mutate the sound instance's volume and refresh the BLOCKS category volume, but they do not explicitly update the active channel's linear attenuation distance. This differs from the target CC:T 1.120.0 speaker workaround and is KI-058.
+
+### FACT-AUDIT-010
+
+`HQFiniteMediaServer` currently uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The supported logical volume range remains 0..3. Preserving normal speaker-style volume-dependent audible distance above 32 blocks therefore requires a relevance-policy change; this is KI-059.
+
+### FACT-AUDIT-011
+
+`HQFiniteMediaClient.tryStartRenderer()` sets `rendererStarted = true` before calling `SoundManager.play(sound)` and has no path which clears/retries that latch merely because the sound failed to become active. This is KI-060.
+
+## Current unresolved decisions
 
 ### FACT-M1G-NEXT-001
 
 Loop-wrap client rejoin is not implemented. Owner choice remains L1 client EOF refresh, L2 proactive server wrap STATE, or L3 client local modulo/restart.
 
+### FACT-M1G-NEXT-002
+
+The current protocol has no explicit server-authoritative decoder/reanchor revision distinct from time-derived STATE anchor data. The owner has not yet chosen between a smaller protocol-v6/client-ordering repair and introducing an explicit decode/reanchor revision.
+
+### FACT-M1G-NEXT-003
+
+The owner has not yet chosen how modern finite server relevance should relate to volume-dependent audible distance, nor the exact local renderer behavior for canonical playback at volume zero.
+
 ## Later milestone facts
 
-Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H. Native FLAC remains gated M1I work. Inherited legacy finite/live/multispeaker code remains for later migration/removal.
+Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H unless a subset is intentionally pulled forward for dynamic finite relevance. Native FLAC remains gated M1I work. Inherited legacy finite/live/multispeaker code remains for later migration/removal.
 
 ## License
 
