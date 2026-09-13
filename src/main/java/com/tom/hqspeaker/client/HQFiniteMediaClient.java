@@ -42,6 +42,11 @@ public final class HQFiniteMediaClient {
         long anchorOffset;
         double anchorTime;
         double targetPosition;
+        double duration;
+        double statePosition;
+        long stateSnapshotNanos;
+        double pcmTimelineStart;
+        long pcmDiscardedBytes;
         long decodeEpoch;
         boolean anchorReady;
         boolean restartRequested;
@@ -125,7 +130,7 @@ public final class HQFiniteMediaClient {
             if (!session.anchorReady) return;
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
             pump(session, now);
-            tryStartRenderer(session);
+            tryStartRenderer(session, now);
             applyRendererState(session);
         });
     }
@@ -164,8 +169,12 @@ public final class HQFiniteMediaClient {
             return;
         }
 
+        long now = System.nanoTime();
         session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
         session.looping = packet.looping();
+        session.duration = packet.duration();
+        session.statePosition = packet.position();
+        session.stateSnapshotNanos = now;
         setVolume(session, packet.volume());
 
         boolean anchorChanged = !session.anchorReady || packet.anchorOffset() != session.anchorOffset;
@@ -183,8 +192,8 @@ public final class HQFiniteMediaClient {
 
         if (restart) restartDecodeEpoch(session, packet.anchorOffset());
         session.restartRequested = false;
-        pump(session, System.nanoTime());
-        tryStartRenderer(session);
+        pump(session, now);
+        tryStartRenderer(session, now);
         applyRendererState(session);
     }
 
@@ -201,6 +210,7 @@ public final class HQFiniteMediaClient {
     private static void control0(HQFiniteMediaControlPacket packet) {
         Session session = SESSIONS.get(packet.source());
         if (session == null || session.begin.generation() != packet.generation() || session.terminal) return;
+        long now = System.nanoTime();
         switch (packet.action()) {
             case STOP -> {
                 session.terminal = true;
@@ -212,10 +222,15 @@ public final class HQFiniteMediaClient {
                 session.restartRequested = true;
             }
             case PAUSE -> {
+                if (!session.desiredPaused && session.anchorReady) {
+                    session.statePosition = projectedServerPosition(session, now);
+                    session.stateSnapshotNanos = now;
+                }
                 session.desiredPaused = true;
                 applyRendererState(session);
             }
             case RESUME -> {
+                if (session.desiredPaused) session.stateSnapshotNanos = now;
                 session.desiredPaused = false;
                 applyRendererState(session);
             }
@@ -231,13 +246,16 @@ public final class HQFiniteMediaClient {
             FinitePcmQueue pcm = new FinitePcmQueue(pcmQueueCapacity(session.begin.descriptor().sampleRate()));
             session.encodedInput = input;
             session.pcmQueue = pcm;
+            session.pcmDiscardedBytes = 0L;
             long epoch = ++session.decodeEpoch;
 
             if (session.begin.descriptor().kind() == FiniteDecodeDescriptor.Kind.WAV) {
+                session.pcmTimelineStart = session.anchorTime;
                 session.decoderTask = DECODERS.submit(() -> runWavDecoder(session, epoch, input, pcm, startOffset));
             } else {
                 double anchorTime = session.anchorTime;
                 double targetTime = session.targetPosition;
+                session.pcmTimelineStart = targetTime;
                 session.decoderTask = DECODERS.submit(() -> runMp3Decoder(
                     session, epoch, input, pcm, anchorTime, targetTime));
             }
@@ -273,8 +291,10 @@ public final class HQFiniteMediaClient {
         fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
-    private static void tryStartRenderer(Session session) {
+    private static void tryStartRenderer(Session session, long nowNanos) {
         if (session.terminal || session.rendererStarted || session.pcmQueue == null) return;
+        if (!catchUpToServerTime(session, nowNanos)) return;
+
         FinitePcmQueue pcm = session.pcmQueue;
         int queued = pcm.queuedBytes();
         int threshold = prebufferBytes(session.begin.descriptor().sampleRate(), pcm.capacityBytes());
@@ -288,6 +308,43 @@ public final class HQFiniteMediaClient {
         session.rendererStarted = true;
         session.appliedPause = null;
         Minecraft.getInstance().getSoundManager().play(sound);
+    }
+
+    /**
+     * Keep dropping already-decoded PCM until its front represents current canonical server time. This means network,
+     * decoder and prebuffer latency do not become permanent audible lag. Loop-wrap restart itself remains a separate
+     * server-authority decision and is intentionally not implemented here.
+     */
+    private static boolean catchUpToServerTime(Session session, long nowNanos) {
+        FinitePcmQueue pcm = session.pcmQueue;
+        if (pcm == null || !session.anchorReady) return false;
+        double desired = projectedServerPosition(session, nowNanos);
+        double seconds = Math.max(0.0, desired - session.pcmTimelineStart);
+        long samples = (long) Math.floor(seconds * session.begin.descriptor().sampleRate() + 1.0e-9);
+        long requiredBytes;
+        try {
+            requiredBytes = Math.multiplyExact(samples, 2L);
+        } catch (ArithmeticException e) {
+            return false;
+        }
+        long remaining = Math.max(0L, requiredBytes - session.pcmDiscardedBytes);
+        if (remaining == 0L) return true;
+
+        int request = (int) Math.min((long) Integer.MAX_VALUE - 1L, remaining);
+        if ((request & 1) != 0) request--;
+        int discarded = pcm.discard(request);
+        session.pcmDiscardedBytes += discarded;
+        return session.pcmDiscardedBytes >= requiredBytes;
+    }
+
+    private static double projectedServerPosition(Session session, long nowNanos) {
+        double position = session.statePosition;
+        if (!session.desiredPaused && session.stateSnapshotNanos > 0L) {
+            position += Math.max(0L, nowNanos - session.stateSnapshotNanos) / 1_000_000_000.0;
+        }
+        // Loop wrap needs an explicit authority decision. Until that is chosen, never locally modulo the server clock.
+        if (session.duration > 0.0) position = Math.min(position, session.duration);
+        return Math.max(0.0, position);
     }
 
     private static void applyRendererState(Session session) {
