@@ -1,8 +1,15 @@
 # Finite streaming design — M1E authority + M1F transport + M1G decoder boundary
 
-This remains the accepted finite-streaming **architecture**. The 2026-09-13 reevaluation changed milestone completion status, not the main design.
+This is the accepted finite-streaming architecture.
 
-For current implementation findings, read `M1E-M1F-REEVALUATION-2026-09-13.md` first.
+Current implementation status:
+
+- M1E server authority: source/test/CI complete;
+- M1F bounded encoded transport: source/test/CI/package complete;
+- M1G progressive decoder/renderer: next, not started;
+- M1H full dynamic listener lifecycle: later.
+
+For exact M1F completion evidence read `M1F-FINALIZATION-2026-09-13.md`.
 
 ## User-facing target
 
@@ -11,7 +18,7 @@ ComputerCraft file
 -> server-owned MediaAsset
 -> server-owned playback clock/state
 -> relevant client requests bounded encoded pieces it needs
--> client keeps bounded temporary RAM
+-> client keeps bounded sliding temporary RAM
 -> decoder produces bounded mono PCM
 -> positional speaker renderer
 ```
@@ -29,27 +36,18 @@ The server owns:
 - seek;
 - loop;
 - volume;
-- natural EOF.
+- natural EOF;
+- terminal server errors.
 
 Client READY requests fresh server truth. Client ERROR is diagnostic only.
 
-This semantic design remains present in current source.
+Projection failure cannot undo canonical server state. Asset ownership/release is retry-safe.
 
-### Reevaluated implementation hardening
-
-The architecture also requires client delivery to remain a projection of canonical state, not a possible cause of canonical transition failure.
-
-Current source still needs hardening for:
-
-- per-player packet-send runtime failure isolation;
-- atomic prepared-start rollback;
-- retry-safe playback asset release.
-
-These are implementation failure-path issues, not a reason to abandon server authority.
+The final focused Minecraft M1E acceptance was explicitly skipped by the owner and remains unrecorded.
 
 ## M1F encoded transport
 
-Current source implements protocol v5 range transport:
+Protocol v5 uses:
 
 ```text
 client -> server:
@@ -69,8 +67,8 @@ The client waits for STATE before first byte demand.
 
 Current tuning bounds:
 
-- range response: max 128 KiB;
-- one-source encoded byte window: 512 KiB;
+- range: max 128 KiB;
+- one-source encoded window: 512 KiB;
 - per-player in-flight requests: max 4;
 - per-player in-flight bytes: max 512 KiB;
 - server IO workers: 2;
@@ -80,24 +78,25 @@ These are implementation values, not product-level guarantees.
 
 ## Server request/lifetime contract
 
-Range work should satisfy:
+Final M1F satisfies:
 
-- active source/generation/asset identity;
+- exact active source/generation/asset identity;
 - valid bounded offset/length;
-- connected player in same current relevance domain;
+- connected/current player in same dimension and relevance radius;
 - bounded outstanding work;
 - playback/source ownership still valid;
 - separate in-flight MediaAsset lifetime while async IO runs;
 - stale completion discard after replacement/leave/disconnect;
-- background reads do not outlive the media store.
+- off-thread exact reads;
+- cancellation accounting/ref cleanup;
+- deferred final-release retry ownership;
+- range workers stopped before media store close.
 
-Current source implements much of this normal path, including off-thread reads, per-player limits, in-flight retain, and current-session/relevance recheck before send.
-
-The reevaluation reopened deterministic acceptance proof for the complete list and found a rare final-release retry gap in range-task cleanup.
+Pure validation rules are tested separately from Minecraft object plumbing. The integrated fake consumer proves actual MediaAsset range reads into the bounded client window.
 
 ## Client encoded-data contract
 
-The client boundary must distinguish:
+The client boundary distinguishes:
 
 - DATA_AVAILABLE;
 - NEED_DATA;
@@ -106,33 +105,39 @@ The client boundary must distinguish:
 
 Temporary network starvation must never become physical EOF.
 
-Current `FiniteRangeWindow` implements those availability states and arbitrary re-anchor/reset.
+A fresh `FiniteRangeWindow` is unanchored. STATE installs the authoritative anchor.
 
-### Progressive-window requirement clarified by reevaluation
+The window supports:
 
-For M1G to consume the window cleanly, the encoded buffer should also support advancing/discarding already-consumed prefix data while retaining useful unread prefetched bytes and opening capacity for future ranges.
+- arbitrary reset/re-anchor;
+- forward `advanceTo(...)` consumption;
+- consumed-prefix discard;
+- preservation of unread overlap;
+- preservation only of still-useful whole in-flight requests;
+- new tail demand/refill;
+- bounded memory independent of track length;
+- in-place sliding rather than full-window reallocation on each small consume.
 
-Current `FiniteRangeWindow` does not yet expose that sliding/consume operation. Its `reset(anchorOffset)` discards the whole current window.
+## M1F component proof
 
-A decoder can technically progress by consuming an entire fixed window and resetting at its end, but that creates hard refill boundaries and is weaker than the originally intended sliding producer/consumer contract.
-
-This is a client-buffer API gap, **not** a reason to change protocol v5.
-
-## Original M1F proof target remains valid
-
-A deterministic fake consumer should be able to prove:
+The final fake-consumer proof is:
 
 ```text
-request non-zero range
--> verify exact bytes
+2 MiB MediaAsset
+-> non-zero range request
+-> exact asynchronous server read
+-> bounded client window
 -> consume/discard prefix
--> continue/refill beyond one window while bounded
+-> continue/refill beyond one full window
 -> jump to distant offset
--> obsolete data gone
--> memory bounded
+-> obsolete old region rejected
+-> exact bytes verified
+-> memory stays bounded
 ```
 
-Current tests prove non-zero range, exact bytes, bounded allocation, re-anchor, stale rejection, retry, and missing-vs-EOF. They do not yet prove true sliding consume/refill beyond one window.
+This closes the original M1F deterministic transport target.
+
+Focused real-Minecraft M1F transport acceptance remains unrecorded; do not infer it from CI.
 
 ## Seeking
 
@@ -142,7 +147,7 @@ Canonical seek remains server-owned:
 seek(T)
 -> server clock becomes T
 -> STATE selects encoded anchor at/before T
--> client demands data from that anchor
+-> client resets demand to that anchor
 -> M1G decoder later decodes/pre-rolls to audible target
 ```
 
@@ -150,13 +155,13 @@ Generation does not change for ordinary seek because the encoded asset bytes rem
 
 ### MP3
 
-Current server analysis records coarse MP3 encoded seek points. M1G owns exact Layer III pre-roll/reservoir reconstruction.
+Server analysis records coarse MP3 encoded seek points. M1G owns exact Layer III pre-roll/reservoir reconstruction.
 
 ### WAV
 
-Current analyzer records WAV audio-data start, not final direct common-WAV time-to-byte layout. M1G must add the layout metadata required for exact range selection/conversion.
+Current analyzer records useful WAV facts but final common-WAV direct layout/time-to-byte metadata remains M1G work.
 
-The M1F range protocol already supports arbitrary offsets and should not need redesign for WAV.
+The M1F range protocol already supports arbitrary offsets and does not need redesign for common WAV.
 
 ## No persistent client song cache
 
@@ -168,11 +173,9 @@ The final architecture does not use:
 - persistent sparse cache;
 - cross-restart partial-download resume.
 
-M1F current source removed the modern `.part/.media` path.
-
 ## Removed prototype path
 
-The project-specific `audioPlayStaged()` command and direct staged playback path remain removed.
+The project-specific `audioPlayStaged()` command/direct-staged path remains removed.
 
 Staging is import plumbing only:
 
@@ -182,9 +185,7 @@ CC file -> temporary staging -> immutable MediaAsset
 
 ## M1G boundary
 
-M1G has not started and should not begin until the owner chooses how to close/defer the reopened M1E/M1F issues.
-
-Target:
+M1G is next and owns:
 
 ```text
 bounded/sliding encoded window
@@ -193,7 +194,7 @@ bounded/sliding encoded window
 -> positional Minecraft/OpenAL renderer
 ```
 
-M1G owns:
+Specifically:
 
 - progressive MP3 decode;
 - starvation/refill behavior;
@@ -205,9 +206,11 @@ M1G owns:
 - audible rendering;
 - final active format narrowing.
 
+Do not restore or repair the obsolete complete-file JavaSound/mp3spi bridge as the new engine.
+
 ## Dynamic listener boundary — M1H
 
-Current M1F revalidates relevance on range admission/completion, but full listener lifecycle remains M1H:
+M1F validates current relevance on each range request/completion. Full listener lifecycle remains M1H:
 
 - late entrants;
 - proactive leave cleanup;
@@ -217,21 +220,3 @@ Current M1F revalidates relevance on range admission/completion, but full listen
 - VS2 movement lifecycle.
 
 Do not reintroduce fixed historical recipient capture.
-
-## Current status language
-
-Architecture:
-
-**accepted.**
-
-M1E normal-path semantics:
-
-**implemented; hardening/acceptance reopened.**
-
-M1F range architecture:
-
-**implemented and CI-green; acceptance/completeness reopened.**
-
-M1G:
-
-**not started.**

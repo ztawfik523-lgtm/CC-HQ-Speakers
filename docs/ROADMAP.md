@@ -8,15 +8,22 @@ Do not add permanent music/effect/notification roles or a Java playlist manager.
 
 ## Current sequencing note — 2026-09-13
 
-M1E server-authoritative finite playback is complete at the source/test/CI level after final hardening at:
+M1E and M1F are complete at source/test/CI/package level.
 
-`521d4323d9216c8a99e8ec60426997c3330c4068`
+M1E final hardening:
 
-Exact final code CI `34757923455` passed both NeoForge targets.
+- code `521d4323d9216c8a99e8ec60426997c3330c4068`;
+- CI `34757923455`;
+- final focused Minecraft acceptance skipped/unrecorded by owner decision.
 
-The final focused M1E Minecraft acceptance was explicitly skipped by the owner and remains unrecorded; do not claim a runtime PASS.
+M1F finalization:
 
-M1F range transport is implemented but still has its own completion/acceptance work. M1G has not started.
+- source/test candidate `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`;
+- CI `34763362365`;
+- both NeoForge targets green;
+- focused real-Minecraft transport acceptance unrecorded.
+
+M1G is now the next implementation milestone.
 
 ## Foundation
 
@@ -34,64 +41,51 @@ CC files use temporary writable staging only to import immutable reusable server
 
 ### M1D — server media analysis
 
-Frozen server analysis proves format/duration/seek facts without whole-track PCM decode. Historical analyzer format breadth does not define final product support.
+Frozen server analysis proves format/duration/seek facts without whole-track PCM decode. Historical analyzer breadth does not define final product support.
 
 ## M1E — server-authoritative finite timeline
 
 **Complete at source/test/CI level.**
 
-Final code candidate:
+Server owns generation, PLAYING/PAUSED/ENDED/ERROR, position/duration, pause/resume, seek, loop, volume, natural EOF, and terminal server errors. Client READY refreshes state; client ERROR is diagnostic. Projection failures are best-effort; asset release is retry-safe.
 
-`521d4323d9216c8a99e8ec60426997c3330c4068`
+Final focused Minecraft acceptance remains skipped/unrecorded.
 
-Implemented/finalized behavior:
+## M1F — demand-driven finite encoded transport
 
-- successful prepared play starts canonical server time immediately;
-- server owns PLAYING / PAUSED / ENDED / ERROR;
-- server owns position/duration/pause/resume/seek/loop/volume/natural EOF;
-- non-loop exact-duration seek -> ENDED;
-- loop exact-duration seek -> zero and remain active;
-- server ERROR freezes position;
-- client READY is state refresh only;
-- client ERROR is diagnostic only;
-- start construction completes before canonical installation;
-- client projection is best-effort and per-recipient isolated;
-- MediaAsset final-release failures transfer to retry-safe ownership;
-- server shutdown drains range IO before asset-store cleanup.
+**Complete at source/test/CI/package level.**
 
-Deterministic coverage now includes the production playback state machine, core clock, projection failure containment, and deferred-release ownership.
+Final candidate:
 
-Final focused Minecraft acceptance remains **skipped / no recorded PASS** by owner decision.
+`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
 
-## M1F — demand-driven finite transport
-
-**Architecture implemented; acceptance/completion still provisional.**
-
-Implemented and retained:
+Implemented/finalized:
 
 - protocol v5 client range request/data;
 - server-selected encoded anchors in STATE;
+- first demand waits for authoritative STATE;
+- shared source/asset/generation/range validation;
+- current relevance validation on request and completion;
 - bounded packet/window/outstanding limits;
 - bounded off-thread server reads;
 - in-flight MediaAsset retain/retry-safe release;
-- current generation/asset/player/relevance recheck before send;
-- arbitrary encoded re-anchors;
+- stale completion discard;
+- queued cancellation/accounting cleanup;
+- range-service shutdown before store close;
+- arbitrary encoded re-anchor;
+- DATA_AVAILABLE / NEED_DATA / TRUE_ASSET_EOF / CANCELLED_OR_STALE;
+- forward sliding consume/discard preserving unread prefetch;
+- repeated refill beyond one window with bounded RAM;
+- integrated fake server-reader -> client-window component proof;
 - no modern client whole-song `.part/.media` bridge;
-- old modern finite CHUNK/END packets removed;
-- project-prototype `audioPlayStaged()` removed;
-- transport availability distinguishes missing data from real EOF.
+- no modern finite CHUNK/END packets;
+- project-prototype `audioPlayStaged()` removed.
 
-Remaining M1F completion work:
-
-- add a true sliding consume/discard encoded-window operation which preserves useful unread prefetched bytes;
-- close the remaining deterministic component matrix for request identity/relevance/stale completion, shutdown integration, packet bounds/codecs, and client BEGIN/STATE anchor gating;
-- record focused Minecraft range-transport acceptance if/when runtime proof is wanted.
-
-M1E is no longer part of this completion gate.
+Focused real-Minecraft transport acceptance remains unrecorded. M1F audibility was never required.
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
-**Not started.**
+**Next; not started.**
 
 Goal:
 
@@ -104,10 +98,10 @@ M1F bounded sliding encoded window
 
 MP3 requirements:
 
-- progressive decode using the proven exact dependency path;
+- progressive decode from M1F encoded data;
 - network starvation waits/refills instead of becoming EOF;
 - Layer III reservoir pre-roll from an earlier encoded anchor;
-- seek/resume/rejoin cancellation safety;
+- seek/resume/replacement cancellation safety;
 - no sound-thread network/disk/decode blocking.
 
 Common WAV final target:
@@ -120,7 +114,7 @@ Common WAV final target:
 - stereo safely downmixed to mono;
 - >2 channels and unusual/compressed/telephony WAV rejected.
 
-M1G removes active reliance on the obsolete JavaSound/mp3spi complete-file decoder and narrows active prepared/local advertisement to formats the new engine actually implements.
+M1G should remove active reliance on the obsolete JavaSound/mp3spi complete-file decoder and narrow active prepared/local advertisement to formats the new engine actually implements.
 
 ## M1H — dynamic listener lifecycle/recovery
 
@@ -131,6 +125,8 @@ M1G removes active reliance on the obsolete JavaSound/mp3spi complete-file decod
 - underrun refill/rejoin without canonical pause;
 - stale generations cannot restart old sound;
 - VS2 movement lifecycle.
+
+M1F's current relevance checks remain the admission/completion safety layer; M1H adds proactive discovery/recovery.
 
 ## M1I — gated native FLAC
 

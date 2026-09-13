@@ -4,7 +4,7 @@
 
 Prefer deterministic tests first, then focused Minecraft acceptance, then final batched integration acceptance.
 
-A green Gradle/CI build proves compilation, tests which actually exist, and package structure. It does **not** by itself prove audibility, renderer lifecycle, live network timing, reload behavior, or positional audio.
+A green Gradle/CI build proves compilation, the tests which actually exist, and package structure. It does **not** by itself prove audibility, renderer lifecycle, live network timing, reload behavior, or positional audio.
 
 Target matrix:
 
@@ -13,9 +13,11 @@ Target matrix:
 - NeoForge 21.1.247
 - NeoForge 21.1.248
 
-## Current M1E checkpoint
+## Current final checkpoints
 
-Final M1E code candidate:
+### M1E
+
+Code candidate:
 
 `521d4323d9216c8a99e8ec60426997c3330c4068`
 
@@ -23,117 +25,144 @@ CI:
 
 `34757923455`
 
-Both target NeoForge jobs passed:
+The final focused Minecraft M1E script was explicitly skipped by the owner; no final M1E runtime PASS is recorded.
 
-- build/compile;
-- complete project tests;
-- packaged-mod verification;
-- artifact upload.
+### M1F
 
-Baseline 21.1.247 JAR SHA-256:
+Source/test candidate:
 
-`da7e537955afbed98e00ba09b89301005fc09fe951ca4b2903d5dc69cd977c82`
+`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
 
-The final focused Minecraft M1E script was previously skipped by explicit owner decision, so there is no recorded final runtime PASS.
+CI:
 
-## Deterministic M1E evidence
+`34763362365`
 
-### `FinitePlaybackStateMachineTest`
+Both target NeoForge jobs passed build, all tests, packaged-mod verification, and artifact upload.
 
-Tests the production semantic component used by `HQFiniteMediaServer` and proves:
+Baseline 21.1.247 candidate:
 
-- immediate PLAYING state and clock progression;
-- pause freezes canonical position;
-- resume continues from the paused position;
-- non-looping exact-duration seek becomes terminal ENDED;
-- looping exact-duration seek wraps to zero and remains active;
-- natural EOF becomes canonical ENDED;
-- terminal controls are rejected;
-- server ERROR freezes the canonical position;
-- error detail remains stable;
-- volume clamps to the supported range and rejects non-finite inputs.
+- artifact id `10319592968`;
+- artifact ZIP SHA-256 `b971f027cad9c22265e3080f17725859fa447ce71cd1d2d0a14f2d1710b1c131`;
+- JAR `hqspeaker-1.1.4-1.21.1-neoforge.jar`;
+- JAR SHA-256 `2979b53f1c9903c491dda0cb3ba4a46cfff0ad4924910a974b3aaaff3e9acc32`.
 
-### `FinitePlaybackClockTest`
+Focused Minecraft M1F transport acceptance is not recorded.
 
-Separately proves core clock arithmetic:
+## M1E deterministic evidence
 
-- immediate progression without renderer handshake;
-- pause/resume;
-- loop rebasing;
-- exact-end behavior;
-- non-loop natural EOF detection;
-- looping clocks never report natural EOF.
+`FinitePlaybackStateMachineTest`, `FinitePlaybackClockTest`, `BestEffortProjectionTest`, and `MediaAssetReleaseQueueTest` cover canonical finite state/clock/error/projection/release behavior. `M1E-FINAL-HARDENING-2026-09-13.md` records the exact matrix.
 
-### `BestEffortProjectionTest`
+## M1F deterministic/component evidence
 
-Proves projection failures are contained rather than escaping canonical work, including the case where failure reporting itself throws.
+### `FiniteRangeValidationTest`
 
-Production `HQFiniteMediaServer` additionally isolates broadcast send work per recipient, so one failed nearby player does not abort later recipients.
+Proves the pure rules used by the M1F wire/server path:
 
-### `MediaAssetReleaseQueueTest`
+- non-null source/asset identity;
+- positive generation;
+- non-negative offsets;
+- positive bounded range length;
+- exact shared 128 KiB maximum;
+- source/asset/generation matching;
+- asset-end bounds;
+- stale generation/asset completion rejection;
+- same-dimension/not-removed/in-range relevance rule.
+
+`HQFiniteMediaRangeRequestPacket` and `HQFiniteMediaRangeDataPacket` delegate their range sanity to this shared validator. The response codec additionally checks length before allocating the byte array.
+
+### `FiniteRangeReadServiceTest`
 
 Proves:
 
-- a failed logical asset release transfers ownership to the retry queue;
-- retry ownership remains queued across repeated failure;
-- successful later release clears the queued responsibility;
-- a genuinely missing asset is treated as resolved rather than queued forever.
+- exact arbitrary offset reads;
+- completion runs on the dedicated `hqspeaker-range-io-*` worker rather than the submitting thread;
+- per-player outstanding request/byte limits;
+- accepted work takes a separate MediaAsset retain;
+- original owner release does not invalidate queued work;
+- invalid/over-budget work is rejected before IO;
+- queued shutdown cancellation releases asset lease and player accounting;
+- failed in-flight final release transfers to the shared retry owner;
+- a later retry can finish that release;
+- an initial shutdown timeout does not close the asset store and the service close can be retried.
 
-### Existing asset/range tests used by the M1E lifetime recheck
+### `FiniteRangeWindowTest`
 
-`MediaAssetStoreTest` and `FiniteRangeReadServiceTest` remain relevant to the shared ownership foundation. The source recheck also verified server shutdown ordering: range IO closes/drains before store cleanup, while speaker/peripheral cleanup happens before `ServerMediaAssets.closeServer()`.
+Proves:
 
-## What M1E source review additionally proves
+- a fresh window is unanchored and cannot request bytes before authoritative anchor/reset;
+- arbitrary non-zero anchor demand;
+- exact response acceptance;
+- bounded allocation independent of full asset size;
+- re-anchor discards stale data/demand;
+- stale response rejection;
+- temporary missing bytes are NEED_DATA, not TRUE_ASSET_EOF;
+- request timeout/retry;
+- malformed responses do not wedge demand;
+- forward `advanceTo(...)` preserves unread overlap;
+- consumed prefix is discarded;
+- only whole still-useful in-flight requests survive a slide;
+- new tail demand opens as the window advances;
+- repeated advance/refill past more than one window remains bounded.
 
-Some M1E behavior depends on Minecraft/CC:T objects and is not instantiated by a pure unit test. The final source review verified:
+### `FiniteRangeTransportTest`
 
-- all throwable prepared-start construction happens before canonical session installation;
-- work after session installation is best-effort client/Lua projection;
-- each nearby client send is isolated independently;
-- each attached ComputerCraft state-event delivery is isolated;
-- playback release responsibility always transfers to either the store or retry queue;
-- terminal END/ERROR playback releases its playback asset reference;
-- new prepared play can replace a terminal finite session safely;
-- client READY requests fresh state only;
-- client ERROR is diagnostic only;
-- cleanup removes finite server registration and releases finite/staging ownership before store shutdown.
+This is the original M1F fake-consumer proof as one component flow:
 
-These are source-reviewed implementation facts. They are not being mislabeled as a real Minecraft failure-injection test.
+```text
+2 MiB MediaAsset
+-> non-zero bounded demand
+-> actual async server read service
+-> exact bytes into FiniteRangeWindow
+-> repeated consume/advance/refill beyond one full window
+-> distant jump/re-anchor
+-> old region becomes stale
+-> exact bytes still match
+-> memory remains bounded
+```
 
-## Focused Minecraft M1E acceptance boundary
+It intentionally does not instantiate Minecraft rendering/network objects.
 
-`scripts/m1e_server_authority_test.lua` checks the normal user-facing semantic path, including immediate progression, pause/resume, exact-end behavior, generation replay, looping exact-end wrap, stop, and prepared release.
+## Source-reviewed M1F integration facts
 
-The owner explicitly chose not to run the final strengthened script.
+Some M1F routing/lifecycle behavior depends on Minecraft objects and is therefore verified by source composition plus the pure rules above rather than a fake `ServerPlayer` unit test:
 
-Record this exactly as:
+- wrong source is rejected by source routing and again by the shared request validator;
+- request admission checks active non-terminal playback and current relevance;
+- range completion rechecks active generation/asset, resolves the current player by UUID, and rechecks relevance before send;
+- missing/disconnected players therefore discard completion;
+- stale replacement completions discard before send;
+- client BEGIN only creates an unanchored window and reports READY;
+- authoritative STATE supplies the first anchor and unlocks demand;
+- seek/state re-anchor invalidates obsolete window demand;
+- modern client has no complete-song `.part/.media` write path;
+- current source tree has no modern finite CHUNK/END packet classes;
+- composite has no `audioPlayStaged()` command;
+- server stop clears speaker/peripheral ownership before `ServerMediaAssets.closeServer()`;
+- `ServerMediaAssets.closeServer()` drains range IO before store close.
+
+These source facts are not being mislabeled as a real Minecraft network run.
+
+## Focused Minecraft evidence boundaries
+
+### M1E
+
+`scripts/m1e_server_authority_test.lua` exists, but the owner explicitly chose not to run the final strengthened acceptance. Record:
 
 ```text
 M1E final manual Minecraft acceptance: skipped / no recorded PASS
 ```
 
-Do not infer PASS from CI.
+### M1F
 
-## Current M1F deterministic gap
+No focused real client/server M1F transport PASS is recorded. A future runtime check may inspect range behavior, absence of modern client song files, seek/replacement stale-work behavior, and clean server shutdown, but source/test/CI completion does not depend on pretending that run already happened.
 
-M1F range transport remains provisional. Existing `FiniteRangeWindowTest` and `FiniteRangeReadServiceTest` cover important bounded-transport pieces, but M1F still lacks the complete promised deterministic matrix.
-
-Still-open M1F proof includes:
-
-- complete server source/generation/asset/relevance request-path component coverage;
-- stale completion after replacement/leave/disconnect;
-- packet codec/bounds integration;
-- client BEGIN/STATE anchor gating;
-- a true sliding consume/discard window progression test across data larger than one window;
-- focused Minecraft range-transport acceptance.
-
-The M1E state-machine/projection/release gaps previously listed here are now closed.
+M1F audibility is not required.
 
 ## M1G proof boundary
 
 M1G has not started. It must later prove:
 
-- progressive MP3 decode from bounded transport;
+- progressive MP3 decode from bounded M1F data;
 - temporary starvation is not decoder EOF;
 - Layer III pre-roll;
 - common WAV integer/float conversion;

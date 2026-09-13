@@ -2,7 +2,7 @@
 
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
-Current source facts in this file are based on M1E hardening code candidate `521d4323d9216c8a99e8ec60426997c3330c4068` unless stated otherwise.
+Current source/test facts in this file use M1F finalization candidate `d0acd41df690d02c9813ecd7e84d3115b44f6a3f` unless stated otherwise.
 
 ## Repository/platform
 
@@ -10,7 +10,7 @@ Current source facts in this file are based on M1E hardening code candidate `521
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`.
 
-Current hardening branch: `codex/m1e-final-hardening`.
+Current branch: `codex/m1f-finalization`.
 
 Important checkpoints:
 
@@ -20,9 +20,12 @@ Important checkpoints:
 - M1C/config base: `33bcc6e04a2734500b7b15b84bee884562539216`;
 - frozen M1D: `4a2cd5de96228fc091226c7e72fb669b82be258c`;
 - original M1E semantics: `d0e66ab9135359627086c13647d5241ad778643f`;
-- historical M1E finalization candidate: `38cb2a4ce2eac599c58aab9322b23a4e7667e45c`;
-- M1F Java/source checkpoint before reevaluation: `934e74b8ff619178d703f73df8a16ee97b3fc2af`;
-- M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`.
+- M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`;
+- pre-finalization M1F transport checkpoint: `934e74b8ff619178d703f73df8a16ee97b3fc2af`;
+- M1F sliding/validation pass: `80d4fd983a7595101d5c8b8fa26011c6e79cd880`;
+- M1F validation/shutdown hardening: `3654a6018d50469a1e8f0a3d19543ae6a7ab8fcd`;
+- M1F in-place sliding refinement: `c579ddf3589a448d80e62df584358d5053a29e1d`;
+- M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`.
 
 ### FACT-PLATFORM-001
 
@@ -36,34 +39,37 @@ Target stack:
 
 ### FACT-CI-001
 
-M1E final hardening CI run `34757923455` passed both target NeoForge versions, including build/tests, packaged-mod verification, and artifact upload.
+M1E final hardening CI run `34757923455` passed both target NeoForge versions.
 
-Baseline 21.1.247 final-hardening artifact:
+M1F finalization CI run `34763362365` passed both target NeoForge versions, including build/tests, packaged-mod verification, and artifact upload.
 
-- artifact id `10317494766`;
-- artifact ZIP SHA-256 `1a8231afab97b0374063301bd586e82c94f1306e39ccbf77ad048e6330d615a5`;
+M1F 21.1.247 artifact:
+
+- artifact id `10319592968`;
+- artifact ZIP SHA-256 `b971f027cad9c22265e3080f17725859fa447ce71cd1d2d0a14f2d1710b1c131`;
 - JAR `hqspeaker-1.1.4-1.21.1-neoforge.jar`;
-- JAR SHA-256 `da7e537955afbed98e00ba09b89301005fc09fe951ca4b2903d5dc69cd977c82`.
+- JAR SHA-256 `2979b53f1c9903c491dda0cb3ba4a46cfff0ad4924910a974b3aaaff3e9acc32`.
 
-NeoForge 21.1.248 artifact id is `10317912658`, artifact ZIP SHA-256 `d4d359bf276e5d8d3b615a52d4f4a748c58799102a7063711bda6df0d6f0b05e`.
+M1F 21.1.248 artifact:
+
+- artifact id `10319563040`;
+- artifact ZIP SHA-256 `131a250297ec3570c1ed1e0c61cc1d6b7569dff8ecc86d80080cb1ad345ff062`.
 
 CI is not Minecraft runtime proof.
+
+### FACT-CI-002
+
+The first M1F finalization attempt `34762952499` failed only in test compilation because a new unit test directly referenced a Minecraft packet superclass unavailable on the pure test classpath. Main `compileJava` succeeded. The packet range rule was moved into a pure shared validator used by both packet/server paths; subsequent finalization runs passed.
 
 ## Packaging/build
 
 ### FACT-BUILD-001
 
-The packaged JAR embeds:
+The packaged JAR embeds the established exact sound-library versions while retaining their compatibility ranges:
 
-- JLayer `1.0.1.4` with compatibility range `[1.0.1.4,1.0.2)`;
-- mp3spi `1.9.5.4` with compatibility range `[1.9.5.4,1.9.6)`;
-- Tritonus Share `0.3.7.4` with compatibility range `[0.3.7.4,0.3.8)`.
-
-The Gradle declaration prefers the exact bundled version while retaining the compatibility range. This avoids dynamic range metadata lookup during dependency resolution.
-
-### FACT-BUILD-002
-
-Before the exact-version preference was added, two CI attempts failed before Java compilation because NeoForged Maven returned HTTP 502 while Gradle attempted to list versions for the ranged sound-library dependencies.
+- JLayer `1.0.1.4` / range `[1.0.1.4,1.0.2)`;
+- mp3spi `1.9.5.4` / range `[1.9.5.4,1.9.6)`;
+- Tritonus Share `0.3.7.4` / range `[0.3.7.4,0.3.8)`.
 
 ## CC:T base contract
 
@@ -91,27 +97,15 @@ Native `speaker_audio_empty` remains owned by standard CC:T `playAudio`. HQ RAW 
 
 ### FACT-ASSET-003
 
-`MediaAssetReleaseQueue` is the retry owner for logical releases which fail. Callers transfer responsibility to the queue instead of forgetting the still-live reference.
+`MediaAssetReleaseQueue` is the retry owner for logical releases which fail. Playback, prepared/detached/rejected cleanup, and accepted range-read leases use it.
 
 ### FACT-ASSET-004
 
-Playback, prepared/detached staging ownership, rejected prepared assets, and accepted range-read leases use the shared retry-safe release path.
+Server shutdown clears speaker composites before closing shared media services. `ServerMediaAssets.closeServer()` closes/drains range IO before closing the asset store.
 
 ### FACT-ASSET-005
 
-`ServerMediaAssets` owns one shared store, release queue, and bounded finite range-read service per Minecraft server.
-
-### FACT-ASSET-006
-
-Server shutdown clears speaker composites before closing shared media services. `ServerMediaAssets.closeServer()` closes/drains range IO before closing the asset store.
-
-### FACT-ASSET-007
-
-ComputerCraft local files are copied through temporary writable staging, imported into a MediaAsset, and played through prepared-asset ownership. Playback takes a separate asset reference.
-
-### FACT-ASSET-008
-
-The bundled Lua module exposes `prepareFile`, `preparedInfo`, `playPrepared`, `releasePrepared`, and `playFile`.
+ComputerCraft local files use temporary writable staging only to import immutable MediaAssets. The bundled Lua module exposes `prepareFile`, `preparedInfo`, `playPrepared`, `releasePrepared`, and `playFile`.
 
 ## M1D analysis facts
 
@@ -121,7 +115,7 @@ The bundled Lua module exposes `prepareFile`, `preparedInfo`, `playPrepared`, `r
 
 ### FACT-M1D-002
 
-Frozen M1D historically analyzed MP3, OGG Vorbis, WAV, AIFF, and AU. That historical breadth does not define the final product promise.
+Historical analyzer breadth does not define final prepared/local support. Core final target remains MP3 plus implemented common WAV; native FLAC is gated later.
 
 ### FACT-M1D-003
 
@@ -131,9 +125,7 @@ MP3 analysis records coarse encoded seek points. Final common-WAV direct time-to
 
 ### FACT-M1E-001
 
-Canonical finite states are `PLAYING`, `PAUSED`, `ENDED`, and `ERROR`.
-
-A successful prepared play installs a server-owned session whose clock starts immediately. It does not wait for client READY or renderer setup.
+Canonical finite states are PLAYING, PAUSED, ENDED, and ERROR. Successful prepared playback starts the server clock immediately.
 
 ### FACT-M1E-002
 
@@ -141,112 +133,116 @@ Server duration/clock determines natural EOF. Non-looping exact-duration seek en
 
 ### FACT-M1E-003
 
-Client finite status is READY or diagnostic ERROR. Client decode/render/transport state does not own canonical playback.
+Client finite status is READY or diagnostic ERROR. Client transport/decode/render state does not own canonical playback.
 
 ### FACT-M1E-004
 
-Server-side ERROR freezes canonical position at the failure instant.
+Server ERROR freezes position. Prepared-start throwable work completes before canonical session installation. Client/Lua projection is best-effort and per-recipient isolated.
 
 ### FACT-M1E-005
 
-Prepared-start construction/snapshot work which can throw is completed before canonical session installation. Work after installation is best-effort projection.
-
-### FACT-M1E-006
-
-Client network projection is exception-contained and broadcasts isolate each relevant player independently. One recipient's runtime send failure does not abort canonical state or later recipients.
-
-### FACT-M1E-007
-
-Lua state-event projection is best-effort per attached computer.
-
-### FACT-M1E-008
-
-Playback release hands responsibility to `MediaAssetReleaseQueue`. A final-file deletion failure cannot make the session silently forget a still-live reference.
-
-### FACT-M1E-009
-
-Current deterministic M1E-specific coverage includes `FinitePlaybackClockTest`, `FinitePlaybackStateMachineTest`, `BestEffortProjectionTest`, and `MediaAssetReleaseQueueTest`.
-
-### FACT-M1E-010
-
-The final M1E manual Minecraft acceptance script was not run to a recorded PASS because the owner explicitly chose to skip it.
-
-### FACT-M1E-011
-
-The 2026-09-12 runtime diagnostic showed server state/control continuing while the obsolete client MP3 bridge failed after decoder setup. This supports authority separation but is not the skipped final M1E acceptance run.
-
-### FACT-M1E-012
-
 M1E source/test/CI hardening is complete at `521d4323d9216c8a99e8ec60426997c3330c4068`.
 
-The remaining missing final Minecraft PASS is an explicit waived runtime-evidence boundary, not an open M1E source blocker.
+The final M1E focused Minecraft acceptance was explicitly skipped by the owner; no final runtime PASS is recorded.
 
-## M1F current transport facts
+## M1F transport facts
 
 ### FACT-M1F-001
 
-HQ protocol version is `5`. Modern finite transport uses bounded range requests/data instead of whole-file CHUNK/END transfer.
+HQ protocol version is `5`. Modern finite transport uses bounded `HQFiniteMediaRangeRequestPacket` / `HQFiniteMediaRangeDataPacket`, not whole-file CHUNK/END transfer.
 
 ### FACT-M1F-002
 
-`HQFiniteMediaStatePacket` carries authoritative semantic state plus server-selected `anchorOffset` and `anchorTime`. The M1F client waits for STATE before first range demand.
+`HQFiniteMediaStatePacket` carries server-selected `anchorOffset` and `anchorTime`. The client waits for authoritative STATE before first byte demand.
+
+A newly constructed `FiniteRangeWindow` is unanchored; `nextRequest()` returns empty until `reset(anchor)` is applied.
 
 ### FACT-M1F-003
 
 Current implementation bounds are:
 
-- max range response: 128 KiB;
-- active finite client encoded window: 512 KiB;
+- max range: 128 KiB;
+- active client encoded window: 512 KiB;
 - max outstanding requests/player: 4;
-- max outstanding encoded bytes/player: 512 KiB;
+- max outstanding bytes/player: 512 KiB;
 - server range IO workers: 2;
 - server range IO queue: 64.
 
-These are implementation values, not permanent public API guarantees.
+These are tuning values, not frozen public API.
 
 ### FACT-M1F-004
 
-Accepted range work retains the MediaAsset before queueing and releases that lease through the shared retry-safe release path.
+`FiniteRangeValidation` is a pure shared rule used by packet/server range admission. It validates wire range sanity plus source/asset/generation/bounds and exposes the current listener-relevance rule.
 
 ### FACT-M1F-005
 
-Before successful range data is sent, the server rechecks current session generation/asset and current player relevance.
+Accepted range work retains the MediaAsset before queueing. The worker opens/positions/reads the encoded asset off the submitting/server thread and releases its temporary lease through the shared retry queue.
 
 ### FACT-M1F-006
 
-`FiniteRangeWindow` distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE and supports arbitrary re-anchor/reset.
-
-It currently has no consume/discard/advance method which slides the live window while preserving unread prefetched bytes.
+Before range data is sent, `HQFiniteMediaServer.completeRange()` requires the current session generation/asset, resolves the current player by UUID, and requires current relevance. Stale replacement, disconnected, removed, wrong-dimension, or out-of-range completions are discarded rather than reviving old transport state.
 
 ### FACT-M1F-007
 
-Modern prepared client transport no longer creates complete-song `.part/.media` files and no longer uses `FileFiniteAudioStream` as its prepared transport consumer.
+`FiniteRangeReadService` enforces bounded per-player request/byte accounting. Queued cancellation releases accounting and asset lease.
+
+Its close path can be retried after a shutdown wait timeout; the media store is not closed until range-service close succeeds.
 
 ### FACT-M1F-008
 
-The project-specific prototype API `audioPlayStaged()` is removed from current source.
+`FiniteRangeWindow` distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE.
+
+It supports arbitrary reset/re-anchor and forward `advanceTo(...)` sliding. Sliding drops consumed prefix data, preserves useful unread overlap, keeps only whole still-useful pending requests, and opens new tail demand.
+
+Partial forward sliding shifts the byte buffer in place instead of allocating another full client window.
 
 ### FACT-M1F-009
 
-M1F deterministic acceptance remains incomplete relative to the original pre-M1F matrix, and no focused M1F Minecraft runtime transport PASS is recorded.
+`FiniteRangeWindowTest` proves anchor gating, non-zero offsets, stale response rejection, missing-vs-EOF, retry, malformed-response recovery, sliding prefetch preservation, in-flight request handling, and repeated bounded refill beyond one window.
 
 ### FACT-M1F-010
 
-M1F does not decode/render prepared MP3/WAV. M1G owns progressive decode, PCM, and audible positional rendering.
+`FiniteRangeReadServiceTest` proves exact arbitrary reads, dedicated-worker execution, per-player limits, in-flight asset lifetime, queued shutdown cleanup, deferred release retry ownership, and retryable shutdown timeout behavior.
+
+### FACT-M1F-011
+
+`FiniteRangeTransportTest` is an integrated fake consumer: a 2 MiB MediaAsset is range-read asynchronously into the bounded client window, advanced/refilled beyond one window, re-anchored to a distant offset, and byte-checked while bounded.
+
+### FACT-M1F-012
+
+Modern `HQFiniteMediaClient` does not create complete-song `.part/.media` files and does not use `FileFiniteAudioStream` as the modern prepared transport consumer.
+
+### FACT-M1F-013
+
+Current source tree has no modern `HQFiniteMediaChunkPacket` or `HQFiniteMediaEndPacket` classes.
+
+### FACT-M1F-014
+
+The project-specific prototype `audioPlayStaged()` is absent from the current composite/API. Temporary staging remains import plumbing for prepare/playFile.
+
+### FACT-M1F-015
+
+M1F source/test/CI/package completion is recorded at `d0acd41df690d02c9813ecd7e84d3115b44f6a3f` / CI `34763362365`.
+
+No focused real-Minecraft M1F transport PASS is recorded.
+
+### FACT-M1F-016
+
+M1F intentionally does not decode/render prepared MP3/WAV. M1G owns progressive decode, PCM, and audible positional rendering.
 
 ## Later facts
 
 ### FACT-NEXT-001
 
-M1G has not started.
+M1G has not started and is the next implementation milestone.
 
 ### FACT-NEXT-002
 
-Full dynamic listener late-entry/leave-return/rejoin lifecycle remains M1H.
+Full dynamic listener late-entry/leave-return/rejoin lifecycle remains M1H. M1F only enforces current relevance on range work.
 
 ### FACT-NEXT-003
 
-Native FLAC is not currently proven as final support; it remains gated later work.
+Native FLAC remains gated later work.
 
 ### FACT-NEXT-004
 
