@@ -31,7 +31,7 @@ CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, p
 
 Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-A later 2026-09-14 full repository/source/docs audit reconciled stale documentation and recorded additional correctness/evidence findings without changing implementation.
+Later 2026-09-14 repository/source/docs audits reconciled stale documentation and recorded additional correctness/evidence findings without changing implementation.
 
 Focused real-Minecraft M1F transport acceptance is not recorded. Focused audible M1G Minecraft acceptance is also not recorded. Green CI/component proof is not runtime proof.
 
@@ -65,14 +65,11 @@ Locked choices remain:
 
 Modern prepared/local support is MP3 + supported common WAV. Historical OGG/AIFF/AU support in legacy code does not define the modern prepared surface.
 
-Open current items are tracked in `docs/KNOWN-ISSUES.md`:
+Current blockers are tracked in `docs/KNOWN-ISSUES.md`. The highest-priority cluster is decoder epoch/reanchor correctness: KI-053 (same-anchor window rewind), KI-056 (expected SEEK cancellation can race into fatal decoder error), and KI-057 (STATE currently conflates timeline snapshots with decoder-reanchor intent). These should be solved coherently rather than patching KI-053 alone.
 
-- KI-051 — owner choice for audible loop-wrap rejoin: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart;
-- KI-053 — same-anchor STATE can reset a slid encoded window without restarting the live decoder epoch;
-- KI-054 — shutdown deletion failure loses retry bookkeeping and can also skip media-services registry cleanup;
-- KI-055 — real-MP3 progressive integration and focused renderer-adapter deterministic coverage are incomplete.
+Other current items include KI-058 through KI-060 for live volume/attenuation, server relevance and silent/failed renderer starts; KI-055 for missing real-MP3/renderer deterministic proof; KI-061 for leftover per-speaker staging directories/files; and KI-054 for shutdown deletion retry/registry cleanup. Loop-wrap policy KI-051 remains an owner choice between L1 client EOF refresh, L2 server wrap STATE, and L3 client local modulo/restart.
 
-No implementation fix was made during the 2026-09-14 documentation audit.
+No implementation fix was made during these documentation/source audits.
 
 ## Lua finite-file API
 
@@ -107,7 +104,7 @@ See `docs/LUA-API.md`.
 
 - **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
 - **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + positional renderer — integrated in source; correctness/evidence work and loop-wrap policy remain.
+- **M1G:** progressive MP3/common-WAV decode + positional renderer — integrated in source; correctness/evidence work and owner decisions remain.
 - **M1H:** dynamic listener/late-join/leave-return/recovery.
 - **M1I:** optional gated native FLAC.
 - later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
