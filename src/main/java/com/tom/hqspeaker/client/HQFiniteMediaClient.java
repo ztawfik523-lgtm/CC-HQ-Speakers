@@ -37,6 +37,7 @@ public final class HQFiniteMediaClient {
         final FiniteRangeWindow window;
         long anchorOffset;
         double anchorTime;
+        boolean anchorReady;
         boolean terminal;
 
         Session(HQFiniteMediaBeginPacket begin) {
@@ -69,6 +70,7 @@ public final class HQFiniteMediaClient {
         }
         long now = System.nanoTime();
         SESSIONS.forEach((source, session) -> {
+            if (!session.anchorReady) return;
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
             pump(session, now);
         });
@@ -88,8 +90,8 @@ public final class HQFiniteMediaClient {
 
         Session session = new Session(packet);
         SESSIONS.put(packet.source(), session);
-        // Wait for the fresh authoritative STATE before requesting bytes so the first demand starts at the
-        // server-selected current/seek anchor instead of assuming byte zero from BEGIN alone.
+        // BEGIN describes the asset/source, but demand must wait for fresh authoritative STATE so the server chooses
+        // the current encoded anchor. This matters for delayed READY, seek, and later rejoin behavior.
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
     }
 
@@ -110,19 +112,20 @@ public final class HQFiniteMediaClient {
             return;
         }
 
-        if (packet.anchorOffset() != session.anchorOffset) {
+        if (!session.anchorReady || packet.anchorOffset() != session.anchorOffset) {
             session.anchorOffset = packet.anchorOffset();
             session.anchorTime = packet.anchorTime();
             session.window.reset(packet.anchorOffset());
         } else {
             session.anchorTime = packet.anchorTime();
         }
+        session.anchorReady = true;
         pump(session, System.nanoTime());
     }
 
     private static void rangeData0(HQFiniteMediaRangeDataPacket packet) {
         Session session = SESSIONS.get(packet.source());
-        if (!matches(session, packet.assetId(), packet.generation()) || session.terminal) return;
+        if (!matches(session, packet.assetId(), packet.generation()) || session.terminal || !session.anchorReady) return;
         if (session.window.accept(packet.offset(), packet.data())) pump(session, System.nanoTime());
         // A stale response after seek/replacement is intentionally discarded without becoming a playback error.
     }
@@ -139,7 +142,7 @@ public final class HQFiniteMediaClient {
     }
 
     private static void pump(Session session, long nowNanos) {
-        if (session.terminal) return;
+        if (session.terminal || !session.anchorReady) return;
         while (session.window.pendingRequests() < MAX_IN_FLIGHT_REQUESTS) {
             var next = session.window.nextRequest(FiniteRangeLimits.MAX_RANGE_BYTES, nowNanos);
             if (next.isEmpty()) return;
