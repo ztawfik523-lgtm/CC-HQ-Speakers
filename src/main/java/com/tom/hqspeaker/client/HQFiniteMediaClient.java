@@ -17,18 +17,15 @@ import net.neoforged.api.distmarker.OnlyIn;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * M1F finite client transport only.
- *
- * <p>The old complete-file .part/.media bridge and FileFiniteAudioStream are intentionally gone from the modern
- * prepared path. M1G will consume this bounded encoded window progressively and create the audible renderer.</p>
- */
+/** M1F bounded transport plus the local M1G decoder-epoch boundary. */
 @OnlyIn(Dist.CLIENT)
 public final class HQFiniteMediaClient {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
     private static final int MAX_SESSIONS = 128;
     private static final int MAX_IN_FLIGHT_REQUESTS = 2;
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
+    private static final int MIN_PCM_QUEUE_BYTES = 32 * 1024;
+    private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
 
     private HQFiniteMediaClient() {}
 
@@ -37,12 +34,31 @@ public final class HQFiniteMediaClient {
         final FiniteRangeWindow window;
         long anchorOffset;
         double anchorTime;
+        double targetPosition;
+        long decodeEpoch;
         boolean anchorReady;
+        boolean restartRequested;
         boolean terminal;
+        FiniteEncodedInputStream encodedInput;
+        FinitePcmQueue pcmQueue;
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
             this.window = new FiniteRangeWindow(begin.totalBytes(), FiniteRangeLimits.CLIENT_WINDOW_BYTES);
+        }
+
+        void cancelDecodeEpoch() {
+            FiniteEncodedInputStream input = encodedInput;
+            encodedInput = null;
+            if (input != null) input.cancel();
+            FinitePcmQueue pcm = pcmQueue;
+            pcmQueue = null;
+            if (pcm != null) pcm.cancel();
+        }
+
+        void cancelAll() {
+            cancelDecodeEpoch();
+            window.cancel();
         }
     }
 
@@ -77,7 +93,7 @@ public final class HQFiniteMediaClient {
     }
 
     public static void stopAll() {
-        SESSIONS.forEach((source, session) -> session.window.cancel());
+        SESSIONS.forEach((source, session) -> session.cancelAll());
         SESSIONS.clear();
     }
 
@@ -86,12 +102,12 @@ public final class HQFiniteMediaClient {
         if (!SESSIONS.containsKey(packet.source()) && SESSIONS.size() >= MAX_SESSIONS) return;
 
         Session old = SESSIONS.remove(packet.source());
-        if (old != null) old.window.cancel();
+        if (old != null) old.cancelAll();
 
         Session session = new Session(packet);
         SESSIONS.put(packet.source(), session);
-        // BEGIN describes the asset/source, but demand must wait for fresh authoritative STATE so the server chooses
-        // the current encoded anchor. This matters for delayed READY, seek, and later rejoin behavior.
+        // BEGIN describes identity/layout, but byte demand and a decoder epoch wait for authoritative STATE so the
+        // server chooses the current codec-safe encoded anchor.
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
     }
 
@@ -102,7 +118,7 @@ public final class HQFiniteMediaClient {
         if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
                 || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
             session.terminal = true;
-            session.window.cancel();
+            session.cancelAll();
             SESSIONS.remove(packet.source(), session);
             return;
         }
@@ -112,21 +128,32 @@ public final class HQFiniteMediaClient {
             return;
         }
 
-        if (!session.anchorReady || packet.anchorOffset() != session.anchorOffset) {
-            session.anchorOffset = packet.anchorOffset();
-            session.anchorTime = packet.anchorTime();
+        boolean anchorChanged = !session.anchorReady || packet.anchorOffset() != session.anchorOffset;
+        boolean anchorOutsideWindow = session.window.anchored()
+            && (packet.anchorOffset() < session.window.windowStart() || packet.anchorOffset() >= session.window.windowEnd());
+        boolean restart = anchorChanged || session.restartRequested || session.encodedInput == null || session.pcmQueue == null;
+
+        if (!session.window.anchored() || anchorChanged || anchorOutsideWindow) {
             session.window.reset(packet.anchorOffset());
-        } else {
-            session.anchorTime = packet.anchorTime();
         }
+        session.anchorOffset = packet.anchorOffset();
+        session.anchorTime = packet.anchorTime();
+        session.targetPosition = packet.position();
         session.anchorReady = true;
+
+        if (restart) restartDecodeEpoch(session, packet.anchorOffset());
+        session.restartRequested = false;
         pump(session, System.nanoTime());
     }
 
     private static void rangeData0(HQFiniteMediaRangeDataPacket packet) {
         Session session = SESSIONS.get(packet.source());
         if (!matches(session, packet.assetId(), packet.generation()) || session.terminal || !session.anchorReady) return;
-        if (session.window.accept(packet.offset(), packet.data())) pump(session, System.nanoTime());
+        if (session.window.accept(packet.offset(), packet.data())) {
+            FiniteEncodedInputStream input = session.encodedInput;
+            if (input != null) input.signalDataAvailable();
+            pump(session, System.nanoTime());
+        }
         // A stale response after seek/replacement is intentionally discarded without becoming a playback error.
     }
 
@@ -135,10 +162,37 @@ public final class HQFiniteMediaClient {
         if (session == null || session.begin.generation() != packet.generation() || session.terminal) return;
         if (packet.action() == HQFiniteMediaControlPacket.Action.STOP) {
             session.terminal = true;
-            session.window.cancel();
+            session.cancelAll();
             SESSIONS.remove(packet.source(), session);
+            return;
         }
-        // Pause/resume/seek/loop/volume are semantic server state. Range demand re-anchors from STATE.
+        if (packet.action() == HQFiniteMediaControlPacket.Action.SEEK) {
+            // Codec state and queued PCM are semantic-seek state. Invalidate them even if STATE later selects the same
+            // coarse encoded anchor. Immutable encoded bytes may remain reusable until STATE decides whether to reset.
+            session.cancelDecodeEpoch();
+            session.restartRequested = true;
+        }
+        // Pause/resume/loop/volume remain server semantics; renderer projection is added later in M1G.
+    }
+
+    private static void restartDecodeEpoch(Session session, long startOffset) {
+        session.cancelDecodeEpoch();
+        try {
+            session.encodedInput = new FiniteEncodedInputStream(session.window, startOffset);
+            session.pcmQueue = new FinitePcmQueue(pcmQueueCapacity(session.begin.descriptor().sampleRate()));
+            session.decodeEpoch++;
+        } catch (RuntimeException e) {
+            session.encodedInput = null;
+            session.pcmQueue = null;
+            fail(session, "cannot create finite decoder epoch: " + safeMessage(e));
+        }
+    }
+
+    private static int pcmQueueCapacity(int sampleRate) {
+        // Roughly 500 ms of mono S16 at ordinary rates, with absolute bounds independent of hostile metadata.
+        long target = Math.max(MIN_PCM_QUEUE_BYTES, Math.min((long) MAX_PCM_QUEUE_BYTES, (long) sampleRate));
+        int bytes = (int) target;
+        return (bytes & 1) == 0 ? bytes : bytes + 1;
     }
 
     private static void pump(Session session, long nowNanos) {
@@ -165,10 +219,10 @@ public final class HQFiniteMediaClient {
     private static void fail(Session session, String error) {
         if (session.terminal) return;
         session.terminal = true;
-        HQSpeakerMod.warn("M1F finite client transport failed source=" + session.begin.source()
+        HQSpeakerMod.warn("M1G finite client failed source=" + session.begin.source()
             + " generation=" + session.begin.generation() + ": " + error);
         report(session, HQFiniteMediaStatusPacket.Transition.ERROR, error);
-        session.window.cancel();
+        session.cancelAll();
         SESSIONS.remove(session.begin.source(), session);
     }
 
@@ -178,5 +232,10 @@ public final class HQFiniteMediaClient {
                 session.begin.source(), session.begin.generation(), transition, 0.0, 0.0, error));
         } catch (RuntimeException ignored) {
         }
+    }
+
+    private static String safeMessage(Exception e) {
+        String message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
     }
 }
