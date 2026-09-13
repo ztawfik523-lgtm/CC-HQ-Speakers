@@ -4,7 +4,7 @@
 
 M1E server-authoritative finite semantics and M1F bounded demand-driven encoded transport are complete at the **source/test/CI/package** level.
 
-M1G has now **started** on:
+M1G has **started** on:
 
 `codex/m1g-progressive-finite-decode`
 
@@ -12,13 +12,15 @@ M1G preparation base:
 
 `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
+Current green M1G start source checkpoint:
+
+`fc99ec093528f1a8d6a975fab52c270e498dbb04`
+
+CI `34773448121` passed NeoForge 21.1.247 and 21.1.248 including tests, packaged-mod verification, and artifact upload.
+
 The chosen M1G architecture is recorded in `M1G-DESIGN-DECISIONS-2026-09-13.md`.
 
-Final M1F source/test candidate remains:
-
-`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
-
-Final M1F CI remains `34763362365`, with NeoForge 21.1.247 and 21.1.248 green. M1F documentation-head verification and the requested rerun also passed both targets.
+Final M1F source/test candidate remains `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`; final M1F CI remains `34763362365` with both targets green.
 
 Focused real-Minecraft M1F transport acceptance remains unrecorded. Green CI is not runtime proof.
 
@@ -31,9 +33,10 @@ ComputerCraft file
     -> server-selected encoded anchor
     -> bounded client-requested encoded ranges (M1F)
     -> bounded sliding client encoded RAM
-    -> progressive decoder/converter worker (M1G, in progress)
-    -> bounded mono signed-16 PCM at source sample rate
-    -> Minecraft AudioStream / SoundManager positional renderer
+    -> starvation-aware decoder-worker InputStream (implemented, not integrated)
+    -> progressive decoder/converter worker (next M1G integration)
+    -> bounded mono signed-16 PCM queue (implemented, not integrated)
+    -> Minecraft AudioStream / SoundManager positional renderer (next M1G integration)
 ```
 
 ## M1E evidence boundary
@@ -70,7 +73,7 @@ Focused real-Minecraft M1F transport acceptance is not recorded. M1F audibility 
 
 ## M1G decisions are resolved
 
-The earlier A/B/C decision gates are no longer open. The owner selected, after repeated source/web pressure-testing:
+The owner selected after repeated source/web pressure-testing:
 
 - **A1:** normal Minecraft `AudioStream` / `SoundManager` renderer;
 - **B1:** server-normalized common-WAV layout carried to clients;
@@ -80,43 +83,45 @@ The earlier A/B/C decision gates are no longer open. The owner selected, after r
 
 Important refinements:
 
-- output representation will normalize to mono signed 16-bit PCM while preserving sample rate;
-- renderer-facing reads must never wait on network/codec work;
+- output representation normalizes to mono signed 16-bit PCM while preserving sample rate;
+- renderer-facing reads never wait on network/codec work;
 - seek/replacement/stop discards the old local decoder/PCM/renderer epoch;
 - semantic seek restarts codec state even if the selected encoded anchor byte is unchanged;
 - temporary M1F starvation is never decoder EOF;
 - client decoder EOF is not canonical server EOF.
 
-See `M1G-DESIGN-DECISIONS-2026-09-13.md` for the locked rationale and boundaries.
+See `M1G-DESIGN-DECISIONS-2026-09-13.md`.
 
-## M1G implementation started
+## M1G implementation — green start checkpoint
 
-The first M1G slice is the format/layout/anchor foundation.
-
-Implemented on the M1G branch so far:
+Implemented and tested at `fc99ec093528f1a8d6a975fab52c270e498dbb04`:
 
 - `WavLayout`: normalized common-WAV representation/rate/channels/block-align/data-range facts;
-- `CommonWavAnalyzer`: bounded server parser for the chosen classic PCM/float + narrow WAVEX subset;
+- `CommonWavAnalyzer`: bounded parser for classic common PCM/float WAV plus the chosen narrow WAVEX subset;
+- parser respects the declared RIFF container boundary and rejects partial audio frames;
 - `ModernFiniteMediaAnalyzer`: modern prepared/local acceptance gate narrowed to MP3 + common WAV;
 - `FiniteDecodeDescriptor`: decoder-facing MP3/WAV-only contract;
 - `FiniteDecodeAnchorSelector`: exact WAV frame anchors plus E1 MP3 pre-roll anchor selection;
-- `MediaMetadata` can now carry normalized WAV layout while keeping the historical constructor for inherited analyzer paths;
+- `MediaMetadata` can carry normalized WAV layout while retaining the historical constructor for inherited paths;
 - `HQMediaStaging.prepareAsset(...)` now routes newly prepared assets through the modern MP3/common-WAV gate;
-- deterministic tests were added for common WAV/WAVEX normalization, decoder format narrowing, and codec-aware anchors.
+- `FiniteEncodedInputStream`: decoder-worker-only blocking view over `FiniteRangeWindow`; `NEED_DATA` waits, true asset EOF alone returns `-1`, cancel wakes waiters, progressive consumption advances the M1F window;
+- the encoded-input wait path rechecks while holding its signal monitor so a range arrival cannot be lost between probe and wait;
+- `FinitePcmQueue`: fixed-capacity mono-S16 ring; producer backpressure may block the decoder worker, while renderer reads are nonblocking and distinguish DATA / STARVED / EOF / CANCELLED;
+- cancellation discards stale PCM and wakes a blocked producer.
 
-This is a real production start, not only documentation, because newly prepared assets now use the M1G acceptance gate. The modern client is still silent at this checkpoint; progressive decode, bounded PCM, and renderer integration are the next implementation slices.
+Deterministic tests cover WAV/WAVEX normalization/rejection/bounds, descriptor narrowing, codec-aware anchors, starvation/refill/cancel/true-EOF input behavior, progressive range-window advancement, PCM backpressure, nonblocking starvation, EOF, cancellation, and S16 alignment.
 
-## Current M1G implementation order
+This is a real production start because newly prepared assets already use the M1G acceptance gate. The new encoded-input/PCM primitives are not yet wired into `HQFiniteMediaClient`, so the modern prepared path is still silent.
 
-1. finish/verify the normalized format/layout/anchor foundation;
-2. carry the MP3/common-WAV descriptor over the modern finite wire and use codec-aware anchors in server STATE;
-3. add a cancelable starvation-aware encoded-input bridge over M1F;
-4. add a bounded PCM queue with backpressure and nonblocking renderer reads;
-5. add progressive common-WAV conversion;
-6. add progressive JLayer MP3 decode with E1 pre-roll/discard;
-7. add the A1 Minecraft positional renderer;
-8. integrate pause/resume/seek/loop/volume/stop and stale-epoch cancellation;
-9. complete deterministic/component acceptance and focused Minecraft audible acceptance.
+## Next M1G implementation order
+
+1. carry the MP3/common-WAV descriptor over the modern finite wire and make server STATE use `FiniteDecodeAnchorSelector`;
+2. integrate decoder-epoch lifecycle, range-arrival signaling, and encoded-input creation/cancellation into `HQFiniteMediaClient`;
+3. progressive common-WAV conversion into `FinitePcmQueue`;
+4. progressive JLayer MP3 decode with E1 pre-roll and pre-target discard;
+5. A1 Minecraft `AudioStream` / `SoundManager` positional renderer;
+6. pause/resume/seek/loop/volume/stop and stale-epoch integration;
+7. deterministic/component completion and focused Minecraft audible acceptance.
 
 ## M1H boundary
 
@@ -127,23 +132,23 @@ Full late-entry, proactive leave cleanup, return/rejoin, dimension/resource relo
 ```text
 M1E final focused Minecraft acceptance: skipped / no recorded PASS
 M1F focused Minecraft transport acceptance: not recorded
-M1G implementation: started, not source-complete
+M1G implementation: started / in progress
+M1G current source checkpoint: PASS on both CI targets
 M1G audible runtime PASS: not recorded
 ```
 
 ## Current read order
 
 1. `M1G-DESIGN-DECISIONS-2026-09-13.md`
-2. `HANDOFF-2026-09-13-PRE-M1G.md` (historical preparation context; its owner-choice gate is superseded)
-3. `PRE-M1G-PREPARATION.md` (historical tradeoff analysis; decisions are now resolved)
-4. `M1F-FINALIZATION-2026-09-13.md`
-5. `CURRENT-STATE.md`
-6. `KNOWN-ISSUES.md`
-7. `TESTING.md`
+2. `HANDOFF-2026-09-13-M1G-START.md`
+3. `CURRENT-STATE.md`
+4. `TESTING.md`
+5. `KNOWN-ISSUES.md`
+6. `PRE-M1G-PREPARATION.md` for historical tradeoff analysis only
+7. `M1F-FINALIZATION-2026-09-13.md`
 8. `VERIFIED-FACTS.md`
 9. `ROADMAP.md`
-10. `M1E-FINITE-STREAMING-DESIGN.md`
-11. `LUA-API.md`
-12. exact current source and current CI
+10. `LUA-API.md`
+11. exact current source and current CI
 
 If a new correctness/design choice appears during implementation, stop and ask the owner before selecting among meaningful tradeoffs.
