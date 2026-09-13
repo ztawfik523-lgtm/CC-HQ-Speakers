@@ -6,37 +6,23 @@ Build a better programmable ComputerCraft speaker peripheral. Lua owns applicati
 
 Do not add permanent music/effect/notification roles or a Java playlist manager.
 
-## Current sequencing note — 2026-09-13
+## Current sequencing note — 2026-09-14
 
 M1E and M1F are complete at source/test/CI/package level.
 
-M1F final source/test candidate:
+M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`.
 
-`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
+M1G is in progress on `codex/m1g-progressive-finite-decode`.
 
-Final M1F CI:
+Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`.
 
-`34763362365`
-
-M1G is now **in progress** on:
-
-`codex/m1g-progressive-finite-decode`
-
-Preparation base:
-
-`aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
-
-Current green M1G start checkpoint:
-
-`fc99ec093528f1a8d6a975fab52c270e498dbb04`
-
-CI `34773448121` passed both NeoForge targets including tests, package verification, and artifact upload.
+The 2026-09-14 full audit changed documentation only and recorded KI-053 through KI-055; source remains at the integrated checkpoint for implementation purposes.
 
 ## Foundation
 
 ### M1A — CC:T compatibility/output ownership
 
-Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` stay delegated to CC:T. HQ RAW uses bounded separate ownership/backpressure.
+Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain delegated to CC:T. HQ RAW uses bounded separate ownership/backpressure.
 
 ### M1B — reusable server MediaAssets
 
@@ -48,101 +34,58 @@ CC files use temporary writable staging only to import immutable reusable server
 
 ### M1D — server media analysis
 
-Server analysis proves finite format/duration/coarse seek facts without whole-track PCM decode. Historical analyzer breadth does not define final support.
+Server analysis proves finite format/duration/coarse seek facts without whole-track PCM decode. Historical analyzer breadth does not define current modern support.
 
 ## M1E — server-authoritative finite timeline
 
-**Complete at source/test/CI level.**
-
-Server owns finite semantic truth: generation, PLAYING/PAUSED/ENDED/ERROR, position/duration, pause/resume, seek, loop, volume, natural EOF, and server errors.
-
-Final focused Minecraft M1E acceptance was explicitly skipped/unrecorded.
+**Complete at source/test/CI level.** Server owns generation/state/time/controls/natural EOF/server errors. Final focused Minecraft acceptance was explicitly skipped/unrecorded.
 
 ## M1F — demand-driven finite encoded transport
 
 **Complete at source/test/CI/package and deterministic/component level.**
 
-Final candidate:
+Current transport uses bounded range request/data, 128 KiB max responses, a 512 KiB client encoded window, background server IO, stale completion rejection, arbitrary re-anchor, forward sliding, and no modern whole-song client file/CHUNK-END path.
 
-`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
-
-Implemented/finalized:
-
-- protocol-v5 bounded range request/data at the M1F checkpoint;
-- server-selected encoded anchors;
-- first demand waits for authoritative STATE;
-- source/asset/generation/bounds/relevance validation;
-- bounded background reads and outstanding work;
-- in-flight MediaAsset lifetime/retry safety;
-- stale completion discard;
-- retry-safe shutdown before store close;
-- arbitrary re-anchor;
-- DATA_AVAILABLE / NEED_DATA / TRUE_ASSET_EOF / CANCELLED_OR_STALE;
-- forward sliding consume/discard preserving unread prefetch;
-- bounded refill across files much larger than one client window;
-- no modern complete-song client file;
-- no modern CHUNK/END whole-file transport;
-- no `audioPlayStaged()` prototype route.
-
-Focused real-Minecraft M1F transport acceptance remains unrecorded. M1F audibility was not required.
+Focused real-Minecraft M1F transport acceptance remains unrecorded.
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
-**In progress.**
+**Integrated in source; correctness/evidence work remains.**
 
 Locked decisions:
 
-- A1 — Minecraft `AudioStream` / `SoundManager` renderer;
+- A1 — Minecraft `AudioStream` / normal `SoundManager` renderer;
 - B1 — server-normalized common-WAV layout;
 - C1 — preserve source sample rate;
-- D1 — narrow PCM/float `WAVE_FORMAT_EXTENSIBLE` support;
-- E1 — coarse conservative MP3 pre-roll from an earlier existing seek point.
+- D1 — narrow PCM/float WAVEX;
+- E1 — conservative MP3 pre-roll from an earlier analyzed seek point.
 
-See `M1G-DESIGN-DECISIONS-2026-09-13.md`.
-
-Goal:
+Current source pipeline:
 
 ```text
 M1F bounded sliding encoded window
-    -> cancelable starvation-aware decoder input
-    -> progressive decoder/converter worker
-    -> bounded mono S16 PCM queue at source sample rate
-    -> Minecraft AudioStream / positional renderer
+-> starvation-aware decoder input
+-> progressive WAV/JLayer MP3 decoder
+-> bounded mono S16 PCM queue
+-> nonblocking Minecraft AudioStream
+-> positional BLOCKS SoundManager source
 ```
 
-### M1G start checkpoint — complete
+Integrated work includes protocol v6 descriptor/anchors, common-WAV conversion, JLayer MP3 decode/pre-target discard, decode epochs/cancellation, bounded prebuffer/catch-up, renderer integration, and pause/resume/volume projection.
 
-At `fc99ec093528f1a8d6a975fab52c270e498dbb04` / CI `34773448121`, both targets prove the current foundation compiles/tests/packages:
+### Remaining M1G work
 
-- normalized `WavLayout`;
-- classic common-WAV + narrow WAVEX analyzer;
-- modern prepared/local MP3/common-WAV gate;
-- decoder-facing MP3/WAV-only descriptor;
-- exact WAV frame anchor mapping;
-- E1 MP3 pre-roll anchor selection;
-- starvation-aware `FiniteEncodedInputStream` whose `NEED_DATA` waits only on a decoder worker and is not EOF;
-- fixed-capacity `FinitePcmQueue` with decoder backpressure and nonblocking renderer states;
-- cancellation/wakeup and lost-wakeup protection;
-- RIFF declared-container and complete-frame validation.
+1. owner chooses loop-wrap rejoin policy KI-051: L1 client EOF refresh, L2 server wrap STATE, or L3 client local modulo/restart;
+2. resolve KI-053 same-anchor STATE/window-reset correctness issue without breaking same-anchor semantic seek restart;
+3. add real-MP3 progressive integration coverage across sliding/starvation and focused `FinitePcmAudioStream` coverage;
+4. re-audit timing/cancellation after loop and KI-053 work;
+5. run focused real-Minecraft audible acceptance for modern `hq.playFile()` MP3/common WAV, seek/pause/resume/stop, starvation/refill, bounded memory, positional attenuation, and standard CC:T compatibility.
 
-Newly prepared assets already use the modern MP3/common-WAV analyzer. These primitives are not yet integrated into the live modern client decode/render lifecycle, so this checkpoint is not audible.
-
-### Next M1G slices
-
-1. modern finite descriptor wire update and codec-aware server STATE anchors;
-2. integrate decoder-epoch lifecycle and encoded-input signaling into `HQFiniteMediaClient`;
-3. progressive common-WAV conversion into the bounded PCM queue;
-4. progressive JLayer MP3 decode with E1 pre-roll and pre-target discard;
-5. A1 Minecraft `AudioStream`/`SoundManager` positional renderer;
-6. pause/resume/seek/loop/volume/stop and stale-epoch lifecycle integration;
-7. deterministic/component completion;
-8. focused real-Minecraft audible acceptance.
-
-Non-negotiable requirements remain:
+M1G non-negotiables remain:
 
 - encoded and decoded memory bounded independently of duration;
-- `NEED_DATA` never becomes decoder EOF;
-- semantic seek restarts local decoder state even if the encoded anchor byte is unchanged;
+- temporary `NEED_DATA` is never decoder EOF;
+- semantic seek restarts codec state even if the coarse anchor byte is unchanged;
 - no Minecraft/audio-thread network/disk/codec blocking;
 - cancellation/replacement safety;
 - one physical speaker remains one mono positional source;
@@ -154,10 +97,8 @@ Non-negotiable requirements remain:
 - proactive leave cleanup;
 - return/rejoin current server time;
 - dimension/world/resource reload recovery;
-- robust underrun rejoin;
+- robust general underrun rejoin;
 - final VS2 moving-speaker listener lifecycle.
-
-M1G supplies a safe local engine; M1H supplies the full listener discovery/recovery policy.
 
 ## M1I — gated native FLAC
 
@@ -165,7 +106,7 @@ Optional. Only advertise native FLAC after analyzer, progressive decode, seek/re
 
 ## M1J — multispeaker shared clocks
 
-Correctness first: shared server sync clocks without expected-global-member barriers, while each physical speaker keeps its own mono positional renderer.
+Shared server sync clocks without expected-global-member barriers; each physical speaker keeps its own mono positional renderer.
 
 ## M1K — active-session sharing optimization
 
@@ -173,7 +114,7 @@ After M1J correctness, share identical active encoded/decode work where safe wit
 
 ## M1L — legacy finite API migration/removal
 
-Migrate worthwhile compatibility frontends to the new asset/transport/decoder engine; remove obsolete whole-file/whole-PCM finite state and old format promises.
+Migrate worthwhile compatibility frontends to the new asset/transport/decoder engine and remove obsolete whole-file/whole-PCM implementation/format promises.
 
 ## M1M — HQ RAW finalization
 
@@ -181,11 +122,11 @@ Keep bounded RAW producer semantics and separate `hqspeaker_audio_empty`; no fak
 
 ## M1N — SoundEngine/OpenAL integration cleanup
 
-Correct category/gain, reload lifecycle, stale channel cleanup, attenuation/VS2 movement, one mono positional source per physical speaker.
+Final category/gain, reload lifecycle, stale-channel cleanup, attenuation/VS2 movement, and one-source-per-speaker cleanup.
 
 ## M1O/P/Q — hardening, package verification, consolidated runtime acceptance
 
-Stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
+Includes shutdown/storage hardening such as KI-054, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
 
 ## M2 — Sound Physics Remastered
 
