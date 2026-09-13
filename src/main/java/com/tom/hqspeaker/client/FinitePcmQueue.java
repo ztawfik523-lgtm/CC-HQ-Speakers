@@ -6,7 +6,8 @@ import java.util.Arrays;
 /**
  * Fixed-capacity mono signed-16 PCM queue between a decoder worker and Minecraft's renderer-facing AudioStream.
  *
- * <p>Decoder writes may wait for capacity. Renderer reads never wait: an empty live queue is STARVED, not EOF.</p>
+ * <p>Decoder writes may wait for capacity. Renderer reads and catch-up discards never wait: an empty live queue is
+ * STARVED, not EOF.</p>
  */
 public final class FinitePcmQueue {
     public enum ReadState { DATA, STARVED, EOF, CANCELLED }
@@ -58,7 +59,6 @@ public final class FinitePcmQueue {
 
                 int available = ring.length - size;
                 int count = Math.min(length - consumed, available);
-                // Capacity, indexes, and every accepted write are sample-aligned, so available should stay even.
                 count -= count & 1;
                 if (count == 0) continue;
 
@@ -90,17 +90,7 @@ public final class FinitePcmQueue {
             int count = Math.min(size, wanted);
             count -= count & 1;
             byte[] out = new byte[count];
-            int first = Math.min(count, ring.length - readIndex);
-            System.arraycopy(ring, readIndex, out, 0, first);
-            readIndex = (readIndex + first) % ring.length;
-            size -= first;
-            if (first < count) {
-                int second = count - first;
-                System.arraycopy(ring, readIndex, out, first, second);
-                readIndex = (readIndex + second) % ring.length;
-                size -= second;
-            }
-            notifyAll();
+            copyOut(out, count);
             return new ReadResult(ReadState.DATA, out);
         }
         if (cancelled) return new ReadResult(ReadState.CANCELLED, new byte[0]);
@@ -108,14 +98,39 @@ public final class FinitePcmQueue {
         return new ReadResult(ReadState.STARVED, new byte[0]);
     }
 
-    /** Mark normal local decoder EOF after all already-queued PCM has been consumed. */
+    /** Drop up to {@code maxBytes} of whole S16 samples without blocking, used to join current server time. */
+    public synchronized int discard(int maxBytes) {
+        if (maxBytes < 0) throw new IllegalArgumentException("maxBytes must be non-negative");
+        int wanted = maxBytes - (maxBytes & 1);
+        int count = Math.min(size, wanted);
+        count -= count & 1;
+        if (count <= 0) return 0;
+        readIndex = (readIndex + count) % ring.length;
+        size -= count;
+        notifyAll();
+        return count;
+    }
+
+    private void copyOut(byte[] out, int count) {
+        int first = Math.min(count, ring.length - readIndex);
+        System.arraycopy(ring, readIndex, out, 0, first);
+        readIndex = (readIndex + first) % ring.length;
+        size -= first;
+        if (first < count) {
+            int second = count - first;
+            System.arraycopy(ring, readIndex, out, first, second);
+            readIndex = (readIndex + second) % ring.length;
+            size -= second;
+        }
+        notifyAll();
+    }
+
     public synchronized void markEof() {
         if (cancelled) return;
         eof = true;
         notifyAll();
     }
 
-    /** Cancel this decoder/renderer epoch, discard stale PCM, and wake any blocked producer. */
     public synchronized void cancel() {
         cancelled = true;
         eof = false;
