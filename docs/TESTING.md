@@ -118,6 +118,12 @@ Deterministically cover where possible:
 
 Minecraft runtime coverage must include volume values below/at/above one and movement across the corresponding audible-distance boundaries.
 
+### KI-061 staging lifecycle cleanup
+
+Create leftover files through the writable staging mount, then destroy/cleanup the whole `HQMediaStaging` owner and prove those files are removed rather than becoming unreachable under the old random staging ID.
+
+Coverage should distinguish whole-owner cleanup from ordinary computer detach: one attached computer detaching must not erase a staging mount still shared with another attached computer. Cleanup failure should be surfaced/logged without corrupting prepared MediaAsset ownership.
+
 ### KI-054 shutdown deletion failure
 
 Add deterministic failure injection for `MediaAssetStore.close()` so a failed completed-file deletion has a defined retry/cleanup outcome rather than relying only on next-start orphan pruning. Also prove the `ServerMediaAssets` registry cannot retain a stopped server indefinitely after the chosen close-failure handling.
@@ -158,7 +164,8 @@ Before calling M1G audibly proven, record at least:
 12. test the chosen volume-zero -> unmute behavior explicitly;
 13. test the chosen server relevance policy at its distance boundaries (for example around 32 and 48 blocks if normal volume-3 range is preserved);
 14. standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain compatible;
-15. no complete client song `.part/.media` file is created.
+15. no complete client song `.part/.media` file is created;
+16. low-level/interrupted staging leftovers are reclaimed when the speaker staging owner is destroyed/recreated.
 
 Loop-wrap acceptance is blocked until the owner chooses KI-051 L1/L2/L3 and that policy is implemented on top of the corrected reanchor model.
 
@@ -178,6 +185,7 @@ M1F focused Minecraft transport: unrecorded
 M1G integrated source/tests/package: PASS at 957832348eaa6e497282d923f2312c9c7d7c550f
 M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
 M1G live volume/range/start correctness: open KI-058/KI-059/KI-060
+M1G staging lifecycle cleanup: open KI-061
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused renderer-adapter coverage: incomplete
 M1G loop-wrap policy: owner choice required
