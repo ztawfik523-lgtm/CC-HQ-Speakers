@@ -64,7 +64,7 @@ Target M1L:
 
 Current modern finite protocol v5 includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
 
-The reevaluation did not find a reason to redesign protocol v5. The current buffer-comsume gap can be solved inside the client encoded-window API.
+The reevaluation did not find a reason to redesign protocol v5. The current buffer-consume gap can be solved inside the client encoded-window API.
 
 Review later rather than deleting blindly:
 
