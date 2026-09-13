@@ -18,13 +18,19 @@ Final M1F CI:
 
 `34763362365`
 
-Current preparation branch:
+M1G is now **in progress** on:
 
-`codex/m1g-preparation`
+`codex/m1g-progressive-finite-decode`
 
-M1G has been re-audited and prepared in documentation, but **implementation has not started**.
+Preparation base:
 
-The current M1F documentation head `8b86d2d1977a23c1c9aeb30a996d3375a05a5b80` passed both NeoForge targets in run `34763711105`; a requested fresh rerun also passed both target jobs.
+`aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
+
+Current green M1G start checkpoint:
+
+`fc99ec093528f1a8d6a975fab52c270e498dbb04`
+
+CI `34773448121` passed both NeoForge targets including tests, package verification, and artifact upload.
 
 ## Foundation
 
@@ -62,7 +68,7 @@ Final candidate:
 
 Implemented/finalized:
 
-- protocol v5 bounded range request/data;
+- protocol-v5 bounded range request/data at the M1F checkpoint;
 - server-selected encoded anchors;
 - first demand waits for authoritative STATE;
 - source/asset/generation/bounds/relevance validation;
@@ -82,48 +88,65 @@ Focused real-Minecraft M1F transport acceptance remains unrecorded. M1F audibili
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
-**Prepared; not started.**
+**In progress.**
 
-Preparation documents:
+Locked decisions:
 
-- `PRE-M1G-PREPARATION.md`
-- `HANDOFF-2026-09-13-PRE-M1G.md`
+- A1 — Minecraft `AudioStream` / `SoundManager` renderer;
+- B1 — server-normalized common-WAV layout;
+- C1 — preserve source sample rate;
+- D1 — narrow PCM/float `WAVE_FORMAT_EXTENSIBLE` support;
+- E1 — coarse conservative MP3 pre-roll from an earlier existing seek point.
+
+See `M1G-DESIGN-DECISIONS-2026-09-13.md`.
 
 Goal:
 
 ```text
 M1F bounded sliding encoded window
-    -> cancelable progressive decoder/converter worker
-    -> bounded mono PCM queue
-    -> one positional Minecraft renderer
+    -> cancelable starvation-aware decoder input
+    -> progressive decoder/converter worker
+    -> bounded mono S16 PCM queue at source sample rate
+    -> Minecraft AudioStream / positional renderer
 ```
 
-Non-negotiable requirements:
+### M1G start checkpoint — complete
 
-- progressive MP3 from M1F encoded data;
+At `fc99ec093528f1a8d6a975fab52c270e498dbb04` / CI `34773448121`, both targets prove the current foundation compiles/tests/packages:
+
+- normalized `WavLayout`;
+- classic common-WAV + narrow WAVEX analyzer;
+- modern prepared/local MP3/common-WAV gate;
+- decoder-facing MP3/WAV-only descriptor;
+- exact WAV frame anchor mapping;
+- E1 MP3 pre-roll anchor selection;
+- starvation-aware `FiniteEncodedInputStream` whose `NEED_DATA` waits only on a decoder worker and is not EOF;
+- fixed-capacity `FinitePcmQueue` with decoder backpressure and nonblocking renderer states;
+- cancellation/wakeup and lost-wakeup protection;
+- RIFF declared-container and complete-frame validation.
+
+Newly prepared assets already use the modern MP3/common-WAV analyzer. These primitives are not yet integrated into the live modern client decode/render lifecycle, so this checkpoint is not audible.
+
+### Next M1G slices
+
+1. modern finite descriptor wire update and codec-aware server STATE anchors;
+2. integrate decoder-epoch lifecycle and encoded-input signaling into `HQFiniteMediaClient`;
+3. progressive common-WAV conversion into the bounded PCM queue;
+4. progressive JLayer MP3 decode with E1 pre-roll and pre-target discard;
+5. A1 Minecraft `AudioStream`/`SoundManager` positional renderer;
+6. pause/resume/seek/loop/volume/stop and stale-epoch lifecycle integration;
+7. deterministic/component completion;
+8. focused real-Minecraft audible acceptance.
+
+Non-negotiable requirements remain:
+
+- encoded and decoded memory bounded independently of duration;
 - `NEED_DATA` never becomes decoder EOF;
-- MP3 Layer III reservoir pre-roll;
-- decoder restart on semantic seek even if coarse byte anchor is unchanged;
-- common WAV conversion from bounded data;
-- mono/stereo only; downmix stereo to mono;
-- reject unsupported/broader historical WAV shapes;
-- decoded memory bounded independently of duration;
-- no sound-thread network/disk/codec blocking;
+- semantic seek restarts local decoder state even if the encoded anchor byte is unchanged;
+- no Minecraft/audio-thread network/disk/codec blocking;
 - cancellation/replacement safety;
-- actual audible positional Minecraft playback;
+- one physical speaker remains one mono positional source;
 - server M1E timeline remains canonical.
-
-Current exact packaged MP3 decoder candidate is JLayer `1.0.1.4`; inherited live code proves frame-by-frame use in the shipped dependency path. Do not rebuild modern finite playback around JavaSound/mp3spi whole-file behavior.
-
-### M1G owner decision gates before implementation
-
-Do not choose these silently:
-
-1. **Renderer path** — Minecraft `AudioStream`/SoundManager vs direct Channel/OpenAL queue.
-2. **WAV layout ownership** — server-normalized layout sent to client vs client progressive WAV parsing.
-3. **Finite sample rate** — preserve source rate vs normalize to 48 kHz.
-
-Full tradeoffs are in `PRE-M1G-PREPARATION.md`.
 
 ## M1H — dynamic listener lifecycle/recovery
 
