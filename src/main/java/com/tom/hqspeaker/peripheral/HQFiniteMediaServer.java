@@ -10,6 +10,7 @@ import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.MediaSeekPoint;
 import com.tom.hqspeaker.media.ServerMediaAssets;
+import com.tom.hqspeaker.network.BestEffortProjection;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaControlPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaRangeDataPacket;
@@ -139,32 +140,31 @@ public final class HQFiniteMediaServer {
         }
         if (!retained) throw new LuaException("unknown or released media asset");
 
-        Session next = null;
+        final Session next;
+        final Map<String, Object> initialStatus;
         try {
             long generation = ++generationCounter;
+            long now = System.nanoTime();
             next = new Session(id, generation, metadata, asset.sizeBytes(),
-                mediaAssets.rangeReads(), mediaAssets.releases(), volume, System.nanoTime());
-
-            // Install canonical server truth before projecting it to any client. Projection failures are contained.
-            session = next;
-            terminalStatus = null;
-            sendBeginToRelevant(next);
-            sendStateToRelevant(next);
-            queueStateEvent(statusOf(next, System.nanoTime()));
-            return true;
+                mediaAssets.rangeReads(), mediaAssets.releases(), volume, now);
+            // Finish all construction/snapshot work which can fail before the session becomes canonical.
+            initialStatus = statusOf(next, now);
         } catch (RuntimeException e) {
-            if (next != null && session == next) {
-                session = null;
-                terminalStatus = null;
-            }
             MediaAssetReleaseQueue.Result release = mediaAssets.releases().release(id);
-            if (next != null) next.assetReferenceHeld = false;
             if (release.deferred()) {
-                HQSpeakerMod.warn("prepared start rolled back; playback asset release queued for retry " + id
+                HQSpeakerMod.warn("prepared start construction failed; playback asset release queued for retry " + id
                     + ": " + release.error());
             }
             throw e;
         }
+
+        // From this point onward the start is canonical. Everything after installation is best-effort projection only.
+        session = next;
+        terminalStatus = null;
+        sendBeginToRelevant(next);
+        sendStateToRelevant(next);
+        queueStateEvent(initialStatus);
+        return true;
     }
 
     public synchronized boolean isActive() {
@@ -339,8 +339,9 @@ public final class HQFiniteMediaServer {
             return;
         }
 
-        safeSendToPlayer(new HQFiniteMediaRangeDataPacket(
-            source, assetId, generation, result.offset(), result.data()), player);
+        projectToClients(HQFiniteMediaRangeDataPacket.class.getSimpleName(), () ->
+            HQSpeakerNetwork.sendToPlayer(new HQFiniteMediaRangeDataPacket(
+                source, assetId, generation, result.offset(), result.data()), player));
     }
 
     private synchronized void acceptStatus0(ServerPlayer player, HQFiniteMediaStatusPacket packet) {
@@ -438,15 +439,9 @@ public final class HQFiniteMediaServer {
 
     /** Client/network projection is best-effort and may never abort canonical server state transitions. */
     private void projectToClients(String what, Runnable projection) {
-        try {
-            projection.run();
-        } catch (RuntimeException e) {
-            HQSpeakerMod.warn("finite media client projection failed source=" + source + " " + what + ": " + safeMessage(e));
-        }
-    }
-
-    private void safeSendToPlayer(CustomPacketPayload packet, ServerPlayer player) {
-        projectToClients(packet.getClass().getSimpleName(), () -> HQSpeakerNetwork.sendToPlayer(packet, player));
+        BestEffortProjection.run(projection, failure ->
+            HQSpeakerMod.warn("finite media client projection failed source=" + source + " " + what + ": "
+                + safeMessage(failure)));
     }
 
     private boolean isRelevant(ServerPlayer player) {
@@ -490,10 +485,13 @@ public final class HQFiniteMediaServer {
     }
 
     private void queueStateEvent(Map<String, Object> state) {
-        for (IComputerAccess computer : attachedComputers) {
-            try { computer.queueEvent("hqspeaker_audio_state", new HashMap<>(state)); }
-            catch (RuntimeException ignored) {}
-        }
+        BestEffortProjection.run(() -> {
+            for (IComputerAccess computer : attachedComputers) {
+                try { computer.queueEvent("hqspeaker_audio_state", new HashMap<>(state)); }
+                catch (RuntimeException ignored) {}
+            }
+        }, failure -> HQSpeakerMod.warn("finite media Lua state projection failed source=" + source + ": "
+            + safeMessage(failure)));
     }
 
     private static HQFiniteMediaBeginPacket.MediaFormat wireFormat(FiniteMediaFormat format) {

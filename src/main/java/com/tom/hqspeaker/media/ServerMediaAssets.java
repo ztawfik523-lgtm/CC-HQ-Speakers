@@ -13,10 +13,12 @@ import java.util.Objects;
 /** One reusable encoded-media store plus bounded range-IO/release services per running Minecraft server. */
 public final class ServerMediaAssets {
     private static final Map<MinecraftServer, ServerMediaAssets> SERVERS = new IdentityHashMap<>();
+    private static final int RELEASE_RETRY_TICKS = 20;
 
     private final MediaAssetStore store;
     private final MediaAssetReleaseQueue releases;
     private final FiniteRangeReadService rangeReads;
+    private int releaseRetryTicker;
 
     private ServerMediaAssets(MinecraftServer server) throws IOException {
         Path root = server.getWorldPath(LevelResource.ROOT)
@@ -41,9 +43,13 @@ public final class ServerMediaAssets {
         return created;
     }
 
-    /** Retry deferred logical asset-reference releases without making any speaker/session own the retry lifetime. */
-    public static synchronized void retryPendingReleases() {
-        for (ServerMediaAssets assets : SERVERS.values()) assets.releases.retryPending();
+    /** Retry deferred logical releases at a modest cadence rather than hammering a persistently failing filesystem. */
+    public static synchronized void tickPendingReleases() {
+        for (ServerMediaAssets assets : SERVERS.values()) {
+            if (++assets.releaseRetryTicker < RELEASE_RETRY_TICKS) continue;
+            assets.releaseRetryTicker = 0;
+            assets.releases.retryPending();
+        }
     }
 
     /**
