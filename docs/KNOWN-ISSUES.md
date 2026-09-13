@@ -8,7 +8,9 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
 
-Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those audits changed documentation only; no source fix was made.
+Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those audits and later scope decisions changed documentation only; no source fix has been made yet.
+
+Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md` and overrides older option lists in historical handoffs.
 
 ## Runtime evidence gaps
 
@@ -22,7 +24,7 @@ Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those 
 
 ### KI-046 — M1G audible Minecraft acceptance is not recorded
 
-**Active.** The progressive decoder/renderer is integrated in source, but there is no recorded focused Minecraft audible PASS. CI cannot prove audibility, attenuation, channel lifecycle, starvation/refill, seek quality, or loop-boundary behavior.
+**Active.** The progressive decoder/renderer is integrated in source, but there is no recorded focused Minecraft audible PASS. CI cannot prove audibility, attenuation, channel lifecycle, starvation/refill, seek quality, or loop behavior.
 
 ## Resolved by M1E/M1F
 
@@ -59,21 +61,19 @@ Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those 
 
 ## Active high priority — M1G
 
-### KI-051 — looping finite playback needs an authoritative loop-wrap rejoin policy
+### KI-051 — ordinary loop replay is selected but not implemented
 
-**Active owner decision.** The server clock already wraps canonically. After local physical EOF during a looping session, the client needs a defined way to obtain/create the next decoder epoch.
+**Owner policy selected; source work remains.**
 
-Options:
+M1G does not require gapless or continuous-source looping. At local physical EOF, if authoritative state still says `looping=true`, the client should start the same media again with a fresh local decoder/render iteration. A normal restart gap is acceptable.
 
-- L1 — client EOF requests fresh authoritative STATE;
-- L2 — server detects canonical wrap and proactively projects STATE;
-- L3 — client predicts/restarts locally and reconciles later.
+Do not add M1G work for MP3 delay/padding trimming, loop-head prefetch solely to hide the boundary, a permanent OpenAL source across iterations, or SPR-specific loop continuity.
 
-See `CURRENT-STATE.md` and `HANDOFF-2026-09-13-M1G-START.md`. Do not choose silently.
+Seek/replacement/stop must still supersede stale local replay through generation/revision checks. General severe-starvation current-time rejoin remains M1H unless a narrower correctness bug requires it.
 
 ### KI-052 — focused integrated M1G control/lifecycle proof is incomplete
 
-Source paths exist for pause/resume, seek/replacement, volume, stop, catch-up discard, decoder cancellation, and renderer-close cancellation. Missing proof includes real MP3 integration, repeated seeks, long starvation/refill, renderer adapter lifecycle, loop-wrap behavior after KI-051, and actual positional output.
+Source paths exist for pause/resume, seek/replacement, volume, stop, catch-up discard, decoder cancellation, and renderer-close cancellation. Missing proof includes real MP3 integration, repeated seeks, long starvation/refill, renderer adapter lifecycle, selected ordinary replay behavior, and actual positional output.
 
 ### KI-053 — same-anchor STATE can reset a slid encoded window without restarting the decoder
 
@@ -83,7 +83,7 @@ Source paths exist for pause/resume, seek/replacement, volume, stop, catch-up di
 
 That can cause redundant refetch/latency and can make a live decoder cursor stale if it no longer fits the reset fixed-size window.
 
-A semantic seek is different and must still create a new decoder epoch even when the selected coarse anchor byte is unchanged.
+A semantic seek is different and must still create fresh codec state even when the selected coarse anchor byte is unchanged.
 
 Required regression coverage: slide forward, apply an ordinary same-anchor STATE without rewind/failure, then separately prove same-anchor semantic SEEK still restarts decoder state.
 
@@ -91,45 +91,63 @@ Required regression coverage: slide forward, apply an ordinary same-anchor STATE
 
 **Active source correctness issue found by the deeper 2026-09-14 client audit. No fix has been applied.**
 
-`CONTROL SEEK` calls `cancelDecodeEpoch()` and only then sets `restartRequested`. `cancelDecodeEpoch()` stops/closes the renderer, cancels the task/input/PCM queue, but does not invalidate `session.decodeEpoch`. An old decoder worker which wakes because of that expected cancellation can therefore schedule `decoderFailed(session, oldEpoch, ...)` before the post-seek authoritative STATE creates the replacement epoch. At that moment the session is still nonterminal and `decodeEpoch` still matches, so the client can fail and remove a perfectly valid playback during a normal seek.
+`CONTROL SEEK` currently calls `cancelDecodeEpoch()` before the old worker identity is invalidated. The expected cancellation can therefore wake an old decoder which schedules `decoderFailed(...)` while its epoch token still appears current, killing a valid session before replacement authoritative state arrives.
 
-Any fix must invalidate the old worker token **before** cancellation can wake the worker, and needs a deterministic cancellation-order regression.
+The selected fix direction is the explicit decoder/re-anchor revision. Any local cancellation must invalidate the old worker identity **before** cancellation can wake that worker, and deterministic cancellation-order coverage is required.
 
 ### KI-057 — STATE does not distinguish a timeline snapshot from decoder re-anchor intent
 
 **Active protocol/client coordination issue. No fix has been applied.**
 
-Every authoritative STATE carries a time-derived codec anchor. Current client logic treats `anchorChanged` as a reason to reset/restart the decode epoch. The server also sends STATE after ordinary pause/resume/volume/loop controls. For WAV the exact frame anchor changes with time, so even a normal volume change can tear down and recreate a healthy decoder/renderer. For MP3 this happens when the coarse seek point advances.
+Every authoritative STATE carries a time-derived codec anchor. Current client logic treats `anchorChanged` as a reason to reset/restart the decode epoch. The server also sends STATE after ordinary pause/resume/volume/loop controls. For WAV the exact frame anchor changes with time, so a normal state update can tear down a healthy decoder/renderer. For MP3 this happens when the coarse seek point advances.
 
-The opposite failure also exists: semantic seek correctness for a same coarse anchor currently depends on the preceding `CONTROL SEEK` setting `restartRequested`. If that best-effort control projection fails while the authoritative STATE still arrives, STATE alone does not identify the operation as a required fresh codec epoch.
+The opposite failure also exists: semantic seek correctness for a same coarse anchor currently depends on the preceding `CONTROL SEEK` setting `restartRequested`. If that best-effort control projection fails while authoritative STATE still arrives, STATE alone does not identify the operation as requiring fresh codec state.
 
-This is broader than KI-053. The implementation needs an explicit distinction between ordinary state reconciliation and authoritative decoder re-anchor/revision. A protocol-level decode/reanchor revision is one possible design; a smaller client-only patch has less churn but leaves more ordering/projection coupling. The owner should choose the intended approach before coding the fix.
+**Owner decision:** move to an explicit server-authoritative decoder/re-anchor revision (protocol revision) so ordinary state snapshots preserve a healthy decoder and semantic seek is self-describing.
 
-### KI-058 — live modern-finite volume updates leave attenuation distance stale
+Before coding, compare whether finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets still buy enough to justify their duplicate ordering path. A v7 STATE-only authority for these transitions may be simpler overall; retaining redundant controls is not required for compatibility with the unreleased v6 internal protocol.
+
+### KI-058 — modern-finite channel attenuation does not yet implement the selected fixed-range contract
 
 **Active renderer correctness issue. No fix has been applied.**
 
-`HQFiniteMediaClient.setVolume()` mutates `FiniteSpeakerSound.volume` and calls `SoundManager.updateSourceVolume(BLOCKS, slider)`, but it never updates the live OpenAL/Minecraft channel's linear attenuation distance.
+The selected HQ finite contract deliberately differs from native CC:T high-volume range semantics:
 
-CC:T 1.120.0 explicitly works around this Minecraft behavior in its own `SpeakerInstance`: when speaker volume changes it calls `channel.linearAttenuation(Math.max(volume, 1) * sound.getSound().getAttenuationDistance())` because SoundEngine refreshes gain but leaves attenuation stale.
+- one fixed core listening/delivery radius;
+- normal positional attenuation inside that radius;
+- HQ `volume` changes gain/loudness, not the core HQ radius;
+- future Sound Physics Remastered compatibility owns deliberate extended-range behavior and the matching transport relevance.
 
-Modern finite volume changes should either mirror that behavior or deliberately document a different volume/range contract. Runtime acceptance must check both gain and audible distance when changing volume above and below 1.
+Minecraft/CC:T normally scale linear attenuation distance when volume is above 1. Copying CC:T's `max(volume, 1) * attenuationDistance` workaround would therefore violate the selected HQ contract.
 
-### KI-059 — fixed 32-block server relevance conflicts with the supported 0..3 volume range
+The implementation should instead explicitly apply the fixed HQ attenuation distance to the live `Channel` and update gain on volume changes without enlarging that distance. `HQSoundChannelControl` already provides access to the underlying channel.
 
-**Active product/transport decision. No fix has been applied.**
+Runtime acceptance must check that distance attenuation works, volume changes loudness, and volume above 1 does not silently enlarge the M1G core range.
 
-`HQFiniteMediaServer` uses a fixed `SPEAKER_RADIUS = 32.0` for BEGIN/STATE/range relevance. Minecraft/CC:T speaker volume supports values through 3, where values above 1 primarily extend audible distance; with the normal 16-block attenuation base, volume 3 can be audible to about 48 blocks. A player between 32 and 48 blocks can therefore be within the renderer's intended audible range yet never receive modern finite BEGIN/ranges.
+### KI-059 — fixed-radius policy selected; numeric value remains the existing 32 blocks unless explicitly changed
 
-Reasonable fixes have real tradeoffs: use a fixed maximum transport radius (simple, extra network/decode work), make relevance dynamically follow volume (efficient but pulls late-entry/leave lifecycle into the problem), or deliberately cap modern finite audible range to the transport radius (simpler but diverges from normal speaker volume semantics). Do not choose silently.
+**Product decision resolved; source currently already uses the selected policy shape.**
+
+`HQFiniteMediaServer` currently uses `SPEAKER_RADIUS = 32.0` for BEGIN/STATE/range relevance. Earlier audits treated this as conflicting with vanilla CC:T volume-3 reach. The owner has now deliberately chosen a different HQ finite policy: M1G keeps a fixed core radius and does not make transport relevance follow volume.
+
+The owner has not separately requested a different numeric radius, so 32 blocks remains the conservative existing value for M1G unless changed explicitly.
+
+Do not pull general volume-aware late-entry/leave lifecycle into M1G. Future SPR compatibility may intentionally widen/alter both acoustic distance and server delivery relevance; keep the core range policy localized enough that compatibility work can replace it later without redesigning the finite protocol.
 
 ### KI-060 — renderer startup is latched before SoundManager proves the sound actually started
 
 **Active renderer robustness issue. No fix has been applied.**
 
-`tryStartRenderer()` sets `rendererStarted = true` immediately before calling `SoundManager.play(sound)`. There is no later path which clears/retries that latch if Minecraft never allocates/starts the sound. This matters especially for the known Minecraft interaction where a sound started at effective volume zero may never actually start; a later `audioSetVolume()` can then leave the finite session permanently silent locally even though the server clock keeps advancing.
+`tryStartRenderer()` sets `rendererStarted = true` immediately before calling `SoundManager.play(sound)`. There is no later path which clears/retries that latch if Minecraft never allocates/starts the sound.
 
-Minecraft exposes `SoundInstance.canStartSilent()` specifically for long-lived sounds which should be allowed to start while currently inaudible. Modern finite playback therefore has two reasonable implementation directions: allow the streaming sound to start silent and continue consuming at canonical time, or defer local renderer creation while inaudible and catch up before starting when unmuted. The owner should choose the desired resource/complexity tradeoff; the current one-way `rendererStarted` latch needs fixing either way.
+The selected global-volume-zero behavior is targeted hibernation, not silent continuous decode:
+
+- canonical server time keeps advancing;
+- local decoder/renderer are cancelled while HQ volume is exactly zero;
+- no encoded media ranges are requested while globally muted;
+- non-zero volume recreates local decode/render state from current authoritative state.
+
+A player's own Minecraft MASTER/BLOCKS slider is client-local and must not change server transport. `SoundInstance.canStartSilent()` may still be appropriate so a locally-muted source is allowed to exist and later become audible, but the one-way `rendererStarted` latch must be hardened regardless.
 
 ### KI-054 — `MediaAssetStore.close()` does not retain failed shutdown deletions for retry
 
@@ -159,7 +177,7 @@ Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory
 
 CC:T 1.120.0 implements `createSaveDirMount()` as a normal persistent `WritableFileMount` rooted at the requested server-storage subdirectory. Unmounting or dropping the Java mount object does not delete that directory. A program using the low-level staging API, a failed/interrupted copy, or any other leftover staged file can therefore become unreachable when the speaker/composite is destroyed and later recreated with a new random staging ID. Repeated speaker lifecycle churn can accumulate those files across restarts.
 
-The high-level `hq.playFile()` path normally deletes/consumes its temporary staging file, so this is not ordinary successful-playback corruption. It is still a disk-leak/lifecycle gap and is potentially more practically reachable than the shutdown-only KI-054 edge.
+The high-level `hq.playFile()` path normally deletes/consumes its temporary staging file, so this is not ordinary successful-playback corruption. It is still a disk-leak/lifecycle gap.
 
 A likely fix is to clear the mount contents when the whole `HQMediaStaging` object is being cleaned up, after all attached computers are unmounted. Do not clear the shared mount on one computer's ordinary `detach()`. Add failure handling and deterministic coverage for leftover-file cleanup.
 
@@ -169,8 +187,13 @@ A likely fix is to clear the mount contents when the whole `HQMediaStaging` obje
 
 M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
 
+The fixed M1G radius decision intentionally does **not** pull general dynamic listener lifecycle forward.
+
 ## Gated/later work
 
+- Sound Physics Remastered compatibility owns future acoustic/range extension and matching transport relevance; do not prebuild that integration in M1G.
+- Gapless MP3/LAME/Xing delay/padding handling is not an M1G requirement.
+- Continuous-source loop engineering is not an M1G requirement.
 - KI-034: native FLAC remains gated M1I work.
 - KI-018: inherited expected-member multispeaker barrier can deadlock partial listeners — M1J.
 - KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
@@ -183,5 +206,6 @@ M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, di
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.
 - M1G integrated source is green, but audible runtime PASS is unrecorded.
-- KI-053/KI-054/KI-056/KI-057/KI-058/KI-059/KI-060/KI-061 are documented findings/decisions only; no implementation fix has been applied.
-- Historical docs/scripts may preserve earlier contracts; current state/testing/facts documents override them.
+- KI-053/KI-054/KI-056/KI-057/KI-058/KI-060/KI-061 are source findings with no implementation fix yet.
+- KI-051 and KI-059 now have owner-selected product behavior but still need any corresponding source/test work described above.
+- Historical docs/scripts may preserve earlier contracts; `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, current testing/facts documents, and exact source override them.
