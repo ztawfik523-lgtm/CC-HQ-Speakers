@@ -2,62 +2,79 @@
 
 ## Start here
 
-Current checkpoint: **M1E + M1F source/test/CI/package complete; M1G prepared but not started.**
+Current checkpoint: **M1E + M1F source/test/CI/package complete; M1G implementation started.**
 
-Preparation branch:
+Active branch:
 
-`codex/m1g-preparation`
+`codex/m1g-progressive-finite-decode`
 
-Preparation base/finalized-M1F documentation head:
+M1G preparation base:
 
-`8b86d2d1977a23c1c9aeb30a996d3375a05a5b80`
+`aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
-Final M1F source/test candidate:
+Current green M1G start source checkpoint:
+
+`fc99ec093528f1a8d6a975fab52c270e498dbb04`
+
+CI `34773448121` passed both NeoForge 21.1.247 and 21.1.248 including tests, packaged-mod verification, and artifact upload.
+
+Final M1F source/test candidate remains:
 
 `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
 
-Final M1F CI:
-
-`34763362365` — both NeoForge targets passed.
-
-Documentation-head run `34763711105` also passed both targets, and the owner-requested fresh rerun passed both target jobs again.
-
-Focused Minecraft M1F transport acceptance is not recorded.
+Focused Minecraft M1F transport acceptance is not recorded. M1G audible runtime acceptance is also not recorded.
 
 ## Read in this order
 
-1. `HANDOFF-2026-09-13-PRE-M1G.md` — current continuation handoff and stop condition;
-2. `PRE-M1G-PREPARATION.md` — M1G source audit, design boundaries, owner decision gates, and acceptance plan;
-3. `M1F-FINALIZATION-2026-09-13.md` — exact final M1F implementation/test/CI evidence;
-4. `CURRENT-STATE.md` — current project snapshot;
+1. `M1G-DESIGN-DECISIONS-2026-09-13.md` — locked A1/B1/C1/D1/E1 decisions and implementation constraints;
+2. `HANDOFF-2026-09-13-M1G-START.md` — current continuation handoff;
+3. `CURRENT-STATE.md` — current project snapshot;
+4. `TESTING.md` — current deterministic evidence and remaining M1G proof;
 5. `KNOWN-ISSUES.md` — active gaps;
-6. `TESTING.md` — completed M1F evidence + planned M1G proof;
-7. `VERIFIED-FACTS.md` — fact ledger;
-8. `ROADMAP.md` — milestone sequence;
-9. `M1E-FINITE-STREAMING-DESIGN.md` — accepted semantic/transport/decoder boundary;
-10. `LUA-API.md` — ComputerCraft programming surface;
-11. `ARCHITECTURE.md` — broader product architecture, with the stale-paragraph warning below;
-12. `CC-T-COMPATIBILITY-CONTRACT.md` — standard speaker compatibility;
-13. exact current source and CI.
+6. `VERIFIED-FACTS.md` — fact ledger;
+7. `PRE-M1G-PREPARATION.md` — historical tradeoff/source audit; its owner-choice gate is superseded;
+8. `M1F-FINALIZATION-2026-09-13.md` — exact final M1F evidence;
+9. `ROADMAP.md` — milestone sequence;
+10. `M1E-FINITE-STREAMING-DESIGN.md` — server-authority/transport/decoder boundary;
+11. `LUA-API.md` — ComputerCraft programming surface;
+12. `ARCHITECTURE.md` — broader product architecture, with historical transitional paragraphs;
+13. `CC-T-COMPATIBILITY-CONTRACT.md` — standard speaker compatibility;
+14. exact current source and CI.
 
-## M1G implementation stop condition
+## M1G decisions are resolved
 
-M1G Java/resource implementation has **not** started.
+Do not reopen these without new substantive correctness evidence:
 
-Before it starts, the owner must choose the decision gates documented in `PRE-M1G-PREPARATION.md`:
+- A1 — Minecraft `AudioStream` / normal `SoundManager` positional renderer;
+- B1 — server-normalized common-WAV layout;
+- C1 — preserve source sample rate while output representation becomes mono S16;
+- D1 — narrow PCM/float `WAVE_FORMAT_EXTENSIBLE` compatibility;
+- E1 — coarse conservative MP3 pre-roll using an earlier existing seek point.
 
-- Minecraft `AudioStream`/SoundManager vs direct Channel/OpenAL renderer;
-- server-carried WAV layout vs client progressive WAV parsing;
-- source sample rate vs 48 kHz normalization.
+If a genuinely new architecture tradeoff appears, ask the owner before selecting it.
 
-Do not silently pick among them.
+## M1G source started
+
+The green start checkpoint implements and tests:
+
+- normalized common-WAV physical layout metadata;
+- bounded classic common-WAV + narrow WAVEX parsing;
+- modern prepared/local MP3 + common-WAV acceptance gate;
+- decoder-facing MP3/WAV-only descriptor;
+- exact WAV frame anchor mapping and E1 MP3 pre-roll anchor selection;
+- decoder-worker `FiniteEncodedInputStream` over the M1F range window where starvation waits instead of becoming EOF;
+- fixed-capacity `FinitePcmQueue` with producer backpressure and nonblocking STARVED/EOF/CANCELLED renderer reads;
+- cancellation/wakeup and lost-wakeup protection;
+- RIFF declared-bound and complete-frame validation.
+
+Newly prepared assets already use the M1G MP3/common-WAV gate. The modern client has **not** yet wired these primitives into a progressive decoder/renderer session, so M1G is not audible yet.
 
 ## Evidence boundaries
 
 - M1E final focused Minecraft acceptance: skipped/unrecorded by explicit owner decision.
 - M1F focused Minecraft transport acceptance: unrecorded.
-- M1F audibility: not required.
-- M1G implementation/runtime: not started.
+- M1G source implementation: started/in progress.
+- M1G audible Minecraft PASS: unrecorded.
 - Green CI is not runtime proof.
 
 ## Current architecture
@@ -70,20 +87,12 @@ ComputerCraft file
 -> bounded client range requests
 -> bounded off-thread server reads
 -> bounded sliding encoded RAM
--> M1G decoder/converter worker
--> bounded mono PCM
--> positional renderer
+-> starvation-aware decoder-worker input
+-> progressive MP3/common-WAV decoder/converter (next integration)
+-> bounded mono S16 PCM queue
+-> Minecraft AudioStream / positional renderer (next integration)
 ```
-
-## Architecture-document drift warning
-
-Two older transitional `ARCHITECTURE.md` statements are superseded by final M1F source/evidence:
-
-- active max range is 128 KiB, not the older 256 KiB starting-point wording;
-- modern prepared transport no longer uses whole-file server push or client `.part/.media` bridging.
-
-Use `M1F-FINALIZATION-2026-09-13.md`, current source, and the pre-M1G docs for those facts.
 
 ## Historical context
 
-Older M1E/M1F reevaluation, preparation, and handoff documents preserve their checkpoint history. Their provisional/reopened language does not override the final M1E/M1F records or this pre-M1G preparation.
+Older M1E/M1F reevaluation/preparation/handoff documents preserve their checkpoint history. `PRE-M1G-PREPARATION.md` and `HANDOFF-2026-09-13-PRE-M1G.md` also preserve the pre-choice state and do not override the locked M1G decisions/current source.
