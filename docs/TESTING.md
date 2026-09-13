@@ -39,18 +39,7 @@ Baseline 21.1.247 JAR SHA-256:
 
 Focused Minecraft M1F transport acceptance is unrecorded.
 
-## Fresh pre-M1G verification
-
-M1F documentation head `8b86d2d1977a23c1c9aeb30a996d3375a05a5b80` passed both NeoForge jobs in run `34763711105`.
-
-At the owner's request the run was started again. Fresh rerun jobs:
-
-- `103742611713` — NeoForge 21.1.247 — PASS;
-- `103742612481` — NeoForge 21.1.248 — PASS.
-
-Both rerun jobs passed build, full tests, packaged-mod verification, and artifact upload.
-
-This re-verifies the finalized M1F source under the documentation head. It is not a Minecraft runtime test.
+The finalized-M1F documentation head and the owner-requested fresh rerun also passed both target jobs. This re-verifies source/package state, not a Minecraft runtime path.
 
 ## M1F deterministic/component evidence
 
@@ -63,11 +52,51 @@ The M1F finalization record contains the complete matrix. Core evidence remains:
 
 ## M1G status
 
-M1G is prepared but **not started**. There are no M1G implementation tests yet.
+M1G implementation has **started** on `codex/m1g-progressive-finite-decode`.
 
-Before implementation, resolve the renderer/WAV-layout/sample-rate decision gates in `PRE-M1G-PREPARATION.md`.
+Locked architecture choices are recorded in `M1G-DESIGN-DECISIONS-2026-09-13.md`:
 
-## Planned M1G deterministic/component evidence
+- A1 Minecraft `AudioStream` / `SoundManager` renderer;
+- B1 server-normalized WAV layout;
+- C1 preserve source sample rate;
+- D1 narrow PCM/float WAVEX;
+- E1 coarse conservative MP3 pre-roll.
+
+### First M1G source/test checkpoint
+
+Production commit `7cca8a13ebfeb91000c669ffb41b711e4ebfa4a5` routes newly prepared assets through the modern MP3/common-WAV acceptance gate.
+
+CI run `34772886101` passed both NeoForge 21.1.247 and 21.1.248, including tests, packaged-mod verification, and artifact upload.
+
+Implemented/tested foundation:
+
+- `WavLayout` normalized sample/data layout;
+- `CommonWavAnalyzer` for classic common WAV and the chosen narrow `WAVE_FORMAT_EXTENSIBLE` subset;
+- `ModernFiniteMediaAnalyzer` gates new prepared/local assets to MP3/common WAV;
+- `FiniteDecodeDescriptor` prevents historical OGG/AIFF/AU analyzer support from silently becoming M1G decoder support;
+- `FiniteDecodeAnchorSelector` defines exact WAV frame anchors and E1 MP3 pre-roll anchors;
+- `MediaMetadata` optionally carries normalized WAV layout;
+- `HQMediaStaging.prepareAsset(...)` uses the modern gate.
+
+New deterministic tests:
+
+- `CommonWavAnalyzerTest` — classic PCM/float normalization, narrow WAVEX PCM/float, valid/container-width rejection, surround/companded/unusual-width rejection, channel reset;
+- `FiniteDecodeDescriptorTest` — MP3/WAV mapping and historical-container rejection;
+- `FiniteDecodeAnchorSelectorTest` — E1 pre-roll, unsorted seek points, exact WAV frame mapping.
+
+This checkpoint is **not audible M1G**. No progressive client decoder, bounded PCM producer, or new renderer is wired yet.
+
+## Remaining M1G deterministic/component evidence
+
+### Modern descriptor/wire + anchors
+
+Prove:
+
+- wire descriptor carries only MP3/common WAV modern formats;
+- WAV layout bounds/sanity survive encode/decode;
+- server STATE uses exact WAV frame anchors;
+- MP3 STATE uses the conservative E1 pre-roll anchor;
+- semantic seek invalidates the local decode epoch even if the encoded anchor byte is unchanged.
 
 ### Encoded input bridge
 
@@ -92,7 +121,7 @@ Using the exact packaged JLayer path, prove:
 - encoded EOF and cancellation are distinguished;
 - output PCM queue remains bounded;
 - stale output after seek/replacement is discarded;
-- Layer III seek/pre-roll starts earlier and suppresses pre-target audible PCM;
+- E1 seek/pre-roll starts earlier and suppresses pre-target audible PCM;
 - semantic seek restarts decoder state even if the coarse byte anchor is unchanged.
 
 ### Common WAV converter
@@ -105,11 +134,9 @@ For each supported representation, use deterministic sample vectors and prove co
 - signed 32-bit PCM mono/stereo;
 - 32-bit IEEE float mono/stereo;
 - correct stereo-to-mono downmix;
-- safe clamp/quantization for the chosen renderer PCM format;
-- >2 channels rejected;
-- A-law/mu-law, compressed/telephony WAV, 64-bit float, and unsupported widths rejected;
-- malformed/truncated chunk/layout inputs fail boundedly;
-- direct time/frame/byte mapping is correct under the chosen WAV-layout design.
+- safe clamp/quantization to mono S16;
+- source sample rate is preserved;
+- malformed/truncated layout inputs fail boundedly.
 
 ### PCM queue
 
@@ -128,6 +155,7 @@ Prove:
 Deterministic tests should cover all pure lifecycle behavior possible without a Minecraft sound engine:
 
 - start only after required prebuffer/format availability;
+- bounded time-sized `AudioStream.read(...)` output rather than blindly filling a huge request;
 - pause/resume state projection;
 - seek/replacement renderer invalidation;
 - volume updates do not mutate decode identity;
@@ -148,7 +176,7 @@ At minimum record:
 4. long-track encoded + decoded RAM remains bounded;
 5. pause/resume follows server state;
 6. forward/backward seek audibly rejoins current server time;
-7. MP3 seek works through pre-roll rather than decoder corruption;
+7. MP3 seek works through E1 pre-roll rather than decoder corruption;
 8. loop remains synchronized to server semantics;
 9. stop/replacement cancels old sound promptly;
 10. temporary starvation/refill does not become permanent EOF;
@@ -156,16 +184,7 @@ At minimum record:
 12. standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` compatibility remains intact;
 13. no complete client song `.part/.media` file is created.
 
-Record:
-
-- exact commit;
-- candidate JAR SHA-256;
-- NeoForge/CC:T versions;
-- fixture format/rate/channels/duration/size;
-- pass/fail sections;
-- relevant client/server logs;
-- full ATM10 vs reduced exact-stack instance;
-- network compression state if throughput is measured.
+Record exact commit, JAR SHA-256, NeoForge/CC:T versions, fixture facts, pass/fail sections, relevant client/server logs, test-instance type, and network compression state if throughput is measured.
 
 ## M1H evidence boundary
 
@@ -182,5 +201,7 @@ M1F source/test/CI/package: PASS
 M1F deterministic/component acceptance: PASS
 M1F focused Minecraft transport: not recorded
 M1G preparation: complete
-M1G implementation/runtime: not started
+M1G implementation: STARTED / in progress
+M1G first format-layout-anchor CI: PASS on both targets
+M1G audible runtime PASS: not recorded
 ```
