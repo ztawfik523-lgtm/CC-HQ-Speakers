@@ -12,11 +12,13 @@ M1G preparation base:
 
 `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
-Final M1F source/test candidate:
+Current green M1G start source checkpoint:
 
-`d0acd41df690d02c9813ecd7e84d3115b44f6a3f`
+`fc99ec093528f1a8d6a975fab52c270e498dbb04`
 
-Final M1F CI: `34763362365` — both NeoForge targets passed build/tests/package verification/artifact upload.
+CI `34773448121` passed both NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
+
+Final M1F source/test candidate remains `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`; final M1F CI is `34763362365`.
 
 Focused Minecraft M1F transport acceptance is not recorded. Never convert CI into a runtime PASS.
 
@@ -25,10 +27,10 @@ Read before continuing M1G:
 1. `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`
 2. `docs/HANDOFF-2026-09-13-M1G-START.md`
 3. `docs/CURRENT-STATE.md`
-4. `docs/PRE-M1G-PREPARATION.md` for historical tradeoff analysis only
-5. `docs/M1F-FINALIZATION-2026-09-13.md`
-6. `docs/KNOWN-ISSUES.md`
-7. `docs/TESTING.md`
+4. `docs/TESTING.md`
+5. `docs/KNOWN-ISSUES.md`
+6. `docs/PRE-M1G-PREPARATION.md` for historical tradeoff analysis only
+7. `docs/M1F-FINALIZATION-2026-09-13.md`
 8. `docs/VERIFIED-FACTS.md`
 9. `docs/ROADMAP.md`
 10. `docs/LUA-API.md`
@@ -140,17 +142,22 @@ Do not restore CHUNK/END or `.part/.media` whole-file transport.
 
 ## M1G current implementation
 
-The first production slice has started:
+Green at source checkpoint `fc99ec093528f1a8d6a975fab52c270e498dbb04` / CI `34773448121`:
 
 - `MediaMetadata` can carry normalized `WavLayout`;
-- `CommonWavAnalyzer` parses the chosen common PCM/float WAV + narrow WAVEX subset without decoding sample data;
+- `CommonWavAnalyzer` parses chosen classic common PCM/float WAV + narrow WAVEX without decoding sample data;
+- parser respects declared RIFF bounds and rejects partial audio frames;
 - `ModernFiniteMediaAnalyzer` narrows newly prepared/local assets to MP3 + common WAV;
-- `FiniteDecodeDescriptor` defines the decoder-facing MP3/WAV-only contract;
+- `FiniteDecodeDescriptor` defines decoder-facing MP3/WAV-only metadata;
 - `FiniteDecodeAnchorSelector` defines exact WAV frame anchors and E1 MP3 pre-roll anchors;
-- `HQMediaStaging.prepareAsset(...)` now uses the modern acceptance gate;
-- deterministic tests cover the new layout/descriptor/anchor behavior.
+- `HQMediaStaging.prepareAsset(...)` uses the modern acceptance gate;
+- `FiniteEncodedInputStream` provides a decoder-worker blocking view over the M1F range window where NEED_DATA waits/refills, true asset EOF alone returns `-1`, cancel wakes the worker, and progressive consumption advances the window;
+- encoded-input waiting re-probes under the notification monitor to prevent a lost range-arrival wakeup;
+- `FinitePcmQueue` is a fixed-capacity mono-S16 ring with decoder backpressure and nonblocking renderer DATA/STARVED/EOF/CANCELLED states;
+- PCM cancellation clears stale data and wakes blocked producers;
+- deterministic tests cover the above foundation and concurrency semantics.
 
-The modern client is still transport-only/silent at this checkpoint. Do not route it back through the inherited whole-file/whole-track finite classes.
+The modern client is still silent because these primitives are not yet integrated into `HQFiniteMediaClient` decode/render lifecycle. Do not route it back through inherited whole-file/whole-track finite classes.
 
 ### Old finite classes are not the modern engine
 
@@ -207,13 +214,12 @@ A semantic seek always creates a new local decoder epoch even if the selected en
 ## Next M1G slices
 
 1. carry the MP3/common-WAV descriptor over the modern finite wire and make STATE use codec-aware anchors;
-2. cancellation/starvation-aware encoded-input bridge over `FiniteRangeWindow`;
-3. bounded PCM queue/backpressure + nonblocking renderer-facing consumer;
-4. progressive common-WAV conversion;
-5. progressive JLayer MP3 decode/pre-roll/discard;
-6. A1 positional renderer;
-7. control/stale-epoch integration;
-8. deterministic/component acceptance, then focused Minecraft audible acceptance.
+2. integrate `FiniteEncodedInputStream` / decoder-epoch lifecycle and range-arrival signaling into `HQFiniteMediaClient`;
+3. progressive common-WAV conversion into `FinitePcmQueue`;
+4. progressive JLayer MP3 decode/pre-roll/discard;
+5. A1 positional renderer consuming `FinitePcmQueue` nonblockingly;
+6. control/stale-epoch integration;
+7. deterministic/component acceptance, then focused Minecraft audible acceptance.
 
 ## M1H remains separate
 
