@@ -10,7 +10,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, package verification, and artifact upload. Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-A full repository/source/docs audit on 2026-09-14 reconciled stale current documentation and recorded additional findings. No implementation change was made by that audit.
+A full repository/source/docs audit on 2026-09-14 reconciled stale current documentation and recorded additional findings. A second source-grounded pass refined the shutdown/lifecycle wording and runtime-starvation acceptance wording. No implementation change was made by either pass.
 
 Green CI is not Minecraft runtime proof. Focused audible M1G Minecraft acceptance remains unrecorded.
 
@@ -50,7 +50,7 @@ Pause/resume/volume use the Minecraft channel-control path. Seek/replacement/sto
 ## Open findings from the 2026-09-14 audit
 
 - **KI-053:** an ordinary STATE whose coarse anchor is unchanged can reset an already-slid client encoded window without restarting the existing decoder epoch. That can rewind useful range state behind the decoder cursor. Semantic seek must still restart codec state even when the coarse anchor byte is unchanged.
-- **KI-054:** `MediaAssetStore.close()` clears completed-entry bookkeeping before shutdown deletion attempts, so a failed shutdown deletion is not retained for a later `close()` retry. Next-start orphan pruning normally recovers the managed file.
+- **KI-054:** `MediaAssetStore.close()` clears completed-entry bookkeeping before shutdown deletion attempts, so a failed shutdown deletion is not retained for a later `close()` retry. Because `ServerMediaAssets.closeServer()` removes its server-registry entry only after `store.close()` succeeds, such a failure also skips registry removal; the current server-stop hook logs the exception without scheduling another retry. Next-start orphan pruning normally recovers the managed file, but a stopped server/services object can remain reachable in a long-lived JVM until process exit or another explicit close retry.
 - **KI-055:** current evidence is uneven. There is no real-MP3 progressive JLayer fixture test across window progression/starvation and no focused `FinitePcmAudioStreamTest`; several Lua scripts are historical/legacy rather than modern prepared-path acceptance.
 
 See `KNOWN-ISSUES.md` and `TESTING.md`. These findings are documented only; they have not been fixed.
