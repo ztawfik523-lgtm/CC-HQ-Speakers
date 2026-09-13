@@ -2,25 +2,23 @@
 
 Date: 2026-09-13
 
-The current continuation entry point is:
+Current continuation entry point:
 
-`M1E-FINALIZATION-2026-09-13.md`
-
-M1E server-authority semantics have been rechecked. The implementation/test candidate only strengthens acceptance coverage; it does not start M1F or repair the temporary decoder. The remaining gate is one final focused Minecraft run which must actually report PASS before M1F begins.
+`HANDOFF-2026-09-13-PRE-M1F.md`
 
 Then read:
 
+- `LUA-API.md`
 - `CURRENT-STATE.md`
 - `VERIFIED-FACTS.md`
-- `M1E-RUNTIME-DIAGNOSTIC-2026-09-12.md`
+- `ARCHITECTURE.md`
 - `M1E-SERVER-AUTHORITY.md`
 - `M1E-FINITE-STREAMING-DESIGN.md`
+- `ROADMAP.md`
 - `TESTING.md`
 - `KNOWN-ISSUES.md`
 - `FUTURE-CLEANUP.md`
 
-`PRE-M1F-PREPARATION.md` remains useful for the previously settled clean-break and decoder decisions, but its preparation-only status wording has been superseded by the finalization checkpoint.
+The current handoff records that the final manual M1E test was skipped, M1E therefore has no recorded final runtime PASS, `audioPlayStaged()` is approved for removal when M1F begins, and M1F implementation has not started.
 
-The previous large standalone handoff remains `NEXT-CHAT-HANDOFF.md`. It is useful for broad context, but exact current source, CI, and the finalization document take precedence.
-
-Current source and current CI always override older handoff text if the branch moves.
+Older handoffs and preparation/finalization docs remain historical context. Current source, current CI, and the current handoff take precedence.
