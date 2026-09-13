@@ -13,7 +13,7 @@ class ProgressiveMp3DecoderTest {
     void discardsWholeFramesBeforeTargetAndPartialTargetFrame() {
         int rate = 48_000;
         assertEquals(1_152, ProgressiveMp3Decoder.discardSamples(9.0, 10.0, 0L, rate, 1_152));
-        assertEquals(1_152, ProgressiveMp3Decoder.discardSamples(9.0, 10.0, 47_000L, rate, 1_152));
+        assertEquals(1_000, ProgressiveMp3Decoder.discardSamples(9.0, 10.0, 47_000L, rate, 1_152));
         assertEquals(500, ProgressiveMp3Decoder.discardSamples(9.0, 10.0, 47_500L, rate, 1_152));
         assertEquals(0, ProgressiveMp3Decoder.discardSamples(9.0, 10.0, 48_000L, rate, 1_152));
     }
