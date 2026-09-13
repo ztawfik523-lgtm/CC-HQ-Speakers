@@ -62,7 +62,7 @@ Active prepared/playback/range release paths preserve retry ownership when final
 
 ### FACT-ASSET-003
 
-`MediaAssetStore.close()` currently clears completed-entry bookkeeping before shutdown deletion attempts. If one of those deletions fails, a subsequent `close()` has no retained completed-entry list to retry; next-start orphan pruning can remove managed leftovers. This was documented by the 2026-09-14 audit and is not fixed in source.
+`MediaAssetStore.close()` currently clears completed-entry bookkeeping before shutdown deletion attempts. If one of those deletions fails, a subsequent `close()` has no retained completed-entry list to retry; next-start orphan pruning can remove managed leftovers. `ServerMediaAssets.closeServer()` removes its static server entry only after `store.close()` returns successfully, so a thrown store-close failure also skips registry removal. The current `ServerStoppedEvent` handler catches/logs that failure and does not schedule another close retry. This was documented by the 2026-09-14 audit and is not fixed in source.
 
 ## M1E facts
 
@@ -154,7 +154,11 @@ The inherited complete-file JavaSound/mp3spi finite bridge is not the modern pre
 
 ### FACT-AUDIT-004
 
-The 2026-09-14 audit updated documentation only; no implementation/test-script fix was made.
+The 2026-09-14 audit and second verification pass updated documentation only; no implementation/test-script fix was made.
+
+### FACT-AUDIT-005
+
+After the modern renderer has started, an empty live PCM queue is represented as short local silence until PCM returns. Current M1G does not implement general long-underrun catch-up/rejoin to the then-current server position; that broader recovery remains M1H.
 
 ## Current unresolved decision
 
