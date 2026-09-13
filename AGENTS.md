@@ -2,19 +2,33 @@
 
 ## Start here
 
-Current checkpoint: **M1E/M1F reevaluation hold; M1G has not started.**
+Current checkpoint: **M1E source/test/CI complete; M1F completion/acceptance provisional; M1G not started.**
 
-The earlier labels `M1E finalized` and `M1F source/test/CI complete` are superseded by the 2026-09-13 reevaluation. The core architecture remains accepted, but correctness/acceptance work is reopened.
+Final M1E code candidate:
+
+`521d4323d9216c8a99e8ec60426997c3330c4068`
+
+Current hardening branch:
+
+`codex/m1e-final-hardening`
+
+Exact final M1E code CI:
+
+`34757923455`
+
+Both NeoForge 21.1.247 and 21.1.248 passed build/tests/package verification/artifact upload.
+
+The final focused Minecraft M1E acceptance script was explicitly skipped by the owner. Never claim it passed.
 
 Read in this order before changing implementation:
 
-1. `docs/M1E-M1F-REEVALUATION-2026-09-13.md`
-2. `docs/HANDOFF-2026-09-13-M1E-M1F-REEVALUATION.md`
-3. `docs/CURRENT-STATE.md`
-4. `docs/KNOWN-ISSUES.md`
-5. `docs/TESTING.md`
-6. `docs/VERIFIED-FACTS.md`
-7. `docs/M1E-SERVER-AUTHORITY.md`
+1. `docs/M1E-FINAL-HARDENING-2026-09-13.md`
+2. `docs/CURRENT-STATE.md`
+3. `docs/KNOWN-ISSUES.md`
+4. `docs/TESTING.md`
+5. `docs/VERIFIED-FACTS.md`
+6. `docs/M1E-SERVER-AUTHORITY.md`
+7. `docs/M1E-M1F-REEVALUATION-2026-09-13.md` — historical audit; M1E findings resolved
 8. `docs/M1F-IMPLEMENTATION-2026-09-13.md`
 9. `docs/M1E-FINITE-STREAMING-DESIGN.md`
 10. `docs/ROADMAP.md`
@@ -24,27 +38,7 @@ Read in this order before changing implementation:
 14. `docs/FUTURE-CLEANUP.md`
 15. exact current source and CI
 
-Older finalization/handoff docs are historical and do not override the reevaluation.
-
-## Exact current implementation checkpoint
-
-Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
-
-Branch: `codex/m1f-demand-driven-finite`
-
-Current Java/source head:
-
-`934e74b8ff619178d703f73df8a16ee97b3fc2af`
-
-Exact code-head CI:
-
-`34731827907`
-
-Both NeoForge 21.1.247 and 21.1.248 passed build/tests/package verification/artifact upload.
-
-Those facts remain valid. Do not call them Minecraft runtime proof or proof of failure paths which current tests do not exercise.
-
-No Java was changed during the reevaluation itself.
+Older finalization/handoff/preparation docs are historical and do not override current source or the final-hardening/current-state records.
 
 ## Target stack
 
@@ -65,9 +59,13 @@ Java models truthful technical capabilities only.
 
 Do not create permanent Java music/effect/notification lanes, playlist/album managers, or application-level priority policy.
 
+One physical speaker remains one mono positional source.
+
+Do not infer application role from a file format. MP3/WAV/etc. can represent any role chosen by the Lua program.
+
 ## Explain behavior before code
 
-For modern finite playback:
+For modern finite playback, explain it first as:
 
 ```text
 ComputerCraft file
@@ -79,6 +77,10 @@ ComputerCraft file
 ```
 
 Only then introduce packet/class/executor details when useful.
+
+The user frequently asks to recheck, prove, and disprove assumptions. Treat plausible ideas as hypotheses until source/tests/CI/runtime evidence supports them.
+
+When there are multiple meaningful choices, explain the visible tradeoff to the user before choosing. If a recheck discovers a genuine correctness/design choice with meaningful tradeoffs, present the options before changing direction.
 
 ## Standard CC:T compatibility
 
@@ -121,37 +123,54 @@ audioSetLooping
 audioStop
 ```
 
-`audioPlayStaged()` was our prototype API and remains removed. Do not restore it.
+`audioPlayStaged()` was this project's prototype API and remains removed. Do not restore it as an original-HQ-Speakers compatibility requirement.
 
-## M1E authority — preserve the semantic model, harden failure paths
+## M1E authority — finalized source/test/CI contract
 
-Server ownership remains mandatory for finite:
+Preserve server ownership of:
 
 - generation;
-- PLAYING/PAUSED/ENDED/ERROR;
+- PLAYING / PAUSED / ENDED / ERROR;
 - duration/position;
 - pause/resume;
 - seek;
 - loop;
 - volume;
-- natural EOF.
+- natural EOF;
+- terminal server errors.
 
 Client READY requests fresh state. Client ERROR is diagnostic only.
 
-The final focused M1E Minecraft PASS was skipped by owner decision. Never claim it passed.
+Final M1E hardening already resolved:
 
-Reevaluation reopened:
+- packet/client projection exceptions escaping canonical transitions;
+- one failing player aborting later recipients in a broadcast;
+- prepared-start ghost-session/rollback inconsistency;
+- failed final MediaAsset deletion losing retry ownership;
+- detached/rejected/in-flight active-path release retry gaps;
+- terminal ERROR continuing to advance position.
 
-- isolate per-player packet-send exceptions from canonical server transitions;
-- make `playPrepared()` rollback/session installation atomic;
-- keep/retry playback asset ownership if final release fails;
-- add deterministic `HQFiniteMediaServer` failure/state-machine coverage.
+Production semantic behavior is in `FinitePlaybackStateMachine` and has deterministic tests.
 
-Do not interpret these as a reason to return authority to clients.
+Do not reopen those findings without new evidence.
 
-## M1F range architecture — preserve it, do not overstate acceptance
+The final focused M1E Minecraft PASS remains skipped by owner decision. Never convert CI into a claimed runtime PASS.
 
-Current source still has:
+## MediaAsset lifetime rule
+
+`MediaAssetStore.release()` deliberately preserves an entry/reference if final file deletion fails.
+
+Active logical releases therefore hand responsibility to `MediaAssetReleaseQueue`, which keeps retry ownership until release succeeds or the asset is already missing.
+
+This applies to finite playback, prepared/detached/rejected asset cleanup, and M1F in-flight range references.
+
+`ServerMediaAssets` retries pending releases at a throttled cadence. Server shutdown stops/drains range IO before store close, and speaker/peripheral cleanup runs before shared media-store shutdown.
+
+Do not replace this with log-and-forget cleanup.
+
+## M1F range architecture — preserve it, finish its own acceptance
+
+Current source has:
 
 - protocol v5 client-pulled range request/data;
 - no modern whole-file server push;
@@ -163,46 +182,41 @@ Current source still has:
 - per-player outstanding request/byte caps;
 - bounded server IO pool/queue;
 - range reads off the server tick;
-- in-flight range retain;
+- in-flight range retain/retry-safe release;
 - generation/asset/player/relevance recheck before send;
 - stale completion discard;
 - availability distinguishes present/not-arrived/EOF/stale data.
 
-Those numeric limits are tuning values, not frozen product semantics.
+Those numeric limits are tuning values, not frozen public semantics.
 
-Reevaluation reopened:
+M1F still needs:
 
-- add a sliding consume/discard/advance operation which preserves unread prefetched bytes;
-- close rare release-retry ownership gaps;
-- add the missing deterministic acceptance coverage from the original M1F contract;
-- runtime transport acceptance remains unrecorded.
+- a real sliding consume/discard/advance window which preserves unread prefetched bytes;
+- the remaining deterministic component acceptance for request identity/relevance/stale completion, shutdown integration, packet bounds/codecs, and client BEGIN/STATE anchor gating;
+- focused Minecraft transport acceptance remains unrecorded.
 
 Do not restore the old whole-file bridge to solve any of these.
 
-## Supporting asset-lifetime caution
-
-`MediaAssetStore.release()` deliberately preserves an entry/reference if final file deletion fails.
-
-Any owner releasing a MediaAsset must therefore clear its ownership bookkeeping only **after** successful release, or otherwise retain an explicit retry owner.
-
-This applies to playback references, in-flight range references, and detached prepared-owner cleanup. The current source has failure-path gaps in more than one of those callers.
+Do not call M1F complete merely because M1E is complete.
 
 ## M1G boundary
 
-M1G has not started and is currently blocked on owner choice from the reevaluation.
+M1G has not started.
 
 M1G owns:
 
 - progressive MP3 decoder path;
 - temporary missing encoded data must not become EOF;
-- MP3 reservoir pre-roll;
+- MP3 Layer III reservoir pre-roll;
 - common WAV layout/time-to-byte metadata;
 - WAV integer/float conversion and stereo-to-mono downmix;
 - bounded PCM queue;
 - decoder cancellation;
 - actual positional Minecraft/OpenAL rendering.
 
-Do not repair the obsolete JavaSound/mp3spi whole-file bridge instead.
+Do not repair the obsolete JavaSound/mp3spi complete-file bridge instead.
+
+Normally finish M1F's sliding-window/acceptance work before M1G. If the owner explicitly wants to move that work into the opening M1G phase, present the milestone tradeoff before changing the boundary.
 
 ## M1H remains separate
 
@@ -223,9 +237,9 @@ Trust claims in this order:
 
 1. exact target-stack runtime evidence;
 2. exact current source;
-3. current reevaluation record;
+3. current final-hardening/current-state records;
 4. exact current CI/package evidence;
-5. verified-facts/current-state docs;
+5. verified-facts/testing docs;
 6. architecture/design docs;
 7. roadmap;
 8. older milestone/finalization/handoff docs.
@@ -235,12 +249,11 @@ Green CI is not Minecraft runtime proof and only proves tests which actually exi
 ## Working rules
 
 - Improve the inherited fork; do not rewrite unrelated working behavior for cleanliness alone.
-- Preserve useful compatibility, but not proven bugs or discarded prototype APIs.
+- Preserve useful original compatibility, but not proven bugs or discarded project-prototype APIs.
 - Keep server semantic state separate from transfer/decoder/renderer state.
 - Never invent finite duration/seek for open-ended sources.
 - Do not classify audio by application meaning.
 - Do not build Java playlist/priority policy.
-- Do not start M1G until the reevaluation decision is resolved.
-- If a recheck discovers a genuine correctness/design choice with meaningful tradeoffs, present the options before changing direction.
-- The owner explicitly asked to be consulted before Java changes when reevaluation finds substantive implementation problems; honor that gate.
+- If a recheck discovers a genuine correctness/design choice with meaningful tradeoffs, present options before changing direction.
+- The owner explicitly asked to be consulted before Java changes when a recheck finds substantive implementation problems; honor that gate unless the owner has already explicitly asked to fix that exact issue.
 - Do not report a runtime script PASS unless it actually ran successfully.
