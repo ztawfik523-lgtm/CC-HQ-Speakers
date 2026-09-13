@@ -58,6 +58,39 @@ class FinitePcmQueueTest {
     }
 
     @Test
+    void catchupDiscardIsNonblockingAndSampleAligned() throws Exception {
+        FinitePcmQueue queue = new FinitePcmQueue(12);
+        queue.write(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0, 8);
+        assertEquals(4, queue.discard(5));
+        assertEquals(4, queue.queuedBytes());
+        assertArrayEquals(new byte[] { 5, 6, 7, 8 }, queue.read(12).data());
+        assertEquals(0, queue.discard(100));
+    }
+
+    @Test
+    void discardReleasesBlockedProducer() throws Exception {
+        FinitePcmQueue queue = new FinitePcmQueue(4);
+        queue.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> blocked = executor.submit(() -> {
+                try {
+                    queue.write(new byte[] { 5, 6 }, 0, 2);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertThrows(TimeoutException.class, () -> blocked.get(100, TimeUnit.MILLISECONDS));
+            assertEquals(2, queue.discard(2));
+            blocked.get(2, TimeUnit.SECONDS);
+            assertArrayEquals(new byte[] { 3, 4, 5, 6 }, queue.read(8).data());
+        } finally {
+            queue.cancel();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void cancelDiscardsStalePcmAndWakesBlockedProducer() throws Exception {
         FinitePcmQueue queue = new FinitePcmQueue(4);
         queue.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
