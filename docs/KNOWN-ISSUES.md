@@ -8,7 +8,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
 
-A full repository/source/docs audit on 2026-09-14 found KI-053 through KI-055 below. That audit changed documentation only; no source fix was made.
+Repository/source audits on 2026-09-14 found KI-053 through KI-060 below. Those audits changed documentation only; no source fix was made.
 
 ## Runtime evidence gaps
 
@@ -77,7 +77,7 @@ Source paths exist for pause/resume, seek/replacement, volume, stop, catch-up di
 
 ### KI-053 — same-anchor STATE can reset a slid encoded window without restarting the decoder
 
-**Active source correctness issue found by the 2026-09-14 audit. No fix has been applied.**
+**Active source correctness issue. No fix has been applied.**
 
 `HQFiniteMediaClient.state0()` resets the `FiniteRangeWindow` whenever the server anchor is outside the client's current window. If the coarse anchor itself is unchanged, `restart` can remain false, so an already-advanced decoder keeps its cursor while the window is reset backward to old bytes.
 
@@ -87,9 +87,53 @@ A semantic seek is different and must still create a new decoder epoch even when
 
 Required regression coverage: slide forward, apply an ordinary same-anchor STATE without rewind/failure, then separately prove same-anchor semantic SEEK still restarts decoder state.
 
+### KI-056 — SEEK cancellation can report expected cancellation as a fatal decoder failure
+
+**Active source correctness issue found by the deeper 2026-09-14 client audit. No fix has been applied.**
+
+`CONTROL SEEK` calls `cancelDecodeEpoch()` and only then sets `restartRequested`. `cancelDecodeEpoch()` stops/closes the renderer, cancels the task/input/PCM queue, but does not invalidate `session.decodeEpoch`. An old decoder worker which wakes because of that expected cancellation can therefore schedule `decoderFailed(session, oldEpoch, ...)` before the post-seek authoritative STATE creates the replacement epoch. At that moment the session is still nonterminal and `decodeEpoch` still matches, so the client can fail and remove a perfectly valid playback during a normal seek.
+
+Any fix must invalidate the old worker token **before** cancellation can wake the worker, and needs a deterministic cancellation-order regression.
+
+### KI-057 — STATE does not distinguish a timeline snapshot from decoder re-anchor intent
+
+**Active protocol/client coordination issue. No fix has been applied.**
+
+Every authoritative STATE carries a time-derived codec anchor. Current client logic treats `anchorChanged` as a reason to reset/restart the decode epoch. The server also sends STATE after ordinary pause/resume/volume/loop controls. For WAV the exact frame anchor changes with time, so even a normal volume change can tear down and recreate a healthy decoder/renderer. For MP3 this happens when the coarse seek point advances.
+
+The opposite failure also exists: semantic seek correctness for a same coarse anchor currently depends on the preceding `CONTROL SEEK` setting `restartRequested`. If that best-effort control projection fails while the authoritative STATE still arrives, STATE alone does not identify the operation as a required fresh codec epoch.
+
+This is broader than KI-053. The implementation needs an explicit distinction between ordinary state reconciliation and authoritative decoder re-anchor/revision. A protocol-level decode/reanchor revision is one possible design; a smaller client-only patch has less churn but leaves more ordering/projection coupling. The owner should choose the intended approach before coding the fix.
+
+### KI-058 — live modern-finite volume updates leave attenuation distance stale
+
+**Active renderer correctness issue. No fix has been applied.**
+
+`HQFiniteMediaClient.setVolume()` mutates `FiniteSpeakerSound.volume` and calls `SoundManager.updateSourceVolume(BLOCKS, slider)`, but it never updates the live OpenAL/Minecraft channel's linear attenuation distance.
+
+CC:T 1.120.0 explicitly works around this Minecraft behavior in its own `SpeakerInstance`: when speaker volume changes it calls `channel.linearAttenuation(Math.max(volume, 1) * sound.getSound().getAttenuationDistance())` because SoundEngine refreshes gain but leaves attenuation stale.
+
+Modern finite volume changes should either mirror that behavior or deliberately document a different volume/range contract. Runtime acceptance must check both gain and audible distance when changing volume above and below 1.
+
+### KI-059 — fixed 32-block server relevance conflicts with the supported 0..3 volume range
+
+**Active product/transport decision. No fix has been applied.**
+
+`HQFiniteMediaServer` uses a fixed `SPEAKER_RADIUS = 32.0` for BEGIN/STATE/range relevance. Minecraft/CC:T speaker volume supports values through 3, where values above 1 primarily extend audible distance; with the normal 16-block attenuation base, volume 3 can be audible to about 48 blocks. A player between 32 and 48 blocks can therefore be within the renderer's intended audible range yet never receive modern finite BEGIN/ranges.
+
+Reasonable fixes have real tradeoffs: use a fixed maximum transport radius (simple, extra network/decode work), make relevance dynamically follow volume (efficient but pulls late-entry/leave lifecycle into the problem), or deliberately cap modern finite audible range to the transport radius (simpler but diverges from normal speaker volume semantics). Do not choose silently.
+
+### KI-060 — renderer startup is latched before SoundManager proves the sound actually started
+
+**Active renderer robustness issue. No fix has been applied.**
+
+`tryStartRenderer()` sets `rendererStarted = true` immediately before calling `SoundManager.play(sound)`. There is no later path which clears/retries that latch if Minecraft never allocates/starts the sound. This matters especially for the known Minecraft interaction where a sound started at effective volume zero may never actually start; a later `audioSetVolume()` can then leave the finite session permanently silent locally even though the server clock keeps advancing.
+
+The desired product behavior for volume zero should be decided explicitly. One clean option is “muted playback continues canonically, but local renderer creation is deferred until effective volume becomes nonzero, then catch up before starting.” Other implementations are possible, but the current latch needs deterministic/runtime coverage for failed or zero-volume starts.
+
 ### KI-054 — `MediaAssetStore.close()` does not retain failed shutdown deletions for retry
 
-**Active low-frequency shutdown cleanup issue found by the 2026-09-14 audit. No fix has been applied.**
+**Active low-frequency shutdown cleanup issue. No fix has been applied.**
 
 Normal final release keeps bookkeeping alive if file deletion fails. `MediaAssetStore.close()` instead clears completed entries before deletion attempts and marks close cleanup complete even when a deletion throws, so a later `close()` cannot retry those completed files.
 
@@ -127,5 +171,5 @@ M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, di
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.
 - M1G integrated source is green, but audible runtime PASS is unrecorded.
-- KI-053/KI-054 are documented findings only; the audit did not modify source.
+- KI-053/KI-054/KI-056/KI-057/KI-058/KI-059/KI-060 are documented findings/decisions only; no implementation fix has been applied.
 - Historical docs/scripts may preserve earlier contracts; current state/testing/facts documents override them.
