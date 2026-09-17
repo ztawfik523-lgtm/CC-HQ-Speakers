@@ -38,6 +38,10 @@ Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` passed CI `3
 
 CI is not Minecraft runtime proof.
 
+### FACT-CI-003
+
+The current build workflow triggers on unfiltered `push` and `pull_request` events and builds both configured NeoForge targets. There is currently no documentation-path exclusion or concurrency cancellation in `.github/workflows/build.yml`.
+
 ## Packaging facts
 
 ### FACT-BUILD-001
@@ -66,15 +70,21 @@ Minecraft 1.21.1 exposes `SoundInstance.canStartSilent()` for long-lived sounds 
 
 ### FACT-ASSET-002
 
-Active prepared/playback/range release paths preserve retry ownership when final release fails. Server shutdown stops/drains range IO before the store closes.
+Active prepared/playback/range release paths preserve retry ownership when final release fails. Server shutdown attempts to stop/drain range IO before the store closes.
 
 ### FACT-ASSET-003
 
 `MediaAssetStore.close()` currently clears completed-entry bookkeeping before shutdown deletion attempts. If one of those deletions fails, a subsequent `close()` has no retained completed-entry list to retry; next-start orphan pruning can remove managed leftovers. `ServerMediaAssets.closeServer()` removes its static server entry only after `store.close()` returns successfully, so a thrown store-close failure also skips registry removal. The current `ServerStoppedEvent` handler catches/logs that failure and does not schedule another close retry. This was documented by the 2026-09-14 audit and is not fixed in source.
 
+A later full-repository audit identified a stronger shutdown path: `ServerMediaAssets.closeServer()` calls `FiniteRangeReadService.close()` before `MediaAssetStore.close()`. `FiniteRangeReadService.close()` may throw if its workers do not terminate within its shutdown wait or if player accounting remains non-empty. If that happens, `store.close()` and `SERVERS.remove(...)` are never reached, so the store's root lock can remain held and the stopped server/assets remain in the static registry. This is not fixed in source.
+
 ### FACT-ASSET-004
 
 Each `HQMediaStaging` instance creates a ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Its cleanup path unmounts attached computers/releases prepared ownership but does not clear arbitrary leftover files in that mount. CC:T 1.120.0 implements `createSaveDirMount()` as a persistent disk-backed `WritableFileMount` rooted at the requested subdirectory; unmounting does not delete it. This is KI-061 and is not fixed in source.
+
+### FACT-ASSET-005
+
+`MediaAssetStore.writeExact()` currently retries a zero-byte `ReadableByteChannel.read(...)` indefinitely using `Thread.onSpinWait()` with no zero-read limit, while several other readers in the repository use bounded zero-read guards. `MediaAssetStore.importAsset()` also uses `Files.move(..., ATOMIC_MOVE)` without an `AtomicMoveNotSupportedException` fallback. These are storage hardening gaps and are not fixed in source.
 
 ## M1E facts
 
@@ -104,6 +114,10 @@ Locked owner choices are A1 Minecraft `AudioStream`/SoundManager, B1 server-norm
 
 Output is mono signed 16-bit PCM at source sample rate; one physical speaker remains one mono positional source.
 
+### FACT-M1G-ARCH-002
+
+The owner-selected M1G scope additionally specifies an explicit server-authoritative decoder/re-anchor revision, a fixed 32-block core listening/delivery radius with HQ volume changing gain rather than radius, global-volume-zero transport/render hibernation while canonical server time continues, and ordinary non-gapless replay after local physical EOF while authoritative looping remains enabled. Future Sound Physics Remastered compatibility owns deliberate extended-range/acoustic behavior and matching transport relevance.
+
 ## M1G integrated source facts
 
 ### FACT-M1G-001
@@ -116,7 +130,7 @@ Modern prepared/local media is narrowed to MP3 or supported common WAV: U8/S16/S
 
 ### FACT-M1G-003
 
-STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors.
+STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors. `FiniteDecodeAnchorSelector.Anchor` contains exactly two fields: encoded byte `offset` and anchor time `seconds`. It does not contain frame-index, skip-frame, or skip-sample fields.
 
 ### FACT-M1G-004
 
@@ -144,7 +158,7 @@ STATE anchor selection provides exact frame-aligned WAV anchors and conservative
 
 ### FACT-M1G-010
 
-`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker.
+`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker. It exposes `updatePosition(...)`, but the current modern finite client does not call that method after renderer creation. Modern finite STATE does not carry x/y/z updates; BEGIN carries initial world/block position. Moving-source/VS2 lifecycle therefore remains incomplete.
 
 ### FACT-M1G-011
 
@@ -186,11 +200,11 @@ Same-coarse-anchor semantic seek restart currently depends on the preceding SEEK
 
 ### FACT-AUDIT-009
 
-Modern finite live volume updates mutate the sound instance's volume and refresh the BLOCKS category volume, but they do not explicitly update the active channel's linear attenuation distance. This differs from the target CC:T 1.120.0 speaker workaround and is KI-058.
+Modern finite live volume updates mutate the sound instance's volume and refresh the BLOCKS category volume, but they do not explicitly install the owner-selected fixed 32-block attenuation distance on the active channel. This is part of KI-058.
 
 ### FACT-AUDIT-010
 
-`HQFiniteMediaServer` currently uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The supported logical volume range remains 0..3. Preserving normal speaker-style volume-dependent audible distance above 32 blocks therefore requires a relevance-policy change; this is KI-059.
+`HQFiniteMediaServer` currently uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The owner has selected that fixed-radius shape for M1G rather than volume-dependent relevance; volume above 1 must not silently enlarge the core HQ finite range. Future SPR compatibility may intentionally change both acoustic and transport range later.
 
 ### FACT-AUDIT-011
 
@@ -200,23 +214,45 @@ Modern finite live volume updates mutate the sound instance's volume and refresh
 
 NeoForge 1.21.1 payload handlers execute on the main thread by default unless registration explicitly requests the network thread. The current modern packet registration does not opt into network-thread execution, so the audit did not identify a packet-handler game-state threading bug from that registration pattern.
 
-## Current unresolved decisions
+## 2026-09-16 full-repository review facts rechecked against source
+
+### FACT-AUDIT-013
+
+`HQSpeakerCompositePeripheral.callMethod(...)` and `tickOwnership()` are both synchronized on the composite. Server tick calls `HQSpeakerCompositePeripheral.tickAll()`, which invokes `tickOwnership()` for every active composite. The dynamic STREAM methods route through `callMethod(...)` into `HQSpeakerPeripheral.startStreamAtTick(...)`, whose URL validation performs synchronous `InetAddress.getAllByName(host)`. A computer-thread stream call can therefore hold the composite monitor during DNS while the server tick waits for the same monitor. This does not apply to every annotated composite method: for example, `audioPrepareStaged(...)` is not itself synchronized on the composite.
+
+### FACT-AUDIT-014
+
+`HQSpeakerCompositePeripheral.startRaw(...)` calls `beginReplacingHQ(Owner.RAW)` before it checks RAW capacity and may then return `false`; `audioPlayPrepared(...)` calls `beginReplacingHQ(Owner.STAGED_FINITE)` before `finite.playPrepared(...)` can reject or throw. A rejected/failed replacement can therefore stop an existing HQ continuous source before the new source is accepted.
+
+### FACT-AUDIT-015
+
+Inherited live HLS uses one monotonic `currentSegmentIndex` across refreshed playlists whose segment lists are indexed from zero. After the initial playlist window has been consumed, a normal refreshed live window can therefore have `segs.size() <= currentSegmentIndex`, causing no new segments to play. This is inherited live-stream work, not modern M1G finite playback.
+
+### FACT-AUDIT-016
+
+Legacy Lua-visible capability lists advertise formats/stream capabilities broader than the modern prepared engine. `HQSpeakerPeripheral.speakSupportedFiles()` includes `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared gate accepts only supported common WAV or MP3. These lists describe inherited surfaces and must not be treated as the modern prepared contract.
+
+### FACT-AUDIT-017
+
+Legacy `playNoteAll(...)` synthesizes a sine wave from pitch and does not use its `instrument` argument; `playSoundAll(...)` delegates to that path and does not use the requested `soundName`. These inherited helpers do not preserve normal CC:T note/sound semantics.
+
+## Current selected direction and remaining implementation choice
 
 ### FACT-M1G-NEXT-001
 
-Loop-wrap client rejoin is not implemented. Owner choice remains L1 client EOF refresh, L2 proactive server wrap STATE, or L3 client local modulo/restart.
+Loop behavior is selected: ordinary local replay after physical EOF while authoritative state still says `looping=true`, with a normal restart gap acceptable. It is not implemented yet.
 
 ### FACT-M1G-NEXT-002
 
-The current protocol has no explicit server-authoritative decoder/reanchor revision distinct from time-derived STATE anchor data. The owner has not yet chosen between a smaller protocol-v6/client-ordering repair and introducing an explicit decode/reanchor revision.
+Decoder/re-anchor behavior is selected: introduce an explicit server-authoritative decoder/re-anchor revision so semantic seek is self-describing and ordinary state snapshots do not restart healthy decoders. One implementation-shape choice remains before coding protocol v7: retain PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional low-latency hints, or remove that duplicate authority path and let STATE alone carry those transitions. The unreleased internal v6 protocol does not impose compatibility pressure to keep them.
 
 ### FACT-M1G-NEXT-003
 
-The owner has not yet chosen how modern finite server relevance should relate to volume-dependent audible distance, nor whether volume-zero playback should keep a silent local renderer active or defer local renderer creation and catch up on unmute.
+Range and volume-zero behavior are selected: M1G keeps the existing fixed 32-block core radius; HQ volume changes gain rather than radius; global HQ volume zero hibernates local decode/render/range requests while canonical server time continues. General dynamic listener lifecycle remains M1H; extended acoustic/range behavior belongs to later SPR compatibility.
 
 ## Later milestone facts
 
-Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H unless a subset is intentionally pulled forward for dynamic finite relevance. Native FLAC remains gated M1I work. Inherited legacy finite/live/multispeaker code remains for later migration/removal.
+Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal.
 
 ## License
 
