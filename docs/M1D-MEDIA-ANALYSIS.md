@@ -1,184 +1,125 @@
 # M1D — server finite-media analysis
 
-## Goal
+> **Historical M1D milestone record.** M1D intentionally analyzed a broader format set than the final modern prepared product. Do not use its OGG/AIFF/AU/WAV breadth as current M1G support. Current modern prepared support is MP3 + the selected common-WAV subset; see `CURRENT-STATE.md`, `LUA-API.md`, `KNOWN-ISSUES.md`, and exact current source.
+
+## Goal which remains valid
 
 Make the server know what a prepared finite file actually is **before** playback starts.
 
-The file extension is not trusted. A file called `song.bin` containing a real supported MP3 may be accepted; a file called `song.mp3` containing arbitrary bytes must be rejected.
+The file extension is not trusted. Analysis runs against the committed immutable server asset, not the writable staging file, preventing metadata/byte TOCTOU mismatches.
 
-M1D does not decode the whole track to PCM. It scans encoded container/frame metadata with a reusable 64 KiB window.
+M1D does not decode a whole track to PCM; it scans encoded/container metadata with bounded working memory.
 
-For the prepared-file path, analysis is performed on the **committed immutable server asset**, not the writable ComputerCraft staging file. Preparation therefore cannot attach metadata for one staging-file version to different bytes copied a moment later.
+## Historical M1D analyzed formats
 
-## Current analyzed formats
-
-The prepared/local-file path currently accepts:
+At the M1D checkpoint, `FiniteMediaAnalyzer` supported analysis for:
 
 - MP3 / MPEG Layer III;
 - OGG Vorbis;
-- WAV formats which match the current JavaSound client conversion path;
-- uncompressed AIFF/AIF within the current JavaSound reader's supported shape;
-- AU/SND encodings supported by the current JavaSound reader.
+- broad WAV shapes aligned to the then-current JavaSound bridge;
+- uncompressed AIFF/AIF in the then-supported reader shape;
+- AU/SND encodings supported by that bridge.
 
-OGG files using another codec such as Opus are rejected by the current finite path. Compressed AIFC is also rejected.
+It also stopped advertising MP2/MP4/M4A/AAC because exact finite-decoder evidence did not exist.
 
-The exposed finite-format list no longer advertises MP2, MP4, M4A, or AAC because this repository does not currently have exact finite-decoder evidence for them.
+### Current modern-prepared correction
 
-## Facts recorded per asset
+M1G deliberately narrowed active prepared/local playback to:
 
-`MediaMetadata` records:
+- MP3 / MPEG Layer III;
+- supported common WAV only:
+  - mono/stereo;
+  - U8/S16/S24/S32/F32;
+  - classic RIFF/WAVE;
+  - selected narrow PCM/float `WAVE_FORMAT_EXTENSIBLE`;
+  - WAVEX `validBits == containerBits`;
+  - stereo downmix to mono;
+  - source sample rate preserved.
+
+Historical OGG/AIFF/AU analysis and inherited APIs do **not** define the modern prepared support surface. Native FLAC remains separately gated M1I work.
+
+## Metadata / server truth
+
+`MediaMetadata` records finite facts such as:
 
 - actual encoded format;
-- duration in seconds;
+- duration;
 - sample rate;
 - channel count;
-- encoded bits per sample where the container exposes a meaningful fixed value;
-- bounded coarse encoded-file seek hints where practical.
+- meaningful fixed encoded bits per sample;
+- bounded coarse encoded seek hints where practical;
+- later normalized common-WAV layout for the modern path.
 
-Lua may inspect a prepared asset with:
-
-```lua
-local hq = require("hqspeaker")
-local asset = hq.prepareFile(speaker, "/music/song.mp3")
-local info = hq.preparedInfo(speaker, asset)
-
-print(info.format)
-print(info.duration)
-print(info.sampleRate)
-print(info.channels)
-```
-
-`audioStatus()` for the M1C prepared-file bridge uses the same server-derived format/duration/rate/channel facts immediately. It no longer waits for a client renderer to supply duration.
-
-## Preparation ordering and asset truth
-
-The supported prepared-file flow is:
+Preparation order remains:
 
 ```text
-writable ComputerCraft staging file
-    -> exact-size import into immutable server MediaAsset
-    -> analyze that committed asset
-    -> attach metadata
-    -> return asset UUID to Lua
+writable CC staging file
+-> exact-size import into immutable server MediaAsset
+-> analyze committed asset
+-> attach metadata
+-> return prepared asset UUID
 ```
 
-If analysis rejects the committed bytes, the temporary asset reference is released and its encoded file is deleted. A rejected file is never returned as a prepared asset.
+Rejected committed bytes are never exposed as a prepared asset.
 
-This order matters because the staging mount remains writable by ComputerCraft. Analyzing staging first and copying it afterward would leave a time-of-check/time-of-use race where a program could change the file between analysis and import.
-
-## Format-specific analysis
+## Historical format-analysis details
 
 ### MP3
 
-The analyzer:
+M1D MP3 analysis:
 
-- skips an ID3v2 tag at the beginning;
-- searches a bounded prefix for a valid MPEG Layer III frame sequence;
-- walks frame headers without decoding PCM;
-- supports MPEG-1, MPEG-2, and MPEG-2.5 Layer III frame timing;
-- derives duration from encoded frame sample counts;
-- records bounded coarse byte offsets for later seek/range work;
-- rejects a stream which changes sample rate or channel layout mid-file.
+- skipped ID3v2 at the beginning;
+- searched a bounded prefix for valid Layer III frames;
+- walked frame headers without PCM decode;
+- supported MPEG-1/2/2.5 Layer III timing;
+- derived duration from encoded frame sample counts;
+- recorded bounded real frame byte offsets for later seek/range work;
+- rejected sample-rate/channel-layout changes mid-file.
 
-Current MP3 duration is encoded-frame duration. M1D does not yet subtract encoder delay/padding from LAME/Xing gapless metadata.
+Current MP3 duration still does not promise sample-gapless LAME/Xing padding subtraction, and M1G explicitly does not require gapless-loop metadata work.
+
+Current M1G seek uses E1 conservative earlier seek points, progressive JLayer decode forward, and pre-target PCM discard.
+
+`FiniteDecodeAnchorSelector.Anchor` contains exactly `(offset, seconds)`. No richer frame-index/skip-frame/skip-sample fields are computed and discarded.
 
 ### OGG Vorbis
 
-The analyzer:
-
-- requires the first logical stream to begin as a Vorbis stream rather than trusting `.ogg`;
-- requires a complete 30-byte Vorbis identification header;
-- validates version, channel count, sample rate, block-size exponents, and framing bit;
-- walks Ogg pages to the final granule position for duration;
-- records bounded coarse page offsets for later seeking/range work;
-- rejects chained Vorbis logical streams for now.
-
-The lightweight analyzer does not replace STB Vorbis's own deeper bitstream validation at decode time.
+M1D validated Vorbis identification/page/granule facts and bounded Ogg page seek hints. This remains historical analyzer evidence only; OGG is not a modern prepared M1G requirement.
 
 ### WAV
 
-The analyzer follows the current JavaSound client reader/conversion shape rather than accepting every syntactically plausible RIFF file:
+The M1D WAV analyzer originally mirrored a broader JavaSound bridge, including shapes later removed from the modern target.
 
-- `fmt ` must appear before the first usable `data` chunk;
-- the first `data` chunk after `fmt ` defines the current client stream;
-- PCM, IEEE floating PCM, A-law, and mu-law tags are recognized;
-- floating PCM is limited to 32- or 64-bit samples, matching the Java float converter;
-- A-law/mu-law require 8-bit samples;
-- PCM frame size/block alignment must equal `ceil(bits / 8) * channels`;
-- duration is based on complete encoded frames in that first data chunk.
+M1G subsequently replaced that active contract with a server-normalized common-WAV layout and the narrow PCM/float subset above. WAVE_FORMAT_EXTENSIBLE support is now intentionally narrow rather than broadly inferred.
 
-WAVE_FORMAT_EXTENSIBLE is deliberately not claimed yet even though modern JavaSound has a reader for PCM/float extensible WAV. Adding it should be explicit and tested against the shipped runtime rather than inferred from the container family name.
+### AIFF / AU
 
-### AIFF
+M1D contained bounded server analyzers for uncompressed AIFF and selected AU/SND encodings. These remain historical analysis facts and are not current modern prepared playback commitments.
 
-The analyzer reads `COMM` and `SSND`, including the AIFF 80-bit extended sample-rate field. Current acceptance is deliberately aligned to the JavaSound client reader:
+## Memory / malformed-input behavior
 
-- standard uncompressed AIFF only;
-- 1–32 encoded bits per sample;
-- `COMM` must precede `SSND`;
-- non-zero SSND data offsets are rejected because the current JavaSound reader reads that field but does not apply it when positioning audio data;
-- declared sample-frame count must fit in the available SSND audio bytes.
+The analyzer uses bounded metadata scanning rather than whole-file or whole-PCM retention. MP3/OGG seek metadata is bounded, historically capped at 4096 points with adaptive thinning.
 
-Compressed AIFC remains rejected.
+The analysis-side window reader rejects repeated no-progress rather than spinning forever.
 
-### AU/SND
+Do not confuse that with current KI-064: `MediaAssetStore.writeExact()` has a separate repeated-zero-read no-progress gap during asset import.
 
-The analyzer reads the `.snd` header and accepts the encodings supported by the JavaSound AU reader used by the client:
+## Historical non-goals and later status
 
-- mu-law 8-bit;
-- signed linear PCM 8/16/24/32-bit;
-- float 32-bit;
-- double 64-bit;
-- A-law 8-bit.
+At M1D, playback still used older staged/whole-file transport and client authority pieces. Those were intentionally left to M1E/M1F/M1G.
 
-Duration is based on complete encoded frames. Header/data offsets and declared data lengths are bounded against the real file.
+Since then:
 
-## Memory and malformed-input behavior
+- M1E made server finite state/time canonical;
+- M1F replaced whole-file client transfer with bounded demand-driven ranges/sliding encoded RAM;
+- M1G integrated progressive MP3/common-WAV decode, bounded PCM, and positional Minecraft rendering.
 
-The analyzer never materializes the encoded file or decoded track in memory. It uses one 64 KiB read window and scans metadata/frame/page boundaries.
+Do not restore the historical complete-file JavaSound bridge merely to preserve M1D format breadth.
 
-MP3/OGG seek hints begin at a five-second granularity but are capped at **4096 points per asset**. When the cap would be exceeded, the index keeps every other point and doubles its interval. This keeps metadata memory bounded even if an administrator disables the normal file-size limit while preserving coarse coverage across the full track.
+## Tests and evidence boundary
 
-Malformed numeric/container values are converted to checked analysis failures rather than escaping as arithmetic errors. The window reader also rejects a source which repeatedly makes no read progress instead of spinning forever.
+`FiniteMediaAnalyzerTest` historically covers synthetic MP3/OGG/WAV/AIFF/AU analysis and malformed cases. Those tests remain useful for legacy/analyzer code but do not by themselves define the current modern prepared acceptance surface.
 
-## What M1D deliberately does not fix
+`scripts/m1d_media_analysis_test.lua` expects the old broad M1D prepared format surface and is **not** a valid current M1G modern-prepared pass/fail gate.
 
-Playback still temporarily uses the old staged-finite transport underneath M1C prepared assets. M1D does **not** fix:
-
-- fixed recipient lists;
-- server-push whole-asset transfer;
-- the renderer-observation timeout;
-- clients deciding STARTED/ENDED state;
-- late listener joining;
-- dynamic range rendering;
-- progressive download/playback.
-
-Those are M1E and later milestones. M1D only moves finite **file truth** onto the server.
-
-## Tests
-
-`FiniteMediaAnalyzerTest` constructs synthetic encoded containers/frame sequences and checks:
-
-- PCM WAV duration/rate/channels;
-- first-WAV-data-chunk duration semantics;
-- invalid WAV block alignment rejection;
-- unsupported floating-WAV sample width rejection;
-- uncompressed AIFF duration/rate/channels;
-- AIFF >32-bit rejection;
-- non-zero AIFF SSND offset rejection;
-- truncated AIFF audio-data rejection;
-- AU PCM duration/rate/channels;
-- OGG Vorbis identification and granule-derived duration;
-- truncated/non-Vorbis OGG rejection;
-- bounded adaptive seek metadata across a long synthetic OGG timeline;
-- MP3 frame-derived duration and coarse seek hints;
-- ID3v2 skipping;
-- unsupported MP4-style bytes rejection even when the filename claims MP3;
-- accepted WAV/AIFF/AU fixtures opening through the same JavaSound conversion shape used by the client;
-- channel position reset after both successful and failed analysis.
-
-`MediaStorageLimitsTest` also covers the storage-policy adapter needed by large/unlimited M1D files, including the CC:T writable-mount overflow clamp for the `0` (no HQ quota) setting.
-
-`scripts/m1d_media_analysis_test.lua` is the Minecraft runtime contract for byte-based identification, prepared metadata, playback-status agreement, invalid-file rejection, and the truthful supported-format list. For a small accepted fixture it also waits for `audioStatus().observed == true`, so the manual pass proves that the client decoder accepted the prepared asset rather than merely proving server metadata analysis.
-
-Source/CI success is not Minecraft runtime proof. The Lua contract must still be run in-game before M1D is called runtime-accepted.
+Current test authority is `TESTING.md`. Focused audible M1G Minecraft acceptance remains unrecorded.
