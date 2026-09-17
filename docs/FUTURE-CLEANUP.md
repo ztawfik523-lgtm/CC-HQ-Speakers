@@ -1,10 +1,10 @@
 # Future cleanup inventory
 
-This is a parking lot for obsolete/legacy code and release cleanup. It is not permission to expand the active milestone.
+Updated: 2026-09-17
 
-Current checkpoint: **M1E/M1F complete at source/test/CI/package level; M1G progressive decode/render is integrated in source and still in correctness/evidence work.**
+This is a parking lot for obsolete/legacy code, later milestones, and release cleanup. It is **not** permission to expand the active M1G milestone.
 
-Current active correctness/evidence issues belong in `KNOWN-ISSUES.md`, not this parking lot.
+Current active correctness/evidence issues belong in `KNOWN-ISSUES.md`.
 
 ## Modern prepared path cleanup state
 
@@ -21,17 +21,27 @@ Do not restore these for temporary audibility.
 
 ## Active issues which are not optional cleanup
 
-Current `KNOWN-ISSUES.md` includes the M1G decoder/reanchor cluster, renderer/range/start work, staging/shutdown storage issues, and the cross-cutting monitor/ownership/import hardening findings from the 2026-09-16 repository review. Do not downgrade those to release polish merely because some were found during a broad audit.
+Do **not** move these here as “later polish” merely because some were found during broad audits:
+
+- M1G decoder/reanchor cluster KI-053/KI-056/KI-057;
+- fixed-range renderer/start KI-058/KI-060 and selected loop replay KI-051;
+- evidence/staging KI-055/KI-061;
+- shared-monitor/DNS safety KI-062;
+- replacement-before-admission KI-063;
+- shutdown/root-lock KI-054;
+- import progress/rename hardening KI-064.
+
+The practical latest-review suggestion is KI-062 first, then v7 decoder/reanchor work. A broader safety-first batch is also defensible. This file must not be used to defer a current correctness bug without an explicit priority decision.
 
 ## Old complete-file decoder classes/dependencies
 
 `FileFiniteAudioStream`, `FiniteAudioTrack`, and old complete-payload finite paths may remain because inherited compatibility APIs still exist.
 
-`FileFiniteAudioStream` is no longer referenced by the modern prepared path and has no focused test coverage. Treat it as migration/removal material, not as an alternate M1G implementation.
+`FileFiniteAudioStream` is no longer referenced by the modern prepared path and has no focused modern-path role. Treat it as migration/removal material, not an alternate M1G implementation.
 
-Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine no longer uses that bridge.
+Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine uses JLayer progressively instead.
 
-JLayer is required by the modern progressive MP3 path. mp3spi/Tritonus-related dependencies should only be removed after legacy callers are migrated/removed and package/runtime proof confirms they are no longer needed. Those SPI libraries also register Java Sound providers globally in the JVM, which is another reason to remove them once no legacy caller needs them.
+JLayer is required by the modern progressive MP3 path. mp3spi/Tritonus-related dependencies should only be removed after legacy callers are migrated/removed and package/runtime proof confirms they are no longer needed. Those SPI libraries register Java Sound providers globally in the JVM, which is another reason to remove them once no legacy caller needs them.
 
 ## Old client cache artifacts
 
@@ -43,7 +53,7 @@ If one-time cleanup is later added, restrict deletion narrowly to mod-owned old 
 
 Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared path.
 
-The 2026-09-16 review confirmed that legacy Lua-visible capability lists are not a reliable statement of the modern prepared contract. For example, `speakSupportedFiles()` advertises `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared analyzer accepts only MP3 + supported common WAV. Keep modern and inherited capability reporting explicitly separated until the legacy surface is migrated or removed.
+Legacy Lua-visible capability lists are not a reliable statement of modern prepared support. For example, `speakSupportedFiles()` advertises `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared analyzer accepts only MP3 + supported common WAV.
 
 Target M1L:
 
@@ -57,20 +67,25 @@ Target M1L:
 
 Inherited `*All` / `*At` helpers and expected-member shared groups remain legacy.
 
-The 2026-09-16 source review confirmed that `playNoteAll(...)` synthesizes a sine and ignores the requested instrument, while `playSoundAll(...)` routes into that sine path and ignores the requested Minecraft sound name. These helpers therefore do not preserve normal CC:T note/sound semantics even though the singular standard methods do.
+Source recheck confirmed that `playNoteAll(...)` synthesizes a sine and ignores the requested instrument, while `playSoundAll(...)` routes into that sine path and ignores the requested Minecraft sound name. These helpers therefore do not preserve normal CC:T note/sound semantics even though the singular standard methods do.
 
 Target M1J/M1K:
 
 - shared server clocks first, optional active-session sharing second, while retaining one positional renderer per physical speaker;
-- either route note/sound helpers through actual standard CC:T semantics or remove/reject the misleading helpers rather than emitting the wrong sound.
+- route note/sound helpers through actual standard CC:T semantics or remove/reject misleading helpers rather than emitting the wrong sound.
 
-## Protocol/state review after M1G/M1H
+## Protocol/state cleanup after current M1G work
 
 Current modern finite protocol is version 6 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
 
-Protocol v6 carries the modern MP3/common-WAV decode descriptor. Forward window sliding is already implemented; the old “window needs consume/discard support” note is obsolete.
+The selected next decoder/reanchor design is an explicit server-authoritative revision, likely v7.
 
-Current M1G scope has already selected an explicit server-authoritative decoder/re-anchor revision. Before implementing that protocol revision, compare whether PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets should survive merely as latency hints or disappear in favor of STATE as the sole correctness authority. Do not preserve duplicate paths for compatibility with an unreleased internal protocol.
+One implementation-shape decision remains current rather than “future cleanup”:
+
+- keep PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional latency hints; or
+- remove that duplicate path and make STATE the sole transition authority.
+
+Do not preserve duplicate paths merely for compatibility with unreleased v6.
 
 Review later rather than deleting blindly:
 
@@ -88,7 +103,7 @@ M1O should benchmark packet compression/CPU, queueing, memory, many-player deman
 
 ## Historical format surface
 
-Frozen M1D analyzed formats broader than the modern product target. Current modern prepared/local playback is already narrowed to MP3 + supported common WAV.
+Frozen M1D analyzed formats are broader than the modern product target. Current modern prepared/local playback is MP3 + supported common WAV.
 
 M1I may add native FLAC only if fully proven.
 
@@ -96,68 +111,82 @@ M1I may add native FLAC only if fully proven.
 
 After the progressive renderer is runtime-proven, remove/downgrade noisy development diagnostics while retaining concise operational failures.
 
-The 2026-09-16 review also observed that the M1G client is much quieter than the inherited client on refusal/failure paths. Add enough once-per-condition diagnostics during M1G hardening to make renderer-start/session-cap failures debuggable, then tune verbosity before release.
+During M1G hardening, add enough once-per-condition diagnostics to make renderer-start/session-cap failures debuggable, then tune verbosity before release.
 
-## Live/HLS/TS inherited code
+## Live/HLS/TS inherited code — M3
 
 Known later issues include double gain, HLS sequence/window progression, non-incremental TS behavior, unsupported codecs, and old shared-session lifecycle.
 
-The 2026-09-16 source review confirmed a specific live-HLS progression defect: `StreamingAudioSource.streamHLS()` retains a monotonically increasing `currentSegmentIndex`, but each refreshed playlist exposes a fresh zero-based segment list. After the first live window is consumed, refreshed windows can therefore contain no list index at or above `currentSegmentIndex`, leaving the stream alive but producing no new audio. Fix later using media-sequence/absolute segment identity rather than list index.
+A specific live-HLS progression defect is confirmed: `StreamingAudioSource.streamHLS()` retains a monotonically increasing `currentSegmentIndex`, while each refreshed playlist exposes a fresh zero-based segment list. After the first live window is consumed, refreshed windows can therefore contain no list index at or above `currentSegmentIndex`, leaving the stream alive but producing no new audio.
 
-`streamTS()` also demuxes an entire input into a `List<AudioFrame>` before playback, which is unsuitable as a long-lived live-stream architecture. This remains M3 work.
+Fix later using media-sequence/absolute segment identity rather than list index.
 
-Target M3. Do not mix inherited live-stream repair into finite M1G unless a truly shared primitive requires it.
+`streamTS()` also demuxes an entire input into a `List<AudioFrame>` before playback, which is unsuitable as a long-lived live-stream architecture.
 
-## Sound/OpenAL cleanup
+The earlier audit claim that HTTP streaming paths failed to close streams was retracted: current paths do close them. Do not carry that false issue forward.
 
-Target M1N:
+Do not mix inherited live-stream repair into finite M1G unless a truly shared primitive requires it.
 
-- final category/gain behavior;
-- F3+T/resource-reload recovery;
-- stale-channel cleanup;
-- attenuation/VS2 movement;
-- one mono positional source per physical speaker.
+## Sound/OpenAL / moving-source cleanup
 
-Modern moving-source position is also covered by KI-004/M1H: `FiniteSpeakerSound.updatePosition(...)` currently has no active M1G call site after renderer creation, and modern STATE does not carry world position updates.
+Target M1N and M1H together own final lifecycle details such as resource reload, stale-channel cleanup, remaining attenuation behavior, and moving-source/VS2 integration.
+
+Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live x/y/z. `FiniteSpeakerSound.updatePosition(...)` exists but modern M1G does not call it after renderer creation.
+
+A new wire position packet is not automatically necessary. The inherited client already recomputes VS2 ship-transformed positions from block coordinates each tick. M1H may mirror that client-side pattern or add authoritative position updates if later lifecycle/network requirements justify it.
+
+Do not silently choose between those two approaches in cleanup work.
+
+## Provider cache / lifecycle
+
+`HQSpeakerPeripheralProvider` uses a Level-keyed `WeakHashMap`, but cached composite values themselves reference their Level. The source explicitly documents that the weak key is only a fallback and deterministic lifecycle hooks must evict entries.
+
+There is no `HQSpeakerPeripheral -> composite` back-reference. Do not revive the retracted “WeakHashMap defeated by a fabricated back-reference” claim.
+
+If a residual chunk-unload/cache-lifetime issue is investigated later, verify actual Minecraft/CC:T block-entity lifecycle hooks and the provider's `forget`/`forgetLevel`/`clearAll` behavior rather than reasoning from WeakHashMap alone.
 
 ## Product/registry cleanup
 
 The repo still registers a separate `hqspeaker:hq_speaker` even though product direction upgrades normal CC speakers.
 
-The 2026-09-16 tree review confirmed that this separate block surface is incomplete as a standalone in-game product: there is no `data/hqspeaker` recipe/loot-table content and no block model under `assets/hqspeaker/models/block/`, while the blockstate references such a model. `HQSpeakerBlockEntity` contains a legacy-style peripheral field/getter, but this separate block is not the normal product surface used by current architecture.
+The separate block surface is incomplete as a standalone in-game product: no `data/hqspeaker` recipe/loot-table content and no block model under `assets/hqspeaker/models/block/`, while the blockstate references such a model.
 
 Target M4: remove it with world/registry migration consideration or explicitly justify and finish it. Do not spend M1G effort making this second block into a product unless the owner changes direction.
 
 ## Dead/parallel implementation cleanup
 
-Candidates confirmed by the broad review include `FileFiniteAudioStream`, `HQSpeakerCluster`, stale diagnostic helpers, and parts of the separate `HQSpeakerBlockEntity` path. Verify each reference count again immediately before deletion; do not delete merely from an old audit note.
+Candidates include `FileFiniteAudioStream`, `HQSpeakerCluster`, stale diagnostic helpers, and parts of the separate `HQSpeakerBlockEntity` path.
 
-The goal is to remove parallel implementations that can mislead future contributors after their compatibility callers are gone, not to churn source during active M1G correctness work.
+Verify each reference count immediately before deletion; do not delete merely from an old audit note.
+
+The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, not to churn source during active M1G correctness work.
 
 ## Documentation/test cleanup
 
-Historical scripts/handoffs are evidence, not current contracts. Keep them clearly historical rather than rewriting them to pretend newer architecture existed earlier.
+Historical scripts/handoffs are evidence, not current contracts. Keep them historical rather than rewriting them to pretend newer architecture existed earlier.
 
-Current docs must point readers to `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, and `M1G-SCOPE-DECISIONS-2026-09-14.md` for present behavior.
+Current docs must point readers to `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` for present behavior.
 
-The bundled ROM module `src/main/resources/data/computercraft/lua/rom/modules/main/hqspeaker.lua` still contains a stale comment saying `audioPlayStaged()` is scheduled for removal when M1F replaces the old whole-file transport. M1F has already removed that route; runtime behavior is correct and only the source comment is stale. When source/comment edits are allowed, update that comment without changing behavior.
+The bundled ROM module source still contains a stale comment saying `audioPlayStaged()` is scheduled for removal when M1F replaces old whole-file transport. M1F has already removed that route. This is a **source comment**, so do not change it as part of docs-only work unless source/comment edits are explicitly allowed.
 
-Historical M0 smoke-test log markers also predate the current protocol/payload count. Keep the M0 result as historical evidence rather than using its old marker as a current regression expectation.
+Historical M0 smoke-test log markers also predate the current protocol/payload count. Keep M0 results as historical evidence rather than current regression expectations.
 
 ## CI / repository hygiene
 
-The build workflow currently runs the two-target NeoForge matrix for all pushes and pull requests with no path exclusion or concurrency cancellation. A later CI cleanup can skip full builds for documentation-only changes and cancel superseded runs, while retaining a lightweight docs check if desired.
+The build workflow currently runs the two-target NeoForge matrix for all pushes and pull requests with no docs-only path exclusion or concurrency cancellation.
 
-Do not make CI history statistics into permanent correctness claims; run counts and failure percentages are time-sensitive.
+A later CI cleanup can skip full builds for documentation-only changes and cancel superseded runs while retaining lightweight docs validation if desired.
 
-The working implementation branch and default-branch policy should also be normalized before public release so repository visitors land on the actual product or are clearly directed to it.
+Do not make CI run-count/failure-rate statistics into permanent correctness claims; they are time-sensitive.
+
+The working implementation branch/default-branch policy should also be normalized before public release so repository visitors land on the actual product or are clearly directed to it.
 
 ## Packaging/license cleanup
 
 Before public release:
 
 - resolve top-level MPL-2.0 versus NeoForge metadata LGPL-3.0 from actual provenance;
-- update mod description to final supported feature/format set rather than inherited/live features which may be legacy or gated;
+- update mod description to the final supported feature/format set rather than inherited/live features which may be legacy or gated;
 - verify final protocol/mixins/dependencies/ROM module;
 - remove unused legacy decoder/provider dependencies only after migration proof;
-- consider pinning the Gradle wrapper distribution checksum and removing build plugins/configuration which are not used by the release process.
+- consider pinning the Gradle wrapper distribution checksum and removing unused build plugins/configuration.
