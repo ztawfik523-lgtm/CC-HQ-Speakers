@@ -21,6 +21,10 @@ docs, and repository metadata read from GitHub.
 - Every `file:line` citation in this document was re-read at review time. §12
   lists claims an earlier draft made that did **not** survive that re-reading and
   were removed — recorded so nobody re-derives them.
+- **Post-review addendum (2026-09-17):** the report was then checked as a claim set
+  by the project owner. §13 records which findings were confirmed and promoted to
+  KIs, which claims were wrong, and the further errors found while re-verifying.
+  The body sections already incorporate those corrections.
 - Upstream CC:Tweaked `1.21.x` source was cloned and read directly rather than
   recalled. NeoForge payload threading is taken from `FACT-AUDIT-012`, not
   re-derived.
@@ -93,13 +97,17 @@ HQFiniteMediaServer.tickAll();             // -> tick() is `private synchronized
 HQSpeakerCompositePeripheral.tickAll();    // -> tickOwnership() is `private synchronized` (HQSpeakerCompositePeripheral.java:101)
 ```
 
-`tickOwnership()` early-returns unless `owner == Owner.RAW`, but **it must acquire
-the monitor to find that out**. `HQFiniteMediaServer.tick()` holds its monitor
-while iterating players, projecting packets, and reaching
-`MediaAssetReleaseQueue.tickPendingReleases()` → `MediaAssetStore.release(id)`
-(`MediaAssetStore.java:174`, `synchronized`) → `Files.deleteIfExists` (`:185`).
-So the per-tick path can include filesystem deletion *and* waiting on a monitor
-another thread owns.
+`tickOwnership()` early-returns unless `owner == Owner.RAW` (`:101-102`), but **it
+must acquire the monitor to find that out**. `HQFiniteMediaServer.tick()`
+(`:280-286`) does little under its monitor — read the session field, terminal
+check, and only on natural end `finalizeNaturalEnd` → `releaseAssetReference` →
+`MediaAssetReleaseQueue.release` (`:41`, `synchronized`) → `Files.deleteIfExists`
+(`MediaAssetStore.java:185`) — but it is still a monitor the main thread acquires
+every tick while computer threads can hold it via `callMethod` (`:206`) into the
+`synchronized` finite controls (`pause` `:172`, `seek` `:196`, `setVolume` `:220`,
+…). Separately, `ServerMediaAssets.tickPendingReleases()`
+(`ServerMediaAssets.java:47-51`, `static synchronized`) performs the periodic
+deletion retry on the main thread every `RELEASE_RETRY_TICKS`.
 
 **B — CC:T computer threads acquire the same monitors.**
 `HQSpeakerCompositePeripheral.callMethod` is `synchronized` (`:206`) and is entered
@@ -128,8 +136,10 @@ reproducible "my server hung" report on a single-player world.
 
 The same *shape* (weaker worst case) applies to:
 
-- `audioPrepareStaged` → `HQMediaStaging.prepareAsset` (`HQMediaStaging.java:108`)
-  → `ModernFiniteMediaAnalyzer.analyze` → for MP3, a **full frame walk** (§3.3).
+- `cleanup()` (`:146`, `synchronized`) — reached from
+  `HQSpeakerPeripheralProvider.forget`/`forgetLevel`/`clearAll` on the server
+  thread during chunk-removal, level-unload and server-stop, so a computer thread
+  parked in DNS stalls those lifecycle transitions too.
 - `ServerMediaAssets.closeServer` → `FiniteRangeReadService.close()` →
   `awaitTermination(10 s)` (`FiniteRangeReadService.java:43,177`) on the server
   thread (§2.2).
@@ -456,10 +466,16 @@ precisely to **speakers on moving Valkyrien Skies ships**: the sound keeps playi
 from its original world position for the whole track. Invisible in a static
 single-player world, which is why it has not surfaced.
 
-`HQFiniteMediaServer.computeWorldPos()` (`:491-505`) already resolves ship
-transforms server-side and sends the projected position in every STATE packet, so
-the client has authoritative data — it is simply never pushed into the sound
-instance.
+Position coordinates travel on the wire **once, in BEGIN**:
+`HQFiniteMediaBeginPacket` carries `x/y/z` and `blockX/blockY/blockZ` (`:45-46`).
+`HQFiniteMediaStatePacket` carries **no coordinates at all** (`:34-45`: source,
+mediaId, generation, state, position-seconds, duration, volume, looping,
+anchorOffset, anchorTime, error). So supporting moving speakers needs a *new*
+mechanism, not merely a call to the existing updater: either client-side per-tick
+VS2 resolution from BEGIN's block coordinates — exactly what the legacy
+`tickPosition` does client-side at `HQSpeakerClientHandler:532-551` — or a
+server-pushed position update. The uncalled `updatePosition`
+(`FiniteSpeakerSound:38-42`) is a real gap, but it is the hook, not the fix.
 
 **Recommended shape:** mirror `tickPosition` in `HQFiniteMediaClient.tick()`
 (`:122-136`), calling `updatePosition` when the resolved world position moves by
@@ -513,9 +529,16 @@ pure waste; but it is unbounded work whose only other output is a duration that 
 Xing/Info header would give directly.
 
 Reached from `audioPrepareStaged` → `HQMediaStaging.prepareAsset`
-(`HQMediaStaging.java:108`) → `ModernFiniteMediaAnalyzer.analyze`, this runs **on a
-computer thread while holding both the composite monitor and the
-`HQFiniteMediaServer` monitor** (§2.1). The per-asset ceiling is
+(`HQMediaStaging.java:108`) → `ModernFiniteMediaAnalyzer.analyze`.
+`audioPrepareStaged` is a plain `@LuaFunction` on the composite
+(`HQSpeakerCompositePeripheral.java:176-180`) — **neither `synchronized` nor
+`mainThread`** — so the walk runs on a **computer thread holding neither the
+composite nor the finite-server monitor**; it takes the `ServerMediaAssets` class
+monitor only briefly inside `get()` and the store monitor only during the import
+copy. The impact is therefore a computer-thread stall — a Lua call that can run
+for minutes — not the server-wide stall of §2.1. Still worth fixing (and still
+amplified by the unbounded per-asset ceiling), but a different severity than an
+earlier draft claimed. The per-asset ceiling is
 `maxAssetMiB`, default `DEFAULT_MAX_ASSET_MIB = 512L`
 (`config/HQSpeakerServerConfig.java:10`, registered `:29`; documented in
 `docs/SERVER-CONFIG.md`). At 128 kbps / 48 kHz that is roughly
@@ -607,59 +630,50 @@ tracked:
   elsewhere in the same class. Two code paths, two semantics, one operation.
 - `SharedStreamingGroup.Session` never times out waiting for `expectedTaps`; a
   speaker that fails to start leaves the session in `SESSIONS` permanently.
-- HTTP connections opened for playlists and segments are not consistently
-  `disconnect()`ed.
 
 **Recommended shape:** one try-with-resources pass over the legacy client audio
 path, plus an `idleSince` timestamp swept from
 `HQSpeakerClientHandler.onDisconnected`/`stopAll` (`:101-110`). Genuinely M1L work,
 but cheap and it removes a class of bug reports.
 
-### 3.7 Static strong registries hold `Level` references, and the "weak" cache is not weak — NEW
+### 3.7 Static strong registries pin `Level`; the weak key is a documented fallback — NEW (corrected)
 
-`HQSpeakerPeripheral` keeps `private final Level world` (`:42`) and registers itself
-in **three static strong** collections at construction: `COMPUTER_SPEAKERS` (`:36`),
-`ACTIVE_SPEAKERS` (`:37`), `SOURCE_SPEAKERS` (`:38`, put at `:119`/`:136`). A fourth
-lives in the network layer: `IcyMetaPacket.SPEAKER_REGISTRY` (`:34-36`), a public
-static `ConcurrentHashMap<UUID, HQSpeakerPeripheral>` (§4.4). Entries in the
-peripheral's own maps are removed only by `stopLegacyPlayback` (`:210`) and the
-tick-time `getLevel() == null` sweep.
+`HQSpeakerPeripheral` keeps `private final Level world` (`:42`) and registers
+itself in **three static strong** collections at construction:
+`COMPUTER_SPEAKERS` (`:36`), `ACTIVE_SPEAKERS` (`:37`), `SOURCE_SPEAKERS` (`:38`,
+put at `:119`/`:136`); a fourth lives in the network layer
+(`IcyMetaPacket.SPEAKER_REGISTRY`, §4.4). Entries leave only via
+`stopLegacyPlayback` (`:210`), `cleanup()`, or the tick-time `getLevel() == null`
+sweep — all driven by the provider's `forget`/`forgetLevel`/`clearAll` hooks. So
+every live legacy peripheral pins its `Level` strongly from statics.
 
-`HQSpeakerPeripheralProvider` uses
-`Collections.synchronizedMap(new WeakHashMap<>())` (`:22`) *specifically* so
-unreferenced peripherals can die. But the value it stores is an
-`HQSpeakerCompositePeripheral` whose `legacy` field is an `HQSpeakerPeripheral`
-constructed at `:34` — which registered itself in `SOURCE_SPEAKERS` in its
-constructor. So:
+The provider cache is
+`Collections.synchronizedMap(new WeakHashMap<Level, ConcurrentHashMap<BlockPos, composite>>())`
+(`:22-23`). Because each composite's graph (`legacy.world` `:42`, `finite.level`
+`:75`, staging) **strongly references the very `Level` that keys its entry**, a
+weak key can never reclaim a live entry. The code comment at `:20-21` states this
+deliberately: "The weak key is only a fallback: cached peripherals themselves
+reference their Level, so deterministic Level/server lifecycle hooks must evict
+this cache explicitly." So this is a **documented design with explicit eviction**,
+not an accidentally defeated guarantee — an earlier draft misdescribed both the
+mechanism (inventing a `legacy.composite` back-reference that does not exist) and
+the intent (§12).
 
-```
-SOURCE_SPEAKERS (static, strong) -> HQSpeakerPeripheral -> .composite -> HQSpeakerCompositePeripheral -> .vanilla
-```
+The residual exposure is eviction *granularity*. `forget` fires from the mixin's
+`setRemoved` hook (block removal), `forgetLevel` from `LevelEvent.Unload`
+(`HQSpeakerMod:67-71`), `clearAll` from `ServerStoppedEvent` (`:77`). In Minecraft
+1.21.1 a chunk **unload** invokes `BlockEntity.onChunkUnloaded()`, not
+`setRemoved()`, and upstream CC:T overrides only `setRemoved()`; so an ordinary
+chunk unload/reload cycle leaves the position entry — and with it the composite,
+legacy peripheral, finite server, staging, and their `Level` reference — resident
+until the level unloads. Bounded per level, unbounded per chunk cycle within it.
+*Confidence:* the `onChunkUnloaded`/`setRemoved` distinction is inferred from
+upstream CC:T plus 1.21.1 lifecycle semantics and is **not** runtime-verified here.
 
-The `WeakHashMap` **key** is strongly reachable from a static map, so it can never
-be cleared. **`WEAK_CACHE` is effectively a strong cache**, and the weak-reference
-design is defeated by the legacy peripheral's self-registration.
-
-Exposure is bounded per-`ServerLevel`, because `HQSpeakerMod.onLevelUnload` →
-`forgetLevel(world)` (`HQSpeakerPeripheralProvider.java:60`) sweeps by position —
-but *not* per chunk. `SpeakerBlockEntity` overrides only `setRemoved()` (verified in
-cloned upstream CC:T source), and in Minecraft 1.21.1 a chunk **unload** invokes
-`BlockEntity.onChunkUnloaded()`, not `setRemoved()`. So the mixin's cleanup hook
-does not fire on ordinary chunk unload, and each unload/reload cycle builds a fresh
-`SpeakerBlockEntity` + `SpeakerPeripheral` + composite while the previous one stays
-alive via `SOURCE_SPEAKERS`.
-
-*Confidence:* the `WEAK_CACHE`-is-not-weak conclusion is certain from source. The
-chunk-unload/`setRemoved` distinction is inferred from upstream CC:T plus 1.21.1
-`BlockEntity` lifecycle semantics and has **not** been runtime-verified here — it
-should be confirmed with a load/unload/reload log test before being treated as
-established.
-
-**Recommended shape:** (a) do not self-register in `SOURCE_SPEAKERS` from the
-constructor — register on first use, or key by `(ServerLevel, BlockPos)` instead of
-a random UUID; (b) also hook `onChunkUnloaded`/`onLoad` in the mixin, or sweep on
-`ChunkEvent.Unload`; (c) if the cache is meant to be weak, do not let its value
-strongly reference its key.
+**Recommended shape:** sweep on `ChunkEvent.Unload` (or hook `onChunkUnloaded` in
+the mixin) to close the window; optionally key `SOURCE_SPEAKERS` by
+`(ServerLevel, BlockPos)` instead of a random UUID so stale entries are findable
+without a `cleanup()` call.
 
 ### 3.8 `HQAudioStream.decode()` materialises before it bounds — NEW
 
@@ -1148,31 +1162,23 @@ identical to a seek. `docs/M1G-SCOPE-DECISIONS-2026-09-14.md` §1 already propos
 protocol v7 with an explicit revision; §4's loop decision should be recorded as
 *depending on* §1, and currently is not.
 
-### 6.5 The server computes a frame-exact anchor and throws it away — NEW
+### 6.5 The anchor is exactly what the wire carries — RETRACTED
 
-`HQFiniteMediaServer.Session`'s constructor (`:59-72`) ends with:
+An earlier draft claimed the `Session` constructor discards a richer
+`SelectedAnchor` (frame index, skip frames, skip samples) and that STATE therefore
+loses information the client re-derives by re-walking MP3 frames. **Both halves
+were wrong** (§12). `FiniteDecodeAnchorSelector.Anchor` is
+`record Anchor(long offset, double seconds)` (`:5-13`) — two fields; no frame or
+skip data exists anywhere to discard — and `HQFiniteMediaStatePacket` carries
+*both* of them (`anchorOffset` `:42`, `anchorTime` `:43`). The bare
+`FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0)` statement at
+`HQFiniteMediaServer.java:71` is validation-only in effect and still deserves a
+comment saying so, but there is **no protocol information loss and nothing for
+protocol v7 to recover**. The client's frame scan from the anchor offset is the E1
+conservative pre-roll design (`MP3_PRE_ROLL_SECONDS = 1.0`,
+`FiniteDecodeAnchorSelector:5`), not reconstruction of discarded fields.
 
-```java
-FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0);   // :71
-```
-
-The returned `SelectedAnchor` is **discarded entirely** — a bare statement
-expression whose only effect is validation. Its `frameIndex`/`skipFrames`/
-`skipSamples`/`exact` fields are precisely what a decoder needs, and STATE carries
-only seconds (`statePacket`, `:401-410`), so the client re-derives frame alignment by
-re-walking MP3 frames from `packet.anchorOffset()`.
-
-That is duplicated work per seek and per loop restart, and a second place where
-"anchor" means two different things (server: frame-exact; wire/client:
-seconds-only). It is adjacent to KI-057 but not recorded: KI-057 is about *intent*,
-this is about *information loss on the wire*. `docs/PROTOCOL-V6.md` describes STATE as
-carrying "canonical authoritative state and decoder-relevant anchor" — the anchor it
-sends is less precise than the one the server has.
-
-**Recommended shape:** if protocol v7 is happening anyway (§6.4), carry
-`frameIndex`/`skipFrames` in STATE so the client does not re-derive them. Also give
-`:71` a comment stating that the call is validation-only, since a discarded return
-value otherwise reads like a bug.
+**No finding.** Recorded here so the retraction is as visible as the claim was.
 
 ### 6.6 Per-packet VS2 reflection on the server hot path — NEW
 
@@ -1237,10 +1243,12 @@ All **NEW** unless noted.
 **Storage**
 
 - `MediaAssetStore.release(id)` (`:174-190`) performs `Files.deleteIfExists` under
-  `synchronized(this)`, and `MediaAssetReleaseQueue.tickPendingReleases()` does the
-  same under the **static class monitor** — which `HQSpeakerMod.onServerTick` acquires
-  on the main thread every tick (`:59`). Filesystem deletion on the main thread, every
-  tick, for every pending release. `docs/M1F-FINALIZATION-2026-09-13.md` explicitly
+  `synchronized(this)`, and the periodic retry runs as
+  `ServerMediaAssets.tickPendingReleases()` (`:47-51`, `static synchronized`, every
+  `RELEASE_RETRY_TICKS`) from `HQSpeakerMod.onServerTick:59` on the main thread,
+  reaching `releases.retryPending()` (`:54-60`, synchronized on the queue instance)
+  and `Files.deleteIfExists`. Filesystem deletion on the main thread, periodically,
+  for every pending release. `docs/M1F-FINALIZATION-2026-09-13.md` explicitly
   accepted "deletion failures remain pending" as M1F scope, so the *retry* is intended;
   the *placement on the main thread* is not discussed.
 - `ServerMediaAssets.resolveRootDir` resolves against
@@ -1475,7 +1483,7 @@ An audit that lists only problems is not useful. These were checked and are righ
 | Sine-wave note synthesis ignoring instrument/name | `HQSpeakerPeripheral.java:771-789` (`:776`), `:791-793`, `:277`, `:297`, `:976`, `:981` |
 | Non-optional legacy `playNote` args | `HQSpeakerPeripheral.java:277` |
 | Block/item unreachable in game | `HQSpeakerRegistry.java`; absent `src/main/resources/data/hqspeaker/**`; absent `assets/hqspeaker/models/block/**`; `HQSpeakerBlockEntity.java:17-32` (zero callers) |
-| `updatePosition` never called | `client/FiniteSpeakerSound.java:38-42`; working legacy analogue `HQSpeakerClientHandler.java:532-551` (call `:546`) |
+| `updatePosition` never called; position is BEGIN-only on the wire | `client/FiniteSpeakerSound.java:38-42`; legacy analogue `HQSpeakerClientHandler.java:532-551` (call `:546`); BEGIN coords `HQFiniteMediaBeginPacket.java:45-46`; no coords in STATE `HQFiniteMediaStatePacket.java:34-45` |
 | ICY event flood, no dedup | `HQSpeakerPeripheral.java:517-536` (event `:535`); source `StreamingAudioSource.java:493-498,583-590`; send `HQAudioStream.java:268-277`, `SharedStreamingGroup.java:117-124`; authz `IcyMetaPacket.java:82-89` |
 | Full MP3 frame walk on a computer thread | `FiniteMediaAnalyzer.java:291-320`; `ModernFiniteMediaAnalyzer.java:18-31`; `HQMediaStaging.java:108`; limit in `config/HQSpeakerServerConfig.java` |
 | Unbounded zero-read spin | `MediaAssetStore.java:255-280` (spin `:266`); bounded analogues `FiniteRangeReadService.java:245-247`, `ModernFiniteMediaAnalyzer.java:41-43`, `FiniteMediaAnalyzer.java:436,528-531` |
@@ -1483,16 +1491,16 @@ An audit that lists only problems is not useful. These were checked and are righ
 | Output cap enforced after materialisation | `HQAudioStream.java:426` then `:429`; cap `:34`; global executor `:38`; submit `:299`; per-structure caps `HQSpeakerClientHandler.java:36,38,247` |
 | Correct input-side bound (contrast) | `HQSpeakerAudioPacket.java:166-170,205-210,250-255`; `HQAudioStream.java:292-295` |
 | Legacy resource leaks | `StreamingAudioSource.java:337,359`; `SharedStreamingGroup.java:181,195-201` |
-| Static strong registries defeat the weak cache | `HQSpeakerPeripheral.java:36-38,42,119,136,210`; `HQSpeakerPeripheralProvider.java:22,24,34,60` |
+| Static strong registries pin `Level`; weak key is a documented fallback, eviction is per-level | `HQSpeakerPeripheral.java:36-38,42,119,136,210`; `HQSpeakerPeripheralProvider.java:20-23,24,34,48,60,71` |
 | M1G client diagnostic silence | `HQFiniteMediaClient.java:144,145,185,295,308` (1 log call total); contrast `HQSpeakerClientHandler.java:45,52,248,549,577` |
 | `nextRequest` linear scan vs `nextClearBit` idiom | `FiniteRangeWindow.java:136-158` (scan `:141-144`); `probe` `:201-217` (`:213`) |
-| Discarded frame-exact anchor | `HQFiniteMediaServer.java:59-72` (`:71`), `:401-410`; `FiniteDecodeAnchorSelector.select` |
+| Anchor is `(offset, seconds)` and both ride on STATE — retracted, no loss (§6.5) | `FiniteDecodeAnchorSelector.java:5-13`; `HQFiniteMediaStatePacket.java:42-43`; unused validation-only call `HQFiniteMediaServer.java:71` |
 | Per-packet VS2 reflection | `HQFiniteMediaServer.java:430-435,491-505`; `VS2TransformHelper.java:10-11,19,37,38,63,68,75,85,91,97,102` |
 | Untested codecs; three optional-string conventions; static registry in a packet class | `HQSpeakerStatusPacket.java:37`; `HQFiniteMediaStatePacket.java:36,42,44`; `IcyMetaPacket.java:34-36,38,49-53,85`; no codec test in `src/test/.../network/` beyond `BestEffortProjectionTest` |
 | Over-generic wire id | `HQSpeakerStopPacket.java:16-17` (`hqspeaker:stop`) |
 | Ungated INFO logging | `HQSpeakerMod.java:92-94`; `HQFiniteMediaStatusPacket.java:49-56`; `HQFiniteMediaBeginPacket.java:98` |
 | Stale acceptance marker | `docs/M0-SMOKE-TEST.md:80` vs `HQSpeakerNetwork.java:30` |
-| KI-051 contradiction | `README.md`, `AGENTS.md`, `docs/README.md` vs `docs/KNOWN-ISSUES.md:223-227`, `docs/CURRENT-STATE.md` §4, `docs/M1G-SCOPE-DECISIONS-2026-09-14.md` §4 |
+| KI-051 contradiction | `README.md`, `AGENTS.md`, `docs/README.md` vs `docs/KNOWN-ISSUES.md:64-70` + `:210`, `docs/CURRENT-STATE.md` §4, `docs/M1G-SCOPE-DECISIONS-2026-09-14.md` §4 |
 | CI has no path filter | `.github/workflows/build.yml:3-5`; 392 runs; 76/24 success/failure in the last 100 |
 | `main` 383 commits behind | GitHub compare `main...codex/m1g-progressive-finite-decode` |
 | Dead code | `client/FileFiniteAudioStream.java` (339 lines, main=1/test=0); `peripheral/HQSpeakerCluster.java` (40 lines, main=1/test=0) |
@@ -1526,10 +1534,14 @@ are the items I would add, in §8's priority order:
     refusal (§3.9).
 12. `FiniteRangeWindow.nextRequest` linear scan, with the fix idiom already in
     `probe()` (§10).
-13. Static strong registries defeat `HQSpeakerPeripheralProvider`'s weak cache (§3.7).
+13. Static strong registries pin `Level`; the chunk-unload window keeps per-position
+    entries (composite + legacy + finite + staging + `Level`) resident until level
+    unload (§3.7).
 14. `MediaAssetStore.writeExact` unbounded spin; `ATOMIC_MOVE` has no fallback
     (§3.4, §3.5).
-15. STATE discards the server's frame-exact anchor (§6.5).
+15. `FiniteSpeakerSound` position is frozen at BEGIN coordinates; moving-speaker
+    support needs either client-side VS2 resolution (legacy `tickPosition` pattern)
+    or a new wire position update (§3.1).
 16. Per-packet VS2 reflection with uncached `Class.forName`/`getMethod` (§6.6).
 17. No packet-codec round-trip tests; three conventions for optional strings; a
     public static peripheral registry inside `IcyMetaPacket` (§4.4).
@@ -1581,6 +1593,106 @@ Each was checked against source and **retracted**:
 | Four packets hand-roll near-identical `Optional`/`OptionalDouble`/`OptionalLong` present-flag framing, so ~60 lines could be removed | **No `Optional` framing exists in any packet.** `HQSpeakerControlPacket` writes `VarLong`/`Enum`/`Double` plainly (`:28-30`); `HQSpeakerStatusPacket` uses `writeUtf(error, MAX_ERROR_CHARS)` (`:37`); `HQFiniteMediaStatePacket` null-coalesces (`:44`) and clamps with `Math.max` (`:36`, `:42`); `IcyMetaPacket` caps in its constructor (`:49-53`). §4.4 was rewritten around the real issue: three different optional-string conventions and zero codec round-trip tests. |
 | `docs/KNOWN-ISSUES.md:223-227` records the KI-051 decision | `KNOWN-ISSUES.md` is 211 lines. The KI-051 entry is at `:64-70` and the summary line at `:210`. |
 
+| `HQSpeakerPeripheral` holds a `.composite` back-reference, giving `SOURCE_SPEAKERS -> legacy -> composite -> vanilla`, so the weak cache is "defeated" | No such field exists (`grep composite` in `HQSpeakerPeripheral.java` returns nothing). The real mechanism is that the `WeakHashMap` **value graph references its own key** (`legacy.world` `:42`, `finite.level` `:75`), and the provider comment at `:20-21` documents the weak key as an intentional fallback with explicit eviction. §3.7 rewritten. |
+| `HQFiniteMediaServer.tick()` iterates players and projects packets under its monitor every tick, reaching the release queue each tick | The body is six lines (`:280-286`): session read, terminal check, and release-queue reach only on natural end. The periodic deletion retry is `ServerMediaAssets.tickPendingReleases` (`:47-51`), every `RELEASE_RETRY_TICKS`, not every tick. |
+| HTTP connections for playlists/segments are not consistently `disconnect()`ed | All checked paths close their streams: `streamMP3`'s `finally` closes `bitstream`/`rawStream` (`:236-238`); `streamTS` (`:288`), `playAACSegment` (`:317-320`) and `HLSPlaylistParser.fetchUrl` (`:197-199`) use try-with-resources. Never calling `disconnect()` is normal when streams are closed. Bullet removed. |
+| `MediaAssetReleaseQueue.tickPendingReleases()` runs under a static monitor every tick | The static method is `ServerMediaAssets.tickPendingReleases` (`:47-51`); the queue's `retryPending` (`:54-60`) is instance-synchronized; cadence is `RELEASE_RETRY_TICKS`. |
+
 Several other line numbers in the earlier draft were off by tens of lines because they
 were carried from reading notes rather than re-checked; every citation in §1–§11 above
 was re-read against the working tree at review time.
+
+---
+
+## 13. Post-review addendum — 2026-09-17
+
+After publication the report was treated as a **claim set to verify**, not as
+gospel, by the project owner. This section records the outcome so the document
+matches reality as of branch HEAD `73b929294de1393d883799fdad47a78320e18e56`.
+
+### 13.1 Findings confirmed and promoted by the owner
+
+- **KI-062** — §2.1, server-tick / computer-thread monitor coupling with synchronous
+  DNS. Confirmed as described; recorded as the most concerning new finding because
+  it can freeze the whole server.
+- **KI-063** — §2.3, replacement-before-admission destroys valid current playback.
+- **KI-064** — §3.4 + §3.5, storage-import zero-read spin and missing
+  `ATOMIC_MOVE` fallback.
+- **KI-054 upgraded** — §2.2's escalation is accepted: an early range-service
+  shutdown failure can leave the media-store root lock alive, not merely skip a
+  deletion retry.
+- Also confirmed without new KI numbers: the live-HLS window bug (§2.4), the
+  misleading legacy format lists (§2.5), and the bogus legacy
+  `playNoteAll`/`playSoundAll` behaviour (§2.6).
+
+### 13.2 Claims the owner rejected and my re-verification confirmed were wrong
+
+1. **§6.5 (anchor information loss).** `FiniteDecodeAnchorSelector.Anchor` is
+   `record Anchor(long offset, double seconds)`; STATE carries both fields. There
+   were never frame/skip fields to discard and nothing for protocol v7 to recover.
+   Section rewritten as a retraction.
+2. **§3.1 (STATE carries projected positions).** Coordinates exist only in BEGIN
+   (`:45-46`); STATE has none. The moving-speaker problem is real but needs a
+   position-update mechanism (or client-side VS2 resolution), not a missing call
+   against existing STATE data. Section corrected.
+3. **§2.1/§3.3 (`audioPrepareStaged` under the composite monitor).** It is a plain
+   `@LuaFunction` (`HQSpeakerCompositePeripheral:176-180`), neither `synchronized`
+   nor `mainThread`; only `audioPlayPrepared` (`:187-188`) is both. The dangerous
+   monitor/I/O combination is the dynamic `synchronized` path reached through
+   `callMethod` — the stream calls. Sections corrected; §3.3's severity reduced to
+   a computer-thread stall.
+
+### 13.3 Further errors found while re-verifying (neither party had caught them)
+
+4. **§3.7 invented a `legacy.composite` back-reference.** It does not exist. The
+   weak-key immortality comes from the value graph referencing its own key `Level`,
+   and the provider comment (`:20-21`) documents this as an intentional fallback
+   with explicit eviction — so "the weak-reference design is defeated" was the
+   wrong framing; the real residual is the chunk-unload eviction window. Rewritten.
+5. **§2.1 overstated `HQFiniteMediaServer.tick()`.** Its body is six lines
+   (`:280-286`); no per-tick player iteration or projection under the monitor.
+6. **§3.6's HTTP-connection bullet** was wrong: every checked path closes its
+   streams (`:236-238` finally; `:288`, `:317-320`, `HLSPlaylistParser:197-199`
+   try-with-resources). Removed.
+7. **§7 misnamed the deletion-retry path** as `MediaAssetReleaseQueue.tickPendingReleases`
+   running every tick; it is `ServerMediaAssets.tickPendingReleases`
+   (`:47-51`, `static synchronized`) at `RELEASE_RETRY_TICKS` cadence. Corrected.
+
+All seven are logged in §12 alongside the earlier retractions.
+
+### 13.4 Documentation findings are now historical
+
+The owner reconciled the documentation directly (within the audit's permission
+scope) in the commits up to `73b9292`: root `README.md`, `docs/README.md`,
+`AGENTS.md`, `docs/VERIFIED-FACTS.md`, `docs/KNOWN-ISSUES.md`,
+`docs/FUTURE-CLEANUP.md`, and `docs/CURRENT-STATE.md` now record KI-062…KI-064,
+include the KI-054 root-lock escalation, drop the stale L1/L2/L3 loop-choice
+wording, and guard against the two incorrect audit claims above. **§6.1 and §6.2
+therefore describe the tree at `2862a87` and are historical**, kept for the record
+of what the audit saw.
+
+### 13.5 Owner meta-claims verified independently
+
+`gh api compare 957832348e…73b929294d` reports **57 commits, 18 files, all
+documentation/project-guidance** — no `src/`, test, resource, Lua, Gradle, or CI
+implementation file changed. The owner's statement that the implementation remains
+exactly at the known-green source checkpoint is confirmed.
+
+### 13.6 One refinement to the owner's framing
+
+For moving speakers, a *wire* position update is not strictly required: the legacy
+path resolves VS2 ship transforms **client-side** from the packet's block
+coordinates (`HQSpeakerClientHandler.tickPosition`, `:532-551`), and BEGIN already
+carries `blockX/blockY/blockZ`. Either mechanism — client-side resolution mirroring
+`tickPosition`, or a server-pushed update — closes §3.1; the audit's error was
+claiming the data was already on STATE, not in proposing `updatePosition` wiring.
+
+### 13.7 Sequencing
+
+The owner's two options (safety-first: KI-062 + KI-063 + KI-054 hardening before
+protocol v7; or M1G-first with KI-062 as a small pre-patch) are a product decision
+and are not adjudicated here. §8's remediation order is **superseded** by the
+owner's KI-062/063/064 + KI-054-upgraded prioritisation and by the explicit
+decision not to mix HLS, legacy `*All` methods, the separate HQ block, CI cleanup,
+or legacy decoder cleanup into the M1G batch. §8 is retained only as the original
+proposal of record.
