@@ -1,29 +1,33 @@
-# Finite streaming design — M1E authority + M1F transport + M1G decoder boundary
+# Finite streaming design — M1E authority + M1F transport + M1G decode/render
 
-This is the accepted finite-streaming architecture.
+Updated: 2026-09-17
+
+This document records the accepted finite-streaming architecture across M1E/M1F/M1G. For issue/evidence status, `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and exact source take precedence.
 
 Current implementation status:
 
-- M1E server authority: source/test/CI complete;
-- M1F bounded encoded transport: source/test/CI/package complete;
-- M1G progressive decoder/renderer: next, not started;
-- M1H full dynamic listener lifecycle: later.
+- M1E server authority: source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded;
+- M1F bounded encoded transport: source/test/CI/package/component complete; focused Minecraft transport acceptance unrecorded;
+- M1G progressive MP3/common-WAV decode + positional renderer: **integrated in source**, with correctness/evidence work remaining;
+- M1H full dynamic listener/moving-source/rejoin lifecycle: later.
 
-For exact M1F completion evidence read `M1F-FINALIZATION-2026-09-13.md`.
+Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`.
 
-## User-facing target
+## User-facing architecture
 
 ```text
 ComputerCraft file
--> server-owned MediaAsset
+-> temporary staging/import
+-> reusable server MediaAsset
 -> server-owned playback clock/state
 -> relevant client requests bounded encoded pieces it needs
--> client keeps bounded sliding temporary RAM
--> decoder produces bounded mono PCM
--> positional speaker renderer
+-> bounded sliding client encoded RAM
+-> progressive MP3/common-WAV decoder worker
+-> bounded mono S16 PCM at source rate
+-> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-The server does not wait for client rendering before canonical time begins. Large songs do not require complete client song files.
+The server does not wait for client rendering before canonical time begins. Large songs do not require complete client song files or whole-track decoded PCM.
 
 ## M1E semantic authority
 
@@ -41,13 +45,13 @@ The server owns:
 
 Client READY requests fresh server truth. Client ERROR is diagnostic only.
 
-Projection failure cannot undo canonical server state. Asset ownership/release is retry-safe.
+Projection failure cannot undo canonical server state.
 
-The final focused Minecraft M1E acceptance was explicitly skipped by the owner and remains unrecorded.
+The final focused Minecraft M1E acceptance was explicitly skipped and remains unrecorded.
 
 ## M1F encoded transport
 
-Protocol v5 uses:
+M1F introduced bounded request/data transport. Current modern protocol is **v6** because M1G later added the decode descriptor; the basic range contract remains:
 
 ```text
 client -> server:
@@ -57,13 +61,12 @@ server -> client:
 source + generation + asset + offset + encoded bytes
 ```
 
-STATE also carries:
+Authoritative STATE currently carries:
 
 ```text
+position/duration/state/volume/looping
 anchorOffset + anchorTime
 ```
-
-The client waits for STATE before first byte demand.
 
 Current tuning bounds:
 
@@ -74,25 +77,17 @@ Current tuning bounds:
 - server IO workers: 2;
 - server IO queue: 64.
 
-These are implementation values, not product-level guarantees.
+These are implementation values, not product guarantees.
 
 ## Server request/lifetime contract
 
-Final M1F satisfies:
+Modern range handling enforces active source/generation/asset identity, bounded offsets/lengths, current player/relevance, bounded outstanding work, separate in-flight asset lifetime, stale completion rejection, off-thread exact reads, cancellation accounting, and deferred release ownership.
 
-- exact active source/generation/asset identity;
-- valid bounded offset/length;
-- connected/current player in same dimension and relevance radius;
-- bounded outstanding work;
-- playback/source ownership still valid;
-- separate in-flight MediaAsset lifetime while async IO runs;
-- stale completion discard after replacement/leave/disconnect;
-- off-thread exact reads;
-- cancellation accounting/ref cleanup;
-- deferred final-release retry ownership;
-- range workers stopped before media store close.
+### Current shutdown caveat — KI-054
 
-Pure validation rules are tested separately from Minecraft object plumbing. The integrated fake consumer proves actual MediaAsset range reads into the bounded client window.
+The intended shutdown ordering is range IO -> store close, but current failure handling is not fully hardened. `FiniteRangeReadService.close()` can throw before `MediaAssetStore.close()`, leaving the store root lock and static server-assets entry alive in the JVM. Completed-file deletion failure can also lose retry bookkeeping during store close.
+
+Therefore “workers stop before store close” is a design requirement, not proof that every failure path is currently safe.
 
 ## Client encoded-data contract
 
@@ -105,39 +100,59 @@ The client boundary distinguishes:
 
 Temporary network starvation must never become physical EOF.
 
-A fresh `FiniteRangeWindow` is unanchored. STATE installs the authoritative anchor.
+`FiniteRangeWindow` supports authoritative reset/re-anchor and bounded forward sliding/discard while preserving useful unread overlap/prefetch.
 
-The window supports:
+## M1G progressive decode/render path
 
-- arbitrary reset/re-anchor;
-- forward `advanceTo(...)` consumption;
-- consumed-prefix discard;
-- preservation of unread overlap;
-- preservation only of still-useful whole in-flight requests;
-- new tail demand/refill;
-- bounded memory independent of track length;
-- in-place sliding rather than full-window reallocation on each small consume.
-
-## M1F component proof
-
-The final fake-consumer proof is:
+Current source integrates:
 
 ```text
-2 MiB MediaAsset
--> non-zero range request
--> exact asynchronous server read
--> bounded client window
--> consume/discard prefix
--> continue/refill beyond one full window
--> jump to distant offset
--> obsolete old region rejected
--> exact bytes verified
--> memory stays bounded
+FiniteRangeWindow
+-> FiniteEncodedInputStream
+-> ProgressiveWavDecoder / ProgressiveMp3Decoder
+-> bounded FinitePcmQueue
+-> FinitePcmAudioStream
+-> FiniteSpeakerSound / SoundManager / BLOCKS
 ```
 
-This closes the original M1F deterministic transport target.
+### Encoded input
 
-Focused real-Minecraft M1F transport acceptance remains unrecorded; do not infer it from CI.
+`FiniteEncodedInputStream` is decoder-worker-only. NEED_DATA waits/refills away from game/audio threads; true asset EOF alone becomes normal stream EOF; cancellation/stale state aborts the decode epoch.
+
+### MP3
+
+JLayer decodes frames progressively. The server selects E1 conservative earlier seek points; the client decodes forward and discards PCM before the audible target/current server time.
+
+`FiniteDecodeAnchorSelector.Anchor` is exactly `(offset, seconds)`. Both fields already go on STATE; there are no hidden frame/skip fields being discarded.
+
+### WAV
+
+The server supplies normalized common-WAV layout. Current modern support is U8/S16/S24/S32/F32 mono/stereo, classic RIFF/WAVE plus the selected narrow PCM/float WAVEX subset. Stereo downmixs to mono S16 at source sample rate.
+
+### PCM/render
+
+`FinitePcmQueue` keeps decoded PCM bounded with producer backpressure. `FinitePcmAudioStream` performs no network/disk/codec work; temporary empty PCM becomes short bounded silence rather than terminal EOF.
+
+`FiniteSpeakerSound` is one positional BLOCKS source per physical speaker.
+
+## Decoder/re-anchor coordination — selected next protocol change
+
+Current v6 still has KI-053/KI-056/KI-057:
+
+- ordinary same-anchor STATE can reset an already-slid encoded window without restarting the live decoder;
+- expected SEEK cancellation can wake/report before old worker identity is invalidated;
+- time-derived anchor movement is overloaded as decoder-restart intent, while same-coarse-anchor semantic seek depends on the preceding CONTROL path.
+
+Selected target is an explicit server-authoritative decoder/re-anchor revision, likely protocol v7:
+
+- new media => new generation;
+- semantic seek => revision increments;
+- ordinary STATE/pause/resume/volume/loop snapshots preserve healthy decoder state;
+- STATE alone is sufficient for seek/reanchor correctness;
+- missing local decoder can rebuild without forcing revision change;
+- old worker identity is invalidated before cancellation can wake/report.
+
+One implementation-shape choice remains: retain finite CONTROL packets only as optional latency hints, or remove duplicate PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP projection and let STATE become the sole transition authority.
 
 ## Seeking
 
@@ -146,26 +161,51 @@ Canonical seek remains server-owned:
 ```text
 seek(T)
 -> server clock becomes T
--> STATE selects encoded anchor at/before T
--> client resets demand to that anchor
--> M1G decoder later decodes/pre-rolls to audible target
+-> server selects encoded anchor at/before T
+-> explicit decoder/reanchor revision identifies semantic discontinuity
+-> client resets codec/window/PCM/renderer state as required
+-> MP3 pre-roll/common-WAV decode rejoins the current server timeline
 ```
 
-Generation does not change for ordinary seek because the encoded asset bytes remain immutable.
+A semantic seek must restart codec state even if the selected encoded anchor byte is unchanged.
 
-### MP3
+## Fixed modern finite range / volume
 
-Server analysis records coarse MP3 encoded seek points. M1G owns exact Layer III pre-roll/reservoir reconstruction.
+M1G deliberately uses a fixed **32-block** core listening/delivery radius rather than native CC:T-style volume-dependent range.
 
-### WAV
+Selected contract:
 
-Current analyzer records useful WAV facts but final common-WAV direct layout/time-to-byte metadata remains M1G work.
+- normal positional attenuation inside 32 blocks;
+- HQ finite volume changes gain/loudness, not core range;
+- volume >1 does not intentionally enlarge modern finite attenuation distance;
+- future Sound Physics Remastered compatibility owns intentional acoustic/range extension and matching server relevance.
 
-The M1F range protocol already supports arbitrary offsets and does not need redesign for common WAV.
+Current source relevance is already fixed 32 blocks, but KI-058 remains because the live Minecraft channel does not yet explicitly install/retain the selected fixed attenuation distance when volume changes.
+
+## Volume zero
+
+Selected global HQ volume-zero behavior:
+
+- canonical server time keeps advancing;
+- client retains session metadata but cancels local decoder/renderer;
+- encoded range requests stop while globally muted;
+- unmute rebuilds/reanchors to then-current authoritative time.
+
+A player's local MASTER/BLOCKS slider is separate and must not change server transport. Renderer-start/local-silent behavior still needs KI-060 hardening.
+
+## Looping
+
+Looping is deliberately simple in M1G.
+
+At local physical EOF, if authoritative state still says `looping=true`, start a fresh local decoder/render iteration from the beginning. A normal restart gap is acceptable.
+
+M1G does not require sample-gapless MP3, LAME/Xing delay/padding trimming, loop-head prefetch solely to hide boundaries, a permanent OpenAL source, or special SPR loop continuity.
+
+This selected ordinary replay behavior is not implemented yet (KI-051).
 
 ## No persistent client song cache
 
-The final architecture does not use:
+Modern prepared playback does not use:
 
 - `.part` song accumulation;
 - completed client `.media` song files;
@@ -173,50 +213,41 @@ The final architecture does not use:
 - persistent sparse cache;
 - cross-restart partial-download resume.
 
-## Removed prototype path
-
-The project-specific `audioPlayStaged()` command/direct-staged path remains removed.
-
 Staging is import plumbing only:
 
 ```text
-CC file -> temporary staging -> immutable MediaAsset
+CC file -> temporary staging -> immutable server MediaAsset
 ```
 
-## M1G boundary
+`audioPlayStaged()` remains removed.
 
-M1G is next and owns:
+## Staging / storage caveats
 
-```text
-bounded/sliding encoded window
--> decoder/converter worker
--> bounded mono PCM queue
--> positional Minecraft/OpenAL renderer
-```
+- KI-061: whole staging-owner cleanup can leave arbitrary staging files unreachable under old random staging IDs.
+- KI-064: asset import can spin indefinitely on repeated zero-byte reads and lacks unsupported-`ATOMIC_MOVE` fallback.
 
-Specifically:
+These do not change the finite-streaming architecture but remain active hardening work.
 
-- progressive MP3 decode;
-- starvation/refill behavior;
-- MP3 pre-roll;
-- common WAV layout/conversion;
-- mono/stereo-to-mono output;
-- bounded PCM;
-- decoder cancellation;
-- audible rendering;
-- final active format narrowing.
+## Replacement / threading caveats
 
-Do not restore or repair the obsolete complete-file JavaSound/mp3spi bridge as the new engine.
+- KI-062: synchronized dynamic legacy stream dispatch can perform blocking DNS while holding a monitor needed by server tick ownership work and synchronized cleanup.
+- KI-063: failed/rejected RAW or prepared replacement can stop valid current playback before the replacement is admitted.
 
-## Dynamic listener boundary — M1H
+These are cross-cutting ownership/safety issues, not reasons to redesign the finite transport pipeline.
 
-M1F validates current relevance on each range request/completion. Full listener lifecycle remains M1H:
+## Dynamic listener / moving-source boundary — M1H
+
+Current M1G range is fixed and requests/completions recheck relevance, but full lifecycle remains M1H:
 
 - late entrants;
 - proactive leave cleanup;
 - return/rejoin at current server time;
 - dimension/world/reload recovery;
-- underrun refill/rejoin;
-- VS2 movement lifecycle.
+- robust general underrun rejoin;
+- final moving-source/VS2 lifecycle.
 
-Do not reintroduce fixed historical recipient capture.
+Modern BEGIN carries initial world position and block coordinates; STATE does not carry live x/y/z. The legacy client already recomputes VS2 ship position from block coordinates each tick, so M1H may mirror that client-side path or add explicit authoritative position updates. That later tradeoff remains open.
+
+## Evidence boundary
+
+M1G integrated source/tests/package is green at `957832348eaa6e497282d923f2312c9c7d7c550f`, but real-MP3 progressive integration coverage, focused `FinitePcmAudioStream` coverage, selected ordinary replay, and focused audible Minecraft acceptance remain incomplete.
