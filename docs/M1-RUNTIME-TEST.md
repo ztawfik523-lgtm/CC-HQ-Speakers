@@ -1,8 +1,8 @@
 # M1 consolidated runtime test
 
-This file is now a current integration guide, not the old `fba84a3`/pre-M1A gate.
+Updated: 2026-09-17
 
-For exact current evidence gaps and deterministic prerequisites, read `TESTING.md` first.
+This is a current integration guide. For exact deterministic prerequisites and evidence gaps, read `TESTING.md` first. Current source/state authority is `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `VERIFIED-FACTS.md`, and exact source.
 
 ## Important script boundary
 
@@ -17,26 +17,29 @@ Useful compatibility/history scripts:
 Not valid as current modern-prepared M1G acceptance:
 
 - `m1d_media_analysis_test.lua` — expects the old broad M1D prepared format surface;
-- `m1_player_test.lua` and `p0_finite_regression.lua` — primarily exercise inherited byte-taking finite APIs such as `speakMp3`/`speakOgg` rather than `hq.playFile()` / prepared playback.
+- `m1_player_test.lua` and `p0_finite_regression.lua` — primarily exercise inherited byte-taking finite APIs rather than `hq.playFile()` / prepared playback.
 
 ## Preconditions
 
-Before the consolidated Minecraft run:
+Before the consolidated Minecraft M1G pass:
 
-1. KI-051 loop-wrap architecture must be chosen and implemented if loop behavior is part of the pass;
-2. KI-053 same-anchor STATE/window-reset issue must be resolved and regression-tested;
-3. real-MP3 progressive JLayer integration coverage and focused `FinitePcmAudioStream` coverage should be added;
-4. both target NeoForge builds should be green.
+1. KI-053/KI-056/KI-057 must be fixed coherently through the selected explicit decoder/re-anchor revision;
+2. fixed-range renderer/start behavior KI-058/KI-060 should be implemented;
+3. selected ordinary loop replay KI-051 should be implemented if loop is part of the pass;
+4. real-MP3 progressive JLayer integration and focused `FinitePcmAudioStream` coverage should be added;
+5. both target NeoForge builds should be green.
 
-KI-054 shutdown deletion retry is a separate storage/shutdown hardening item; keep it tracked even if the audible M1G run proceeds.
+Strongly consider closing KI-062 before relying on legacy stream calls in the same test instance, because blocking DNS under the shared composite monitor can stall server tick/lifecycle cleanup.
+
+KI-054/KI-064 storage hardening and KI-063 replacement-admission correctness remain tracked even if a narrower audible M1G pass proceeds. A broader safety-first batch before runtime acceptance is also defensible.
 
 ## Test environment
 
-Run Minecraft 1.21.1 with Java 21, CC:T 1.120.0, NeoForge 21.1.247 baseline and ideally repeat critical coverage on 21.1.248.
+Run Minecraft 1.21.1 with Java 21, CC:T 1.120.0, NeoForge 21.1.247 baseline and repeat critical coverage on 21.1.248.
 
 Record exact source commit, documentation commit if relevant, JAR SHA-256, test-instance/full-modpack context, and fixture facts.
 
-Generate deterministic MP3/WAV fixtures with `scripts/generate_m1_test_audio.ps1`, but note that the generated OGG fixture is for inherited/legacy coverage, not modern prepared M1G support.
+Generate deterministic MP3/WAV fixtures with `scripts/generate_m1_test_audio.ps1`. Generated OGG remains inherited/legacy coverage, not modern prepared M1G support.
 
 ## Gate 1 — standard CC:T contract
 
@@ -47,6 +50,8 @@ Run `p0_cc_speaker_contract` and listen/verify:
 - `playAudio` backpressure/native `speaker_audio_empty` works;
 - `stop` works;
 - HQ additions have not replaced native semantics.
+
+Do not use legacy `playNoteAll`/`playSoundAll` as proof of singular CC:T semantics; those inherited helpers have known mismatches.
 
 ## Gate 2 — modern prepared MP3
 
@@ -61,7 +66,7 @@ assert(hq.playFile(speaker, "/m1.mp3", { volume = 0.5 }))
 Verify:
 
 - sound becomes audible before the whole track would have transferred;
-- `audioStatus()` reports the server-derived duration/rate/format;
+- `audioStatus()` reports server-derived duration/rate/format;
 - playback remains positional and follows BLOCKS/MASTER volume;
 - no complete client `.part/.media` song file appears;
 - long playback does not make encoded/decoded memory scale with track duration.
@@ -70,65 +75,105 @@ Verify:
 
 Repeat through `hq.playFile()` with supported common WAV.
 
-Verify correct pitch/speed at the fixture's source sample rate and mono positional output.
+Verify correct pitch/speed at source sample rate and mono positional output.
 
-## Gate 4 — controls and seek
+## Gate 4 — controls and explicit reanchor revision
 
 For both MP3 and WAV where practical:
 
-- pause freezes canonical position and audible playback;
-- resume continues;
-- live volume update works once;
-- forward seek rejoins the current server time;
-- backward seek recreates decoder state cleanly;
-- repeated seeks do not revive stale PCM/old sound;
-- MP3 seek does not corrupt after E1 pre-roll.
+- pause freezes canonical position and audible playback without restarting a healthy decoder;
+- resume continues without gratuitous restart;
+- live volume update works without restarting decoder state;
+- forward/backward/repeated seek audibly rejoins current server time;
+- semantic seek recreates codec state even when the selected coarse MP3 anchor byte is unchanged;
+- expected cancellation from old decoder work never becomes a fatal session error;
+- stale/out-of-order decoder revision work cannot revive old PCM/renderers;
+- seek correctness does not depend on a CONTROL packet arriving before STATE.
 
-If a seek selects the same coarse MP3 anchor as before, verify the semantic seek still creates fresh codec state.
+If protocol v7 retains CONTROL packets as hints, deliberately exercise lost/reordered hint conditions where practical. If STATE becomes the sole transition authority, verify no obsolete control-order dependency remains.
 
 ## Gate 5 — starvation/refill
 
 Create a controlled slow/throttled transport condition or otherwise force bounded temporary starvation.
 
-Verify the behavior M1G actually owns:
+Verify the behavior M1G owns:
 
 - temporary missing encoded data does not become terminal EOF;
 - renderer starvation is temporary silence rather than immediate terminal sound EOF;
-- when data returns, the existing live decoder/renderer epoch can continue without stale output from a cancelled/replaced epoch;
+- when data returns, the live epoch continues without stale output from cancelled/replaced work;
 - server canonical time continues independently.
 
-Do **not** require or claim a general current-server-time catch-up after a long already-started renderer underrun. Current M1G only performs catch-up before renderer start; robust long-underrun rejoin/catch-up remains M1H. Record any audible lag observed after a long starvation rather than treating it as an M1G pass/fail requirement.
+Do **not** require general current-server-time catch-up after a long already-started renderer underrun. Robust long-underrun rejoin remains M1H unless later source changes explicitly pull it forward.
 
-## Gate 6 — loop
+## Gate 6 — selected ordinary replay loop
 
-Only run this as a pass/fail gate after KI-051 L1/L2/L3 is chosen and implemented.
+Looping is no longer an architecture-choice gate.
 
-Verify multiple audible wraps, server/client synchronization, loop disable continuity, and exact-duration semantics.
+After KI-051 source work exists, verify:
 
-Server `audioStatus().position` wrapping by itself is not proof of audible loop rejoin.
+- physical EOF while authoritative `looping=true` starts the same media again;
+- WAV and MP3 both replay;
+- a normal restart gap is acceptable;
+- loop disable prevents the next replay without stale restart work;
+- seek/replacement/stop/revision changes supersede stale local replay;
+- server `audioStatus().position` wrapping aligns semantically with repeated playback.
 
-## Gate 7 — stop/replacement/lifecycle
+Do **not** require sample-gapless MP3, encoder-delay/padding trimming, loop-head prefetch, or a permanent OpenAL source.
+
+## Gate 7 — fixed range / volume / volume zero
+
+The M1G range policy is selected: fixed 32-block core radius.
+
+Verify:
+
+- moving away from the physical `computercraft:speaker` attenuates sound;
+- changing finite volume changes loudness;
+- volume above 1 does **not** enlarge the modern finite core attenuation/delivery radius;
+- behavior around the 32-block boundary matches the intended fixed range;
+- global HQ volume 0 stops local decoder/render/range work while canonical server time keeps advancing;
+- unmute rebuilds/rejoins current authoritative time rather than replaying stale buffered audio;
+- client-local BLOCKS/MASTER mute does not alter server transport policy;
+- local silent/muted-start conditions do not permanently latch `rendererStarted` with no active source.
+
+Future SPR extended-range behavior is **not** part of this M1G gate.
+
+## Gate 8 — stop/replacement/lifecycle
 
 Verify:
 
 - stop while prebuffering/decoding cancels old work promptly;
-- replacement does not allow stale decoder/PCM to revive;
+- successful replacement cancels old decoder/PCM/render state exactly once;
+- **rejected/failed replacement leaves the previous valid HQ source alive** after KI-063 is fixed;
 - renderer close cannot leave a producer blocked forever;
 - normal client disconnect/world teardown does not leave stale local sound.
 
-Full late-entry/leave-return/dimension/resource-reload/final VS2 lifecycle remains M1H and is not required to close M1G.
+Full late-entry/leave-return/dimension/resource-reload/final VS2 lifecycle remains M1H.
 
-## Gate 8 — positional audio
+## Gate 9 — positional / VS2 observation
 
 With one physical `computercraft:speaker`:
 
-- move around it and verify direction/attenuation;
+- verify direction/attenuation while moving around it;
 - adjust BLOCKS and MASTER sliders;
-- if VS2 is available, record movement behavior but do not treat final VS2 lifecycle as M1G completion.
+- if VS2 is available, record current moving-source behavior but do not treat final VS2 movement as M1G completion.
 
-## Gate 9 — storage/shutdown observation
+Modern STATE does not carry live x/y/z. M1H may later mirror the legacy client-side ship transform from BEGIN block coordinates or add explicit authoritative position updates. Do not treat either future design as an M1G gate.
 
-During normal stop/server shutdown, verify no obvious retained active media/range work remains. KI-054 specifically requires deterministic deletion-failure testing in code, including the failed-close registry-retention path; a normal runtime shutdown cannot prove that edge case resolved.
+## Gate 10 — staging/storage observation
+
+For normal operation:
+
+- confirm successful high-level `hq.playFile()` consumes its temporary staging copy;
+- after KI-061 fix, create an interrupted/low-level leftover and verify whole staging-owner cleanup removes it while ordinary one-computer detach does not erase a still-shared mount;
+- confirm no obvious active range/media work remains on normal shutdown.
+
+KI-054 and KI-064 need deterministic failure-injection proof in code: normal shutdown cannot prove root-lock recovery, zero-read no-progress handling, or atomic-move fallback.
+
+## Optional safety regression — KI-062
+
+When a deterministic resolver hook/test exists, block DNS for a legacy stream start and verify the server tick and provider cleanup paths do not wait on the composite monitor held by that lookup.
+
+Do not use an uncontrolled real DNS outage as the only acceptance method.
 
 ## Record
 
@@ -139,7 +184,7 @@ Record:
 - fixture names, sizes, rates, durations;
 - pass/fail per gate;
 - relevant client/server logs;
-- whether test instance or full ATM10/modpack;
+- test instance or full modpack;
 - network compression/throttling conditions when relevant.
 
 Do not call M1G audibly proven from CI alone or from legacy `speakMp3`/`speakOgg` scripts.
