@@ -1,178 +1,114 @@
-# Regression test matrix
+# P0 regression test matrix — historical
 
-## Purpose
+> **Historical testing strategy record.** The general layered-testing principles remain useful, but the milestone mapping and prototype targets below were superseded as M1E/M1F/M1G evolved. `TESTING.md` is the authoritative current matrix; `M1-RUNTIME-TEST.md` is the current consolidated Minecraft guide.
 
-The repo should not require a full Minecraft launch to rediscover every basic lifecycle bug.
+## Testing principles which remain valid
+
+The repo should not require a full Minecraft launch to rediscover deterministic lifecycle/codec/state bugs.
 
 Use three layers:
 
-1. pure/unit tests for deterministic codec/parser/cursor/state logic;
-2. extracted state-machine/component tests for server/client lifecycle logic where Minecraft classes are not required;
-3. consolidated Minecraft/Lua acceptance for behavior which depends on real CC:T/Minecraft networking and sound plumbing.
+1. pure/unit tests for deterministic parser/codec/cursor/state/storage logic;
+2. extracted component/coordination tests where Minecraft classes are not required;
+3. focused Minecraft/Lua acceptance for real CC:T/Minecraft networking, sound engine, attenuation, lifecycle, and mod interoperability.
 
-Do not keep adding tests for prototype concepts which the accepted roadmap deletes.
+Do not keep adding tests for prototype concepts which the accepted roadmap removed.
 
-## Java unit tests present
+## Historical tests which remain useful in context
 
 ### `FiniteAudioTrackTest`
 
-Historical retained-M1 regression coverage:
-
-- duration/frame-aligned reads;
-- backward/clamped seek;
-- exact seek-to-duration cursor state;
-- loop cursor wrap;
-- loop-disable cursor continuity;
-- independent renderer forks;
-- invalid PCM construction.
-
-This remains useful while legacy finite byte APIs exist, but the retained whole-track PCM object is not the final large-file architecture.
+Legacy retained-whole-track coverage. Useful only while inherited finite byte APIs/classes remain; it does not validate the modern large-file prepared engine.
 
 ### `HLSPlaylistParserTest`
 
-Preserves parser facts for later stream work:
+Preserves parser facts for later live-stream work. It does **not** prove current inherited HLS progression is correct; the refreshed-playlist `currentSegmentIndex` bug remains later M3 work.
 
-- live media playlist parsing;
-- `EXT-X-MEDIA-SEQUENCE`;
-- relative segment URL resolution;
-- master variant resolution;
-- audio-only codec classification.
+### `FinitePlaybackClockTest` / `FinitePlaybackStateMachineTest`
 
-This does not claim current HLS stream progression is correct.
-
-### `FinitePlaybackClockTest`
-
-Prototype/future semantic clock coverage:
-
-- pause/resume;
-- seek/clamping;
-- exact-duration end behavior;
-- loop wrap;
-- loop-disable rebase.
-
-The final M1E server-authoritative playback state should reuse or supersede these tested semantics rather than restoring renderer authority.
+Useful pure server-timeline/state semantics. Modern M1E server authority now owns canonical finite state/time.
 
 ### `FiniteMediaPathTest`
 
-Covers safe normalized staged-media paths and traversal rejection.
+Safe staged-media path normalization/traversal coverage.
 
 ### `RawFeedLifetimeTest`
 
-M1A pure RAW lifecycle coverage:
+M1A RAW lifecycle/admission timing coverage. It does not prove audible client timing.
 
-- accepted sample count converts to server-tick drain duration;
-- successive RAW chunks accumulate duration;
-- unsent outbound queue prevents source expiry;
-- accepting new samples resets idle grace;
-- the full idle grace is required before closure;
-- state reset/clear;
-- empty accepted chunks are rejected by the pure lifetime model.
+### Modern M1F/M1G tests added later
 
-This tests deterministic M1A server ownership timing without importing Minecraft packet/render classes.
+Current suite also includes bounded range/window/read-service transport tests, common-WAV analyzer/converter tests, decode-descriptor/anchor tests, starvation-aware encoded-input tests, bounded PCM queue tests, and progressive WAV tests. See `TESTING.md` for exact current coverage and gaps.
 
-## Why Minecraft packet tests are not ordinary unit tests
+## Why many packet/render tests are not ordinary pure unit tests
 
-An initial P0 pass directly instantiated HQ packet classes. The normal Gradle `test` source set does not provide Minecraft's generated packet classes even though production `compileJava` has the NeoForge/Minecraft classpath.
+Minecraft/NeoForge packet and sound classes are not always available/ergonomic in the normal test source set. Prefer extracting pure validation/coordination logic when practical and reserve a real component/game/runtime harness for behavior that genuinely needs Minecraft.
 
-Do not distort the build merely to make packet classes unit-testable. Extract protocol/state validation into pure classes when practical, or use a real NeoForge component/game-test harness only when it provides enough value.
+Do not distort build architecture merely to instantiate packet classes in a unit test.
 
-## Lua/runtime acceptance
+## Runtime scripts — current interpretation
 
-### `scripts/p0_cc_speaker_contract.lua`
+Useful compatibility/history scripts:
 
-Standard CC:T 1.120.0 contract acceptance:
+- `scripts/p0_cc_speaker_contract.lua` — standard singular CC:T compatibility;
+- `scripts/m1a_output_contract.lua` — historical M1A RAW/ownership surface;
+- `scripts/m1e_server_authority_test.lua` — server-authority semantics.
 
-- no idle `speaker_audio_empty` spam;
-- standard `stop()` exists;
-- `playNote("harp")` accepts omitted optional arguments;
-- requested `playSound` is accepted through the native API;
-- standard `playAudio` accepts signed 8-bit data;
-- immediate second native buffer is backpressured;
-- native `speaker_audio_empty` permits retry.
+Historical/prototype scripts which are **not** modern M1G gates:
 
-The script includes one server-tick separation after native `stop()`, matching the exact CC:T source where `stop()` sets a flag consumed by `SpeakerPeripheral.update()`.
+- `p0_finite_regression.lua`;
+- `m1_player_test.lua`;
+- `m1a_local_file_test.lua`;
+- `m1d_media_analysis_test.lua` for its old broad prepared-format expectations.
 
-M1A source now delegates these methods to CC:T, but the contract remains **runtime pending** until this script passes in Minecraft.
+Use `hq.playFile()` / prepared MediaAssets for modern M1G acceptance.
 
-### `scripts/m1a_output_contract.lua [optional-small-mp3]`
+## Important later corrections to the old milestone map
 
-M1A normal single-speaker extension acceptance:
+The original P0 matrix used an early roadmap whose labels/architecture no longer match the project. In particular:
 
-- `speakMaxSamples()` reports `131072`;
-- bounded HQ RAW queue eventually returns `false`;
-- RAW status does not claim finite seek/loop capabilities;
-- native notes remain callable during HQ RAW;
-- native `playAudio` does not overlap active HQ continuous output;
-- rejected RAW writer receives `hqspeaker_audio_empty` when queue capacity returns;
-- `audioStop()` truthfully stops RAW and clears ownership;
-- RAW may start again after stop;
-- optional finite fixture verifies an incompatible HQ finite start replaces RAW rather than queuing behind it;
-- native `playAudio` works again after HQ ownership is released.
+- modern M1F is bounded client-requested encoded transport, not a whole-file client cache;
+- modern M1G is progressive MP3/common-WAV decode + positional renderer, already integrated in source;
+- M1H owns full late-entry/leave-return/general-underrun/moving-source lifecycle;
+- native FLAC remains gated M1I;
+- modern client persistent song cache/LRU is **not** a target;
+- dynamic volume-aware range is **not** current M1G policy;
+- current M1G core radius is fixed at 32 blocks;
+- looping is ordinary non-gapless replay after local EOF while authoritative looping remains enabled.
 
-### Historical/prototype finite scripts
+Do not use the original P0 milestone table as present planning guidance.
 
-`p0_finite_regression.lua`, `m1_player_test.lua`, and `m1a_local_file_test.lua` remain evidence for inherited/prototype behavior.
+## Current deterministic priorities
 
-Do **not** treat the staged prototype's fixed-recipient/renderer-observation/client-authority behavior as final acceptance after M1B–M1I begin replacing it.
+Current source/evidence work is tracked in `TESTING.md`. Highest-value additions include:
 
-## Required tests by roadmap milestone
-
-| Milestone / behavior | Best proof |
-|---|---|
-| M1A standard CC methods | `p0_cc_speaker_contract.lua` + source review against exact CC:T 1.120.0 |
-| M1A HQ RAW backpressure | `RawFeedLifetimeTest` + `m1a_output_contract.lua` |
-| M1A HQ latest-call-wins ownership | runtime ownership script; later extract owner state if it grows more complex |
-| M1A speaker/world cleanup | source lifecycle review + Minecraft break/reload acceptance |
-| M1B media asset lifetime/refcount | pure asset-manager/state tests |
-| M1C staging/import path, quota, partial cleanup | filesystem/mount unit/component tests + CC Lua import runtime |
-| M1D media metadata/duration | deterministic fixtures for MP3/OGG/WAV/etc.; unsupported-format tests |
-| M1E server-authoritative playback | pure state-machine tests: pause/resume/seek/loop/EOF/no-listener/late-listener generation replacement |
-| M1F range transfer | pure bounds/window/request tests + transfer component test; verify bounded memory/IO |
-| M1G client cache | temp-directory tests: partial resume, atomic complete, corruption/size rejection, LRU cleanup |
-| M1H incremental decode | bounded fixture decode tests, EOF/cancel/resource-reload distinction, asynchronous seek behavior |
-| M1I dynamic range rendering | two-position/dimension/chunk runtime; entering late, leaving, stopping away, returning |
-| M1J multispeaker sync | shared-clock tests + partial-visibility runtime; no expected-member barrier |
-| M1K shared decode fan-out | bounded per-renderer buffer tests; slow tap drops stale decoded PCM only |
-| M1L legacy finite migration | old public byte APIs regression against the same asset/playback engine |
-| M1M RAW cleanup/future pause semantics | raw feed state-machine/runtime, only if semantics are extended beyond M1A |
-| M1N sound category/F3+T/VS2 | consolidated Minecraft runtime |
-| M1O lifecycle | block removal, Level unload, integrated restart, dedicated stop, detach, cache cleanup |
-| M2 progressive finite playback | missing-range/prebuffer/seek-to-not-yet-downloaded tests |
-| M3 SPR | positional/acoustic integration regression + many-source performance |
-| M4 live streams | HLS sequence progression, bounded TS producer, unsupported-codec failure, reconnect lifecycle |
-
-## Explicitly retired test targets
-
-Do not spend new test effort proving correctness of these prototype concepts unless preserving a historical regression fixture requires it:
-
-- renderer anchor failover as canonical finite authority;
-- successful-renderer sets controlling the server clock;
-- no-renderer timeout as the finite playback policy;
-- fixed historical playback-recipient ownership;
-- expected global sync-group/tap count;
-- an unbounded whole-track decoder queue as the final finite engine.
-
-The accepted architecture removes those concepts instead.
+- explicit decoder/reanchor revision coordination tests for KI-053/KI-056/KI-057;
+- real MP3 fixture through progressive JLayer across range sliding/starvation/pre-roll;
+- focused `FinitePcmAudioStream` tests;
+- fixed attenuation / renderer-start / volume-zero tests;
+- ordinary replay tests;
+- KI-062 blocking-DNS/shared-monitor regression proof;
+- KI-063 failed-replacement admission proof;
+- KI-054 shutdown/root-lock failure injection;
+- KI-064 zero-read progress and atomic-move fallback proof;
+- KI-061 whole staging-owner cleanup proof.
 
 ## CI expectations
 
-Every pure Java test must run in the existing Java 21 matrix for:
+Pure Java tests remain in the Java 21 matrix for NeoForge 21.1.247 and 21.1.248. Packaged-resource verification remains required for source candidates.
 
-- NeoForge 21.1.247;
-- NeoForge 21.1.248.
+CI is not Minecraft runtime proof.
 
-`clean build` must remain green and packaged-resource verification must continue to assert the bundled ComputerCraft ROM module.
-
-Do not add intentionally failing Java tests for runtime-known bugs to main CI. Keep runtime-pending assertions in Lua acceptance scripts until the corresponding logic is extractable.
+The current workflow still runs the full two-target matrix for all pushes/PRs without docs-only path filtering or concurrency cancellation; that is later CI hygiene, not M1G correctness.
 
 ## Runtime batching rule
 
-Do not launch Minecraft for every source patch.
+The original batching principle remains good:
 
-For a coherent milestone:
-
-1. exact branch HEAD green on both CI versions;
-2. relevant pure state tests green;
-3. run the milestone's small Lua contract scripts;
-4. run one consolidated Minecraft acceptance batch for sound/range/resource behavior;
+1. coherent source patch/family;
+2. deterministic tests + both target builds green;
+3. focused Lua/component checks;
+4. one consolidated Minecraft acceptance batch for behavior which needs real sound/network/lifecycle;
 5. only then label behavior runtime-proven.
+
+For the actual current gates and recording requirements, use `TESTING.md` and `M1-RUNTIME-TEST.md`.
