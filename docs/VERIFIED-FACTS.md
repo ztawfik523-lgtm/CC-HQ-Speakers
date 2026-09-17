@@ -1,5 +1,7 @@
 # Verified facts
 
+Updated: 2026-09-17
+
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
 ## Repository / platform
@@ -40,13 +42,15 @@ CI is not Minecraft runtime proof.
 
 ### FACT-CI-003
 
-The current build workflow triggers on unfiltered `push` and `pull_request` events and builds both configured NeoForge targets. There is currently no documentation-path exclusion or concurrency cancellation in `.github/workflows/build.yml`.
+The current build workflow triggers on unfiltered `push` and `pull_request` events and builds both configured NeoForge targets. It has no documentation-path exclusion or concurrency cancellation.
 
 ## Packaging facts
 
 ### FACT-BUILD-001
 
 Packaged dependencies include JLayer `1.0.1.4`, mp3spi `1.9.5.4`, and Tritonus Share `0.3.7.4`. Modern progressive MP3 decoding uses JLayer.
+
+The inherited complete-file/legacy surfaces still justify keeping the SPI dependencies for now; they are not evidence that the modern prepared engine uses mp3spi.
 
 ## CC:T contract facts
 
@@ -56,7 +60,9 @@ The exposed peripheral type is `speaker`; standard `playNote`, `playSound`, `pla
 
 ### FACT-CCT-002
 
-The exact target CC:T 1.120.0 client speaker implementation explicitly updates live channel linear attenuation when speaker volume changes because Minecraft's sound-engine volume refresh does not update attenuation distance. Its calculation is `Math.max(volume, 1) * sound.getSound().getAttenuationDistance()`.
+The exact target CC:T 1.120.0 client speaker implementation explicitly updates live channel linear attenuation when speaker volume changes because Minecraft's normal volume refresh does not update attenuation distance. Its calculation is `Math.max(volume, 1) * sound.getSound().getAttenuationDistance()`.
+
+The owner-selected modern HQ finite contract intentionally differs: M1G keeps a fixed core radius and volume changes gain rather than range.
 
 ### FACT-CCT-003
 
@@ -74,17 +80,19 @@ Active prepared/playback/range release paths preserve retry ownership when final
 
 ### FACT-ASSET-003
 
-`MediaAssetStore.close()` currently clears completed-entry bookkeeping before shutdown deletion attempts. If one of those deletions fails, a subsequent `close()` has no retained completed-entry list to retry; next-start orphan pruning can remove managed leftovers. `ServerMediaAssets.closeServer()` removes its static server entry only after `store.close()` returns successfully, so a thrown store-close failure also skips registry removal. The current `ServerStoppedEvent` handler catches/logs that failure and does not schedule another close retry. This was documented by the 2026-09-14 audit and is not fixed in source.
+`MediaAssetStore.close()` clears completed-entry bookkeeping before shutdown deletion attempts. If a completed-file deletion fails, a later `close()` has no retained completed-entry list to retry.
 
-A later full-repository audit identified a stronger shutdown path: `ServerMediaAssets.closeServer()` calls `FiniteRangeReadService.close()` before `MediaAssetStore.close()`. `FiniteRangeReadService.close()` may throw if its workers do not terminate within its shutdown wait or if player accounting remains non-empty. If that happens, `store.close()` and `SERVERS.remove(...)` are never reached, so the store's root lock can remain held and the stopped server/assets remain in the static registry. This is not fixed in source.
+`ServerMediaAssets.closeServer()` removes its static server entry only after close succeeds. It also calls `FiniteRangeReadService.close()` **before** `MediaAssetStore.close()`. If range close throws, store close and registry removal are never reached, so the store root file lock and stopped-server/assets entry can remain alive in the JVM.
+
+The current server-stop hook catches/logs the failure but does not schedule recovery. This is KI-054 and remains unfixed.
 
 ### FACT-ASSET-004
 
-Each `HQMediaStaging` instance creates a ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Its cleanup path unmounts attached computers/releases prepared ownership but does not clear arbitrary leftover files in that mount. CC:T 1.120.0 implements `createSaveDirMount()` as a persistent disk-backed `WritableFileMount` rooted at the requested subdirectory; unmounting does not delete it. This is KI-061 and is not fixed in source.
+Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Whole-owner cleanup unmounts/releases ownership but does not clear arbitrary leftover staged files. Unmounting does not delete the persistent directory. This is KI-061 and remains unfixed.
 
 ### FACT-ASSET-005
 
-`MediaAssetStore.writeExact()` currently retries a zero-byte `ReadableByteChannel.read(...)` indefinitely using `Thread.onSpinWait()` with no zero-read limit, while several other readers in the repository use bounded zero-read guards. `MediaAssetStore.importAsset()` also uses `Files.move(..., ATOMIC_MOVE)` without an `AtomicMoveNotSupportedException` fallback. These are storage hardening gaps and are not fixed in source.
+`MediaAssetStore.writeExact()` immediately retries repeated zero-byte reads with `Thread.onSpinWait()` and no bounded no-progress limit. `MediaAssetStore.importAsset()` also uses `Files.move(..., ATOMIC_MOVE)` without an unsupported-atomic-move fallback. This is KI-064 and remains unfixed.
 
 ## M1E facts
 
@@ -100,7 +108,7 @@ Modern finite transport uses bounded range request/data rather than whole-file C
 
 ### FACT-M1F-002
 
-`FiniteRangeWindow` distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE; supports arbitrary re-anchor and forward sliding under a fixed memory cap.
+`FiniteRangeWindow` distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE; it supports arbitrary re-anchor and forward sliding under a fixed memory cap.
 
 ### FACT-M1F-003
 
@@ -110,19 +118,28 @@ Modern prepared transport does not create a complete client song `.part/.media` 
 
 ### FACT-M1G-ARCH-001
 
-Locked owner choices are A1 Minecraft `AudioStream`/SoundManager, B1 server-normalized WAV layout, C1 source-rate preservation, D1 narrow PCM/float WAVEX, and E1 conservative MP3 pre-roll.
+Locked media/renderer choices are A1 Minecraft `AudioStream`/SoundManager, B1 server-normalized WAV layout, C1 source-rate preservation, D1 narrow PCM/float WAVEX, and E1 conservative MP3 pre-roll.
 
 Output is mono signed 16-bit PCM at source sample rate; one physical speaker remains one mono positional source.
 
 ### FACT-M1G-ARCH-002
 
-The owner-selected M1G scope additionally specifies an explicit server-authoritative decoder/re-anchor revision, a fixed 32-block core listening/delivery radius with HQ volume changing gain rather than radius, global-volume-zero transport/render hibernation while canonical server time continues, and ordinary non-gapless replay after local physical EOF while authoritative looping remains enabled. Future Sound Physics Remastered compatibility owns deliberate extended-range/acoustic behavior and matching transport relevance.
+Owner-selected later M1G target semantics are:
+
+- explicit server-authoritative decoder/re-anchor revision;
+- fixed 32-block modern finite core listening/delivery radius;
+- HQ volume changes gain rather than core radius;
+- global-volume-zero local transport/render hibernation while canonical server time continues;
+- ordinary non-gapless replay after local physical EOF while authoritative looping remains enabled;
+- future SPR compatibility owns intentional extended range/acoustics and matching transport relevance.
+
+These target semantics are not all implemented yet.
 
 ## M1G integrated source facts
 
 ### FACT-M1G-001
 
-Modern finite protocol version is 6. BEGIN carries an MP3/common-WAV `FiniteDecodeDescriptor`.
+Modern finite protocol version is currently **6**. BEGIN carries an MP3/common-WAV `FiniteDecodeDescriptor`.
 
 ### FACT-M1G-002
 
@@ -130,7 +147,7 @@ Modern prepared/local media is narrowed to MP3 or supported common WAV: U8/S16/S
 
 ### FACT-M1G-003
 
-STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors. `FiniteDecodeAnchorSelector.Anchor` contains exactly two fields: encoded byte `offset` and anchor time `seconds`. It does not contain frame-index, skip-frame, or skip-sample fields.
+STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors. `FiniteDecodeAnchorSelector.Anchor` contains exactly two fields: encoded byte `offset` and anchor time `seconds`. STATE carries both. It does not contain frame-index, skip-frame, or skip-sample fields.
 
 ### FACT-M1G-004
 
@@ -158,85 +175,109 @@ STATE anchor selection provides exact frame-aligned WAV anchors and conservative
 
 ### FACT-M1G-010
 
-`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker. It exposes `updatePosition(...)`, but the current modern finite client does not call that method after renderer creation. Modern finite STATE does not carry x/y/z updates; BEGIN carries initial world/block position. Moving-source/VS2 lifecycle therefore remains incomplete.
+`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker. It exposes `updatePosition(...)`.
+
+Modern BEGIN carries initial world position and block coordinates. Modern STATE does **not** carry x/y/z. The current modern client does not call `FiniteSpeakerSound.updatePosition(...)` after renderer creation, so moving-source/VS2 lifecycle remains incomplete.
 
 ### FACT-M1G-011
 
 The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared finite engine.
 
-## 2026-09-14 audit facts
+## Rechecked client/protocol facts
 
 ### FACT-AUDIT-001
 
-`HQFiniteMediaClient.state0()` currently resets the encoded window when the server anchor is outside the current slid window, even if the coarse anchor is unchanged. In that same case the decoder epoch may be preserved rather than restarted. This is KI-053 and remains unfixed.
+`HQFiniteMediaClient.state0()` can reset the encoded window when the server anchor is outside the current slid window even when the coarse anchor is unchanged; the decoder epoch may be preserved. This is KI-053.
 
 ### FACT-AUDIT-002
 
-`ProgressiveMp3DecoderTest` currently tests discard/downmix helpers rather than decoding a real MP3 fixture through JLayer. The current client test tree has no focused `FinitePcmAudioStreamTest`.
+`ProgressiveMp3DecoderTest` does not decode a real MP3 fixture through JLayer. The current client test tree has no focused `FinitePcmAudioStreamTest`. This is part of KI-055.
 
 ### FACT-AUDIT-003
 
-`scripts/m1d_media_analysis_test.lua` reflects the historical broad M1D prepared-format surface and is not a valid current M1G modern-prepared acceptance gate. `m1_player_test.lua` and `p0_finite_regression.lua` primarily exercise inherited byte-taking finite APIs.
+`scripts/m1d_media_analysis_test.lua` reflects the historical broad M1D format surface and is not a valid current M1G modern-prepared gate. `m1_player_test.lua` and `p0_finite_regression.lua` primarily exercise inherited byte-taking APIs.
 
 ### FACT-AUDIT-004
 
-The 2026-09-14 audits updated documentation only; no implementation/test-script fix was made.
+After renderer start, an empty live PCM queue becomes short local silence until PCM returns. Current M1G does not implement general long-underrun current-time rejoin; that remains M1H.
 
 ### FACT-AUDIT-005
 
-After the modern renderer has started, an empty live PCM queue is represented as short local silence until PCM returns. Current M1G does not implement general long-underrun catch-up/rejoin to the then-current server position; that broader recovery remains M1H.
+`CONTROL SEEK` currently cancels the decode epoch before a new worker identity is installed. Expected cancellation can therefore race into `decoderFailed()` while the old epoch still appears current. This is KI-056.
 
 ### FACT-AUDIT-006
 
-`CONTROL SEEK` currently calls `cancelDecodeEpoch()` before any new decode epoch number is installed. `cancelDecodeEpoch()` can wake/cancel the old worker, while `decoderFailed()` treats an old-worker failure as current whenever `session.decodeEpoch` still equals that worker's epoch. Until the replacement STATE starts a new epoch, expected seek cancellation can therefore race with `decoderFailed()` and fail the client session. This is KI-056 and is not fixed in source.
+The server sends STATE after successful pause/resume/seek/volume/loop transitions and recomputes the codec anchor from canonical position. The client currently treats anchor change as restart intent. This is part of KI-057.
 
 ### FACT-AUDIT-007
 
-The server sends authoritative STATE after successful pause/resume/seek/volume/loop transitions, and `statePacket()` recomputes the codec anchor from the then-current canonical position. The client currently restarts when that encoded anchor changes. Exact WAV anchors therefore can change on ordinary non-seek STATE updates, and coarse MP3 anchors can change as playback advances. This is part of KI-057.
+Same-coarse-anchor semantic seek restart currently depends on the preceding SEEK control setting client-local restart state. STATE has no explicit decoder/reanchor revision. This is the other half of KI-057.
 
 ### FACT-AUDIT-008
 
-Same-coarse-anchor semantic seek restart currently depends on the preceding SEEK control setting a client-local restart flag. STATE itself carries no explicit decoder/reanchor revision separate from its time-derived anchor. This is the other half of KI-057 and is not fixed in source.
+Modern finite live volume updates mutate sound volume and refresh BLOCKS category volume, but they do not explicitly install the owner-selected fixed 32-block attenuation distance on the active channel. This is KI-058.
 
 ### FACT-AUDIT-009
 
-Modern finite live volume updates mutate the sound instance's volume and refresh the BLOCKS category volume, but they do not explicitly install the owner-selected fixed 32-block attenuation distance on the active channel. This is part of KI-058.
+`HQFiniteMediaServer` uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The owner selected that fixed-radius shape for M1G rather than volume-dependent relevance.
 
 ### FACT-AUDIT-010
 
-`HQFiniteMediaServer` currently uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The owner has selected that fixed-radius shape for M1G rather than volume-dependent relevance; volume above 1 must not silently enlarge the core HQ finite range. Future SPR compatibility may intentionally change both acoustic and transport range later.
+`HQFiniteMediaClient.tryStartRenderer()` sets `rendererStarted=true` before `SoundManager.play(sound)` and has no simple retry path merely because the sound failed to become active. This is KI-060.
 
 ### FACT-AUDIT-011
 
-`HQFiniteMediaClient.tryStartRenderer()` sets `rendererStarted = true` before calling `SoundManager.play(sound)` and has no path which clears/retries that latch merely because the sound failed to become active. This is KI-060.
+NeoForge 1.21.1 payload handlers execute on the main thread by default unless registration opts into network-thread execution. Current modern packet registration does not opt into network-thread execution.
 
-### FACT-AUDIT-012
+## Rechecked full-repository facts
 
-NeoForge 1.21.1 payload handlers execute on the main thread by default unless registration explicitly requests the network thread. The current modern packet registration does not opt into network-thread execution, so the audit did not identify a packet-handler game-state threading bug from that registration pattern.
+### FACT-AUDIT-012 — monitor/DNS coupling
 
-## 2026-09-16 full-repository review facts rechecked against source
+`HQSpeakerCompositePeripheral.callMethod(...)` and `tickOwnership()` are synchronized on the same composite. Dynamic STREAM calls can reach synchronous `InetAddress.getAllByName(host)` while `callMethod(...)` holds that monitor.
 
-### FACT-AUDIT-013
+Composite `cleanup()` is also synchronized. Provider `forget`, `forgetLevel`, and `clearAll` call cleanup during removal, Level unload, and server stop.
 
-`HQSpeakerCompositePeripheral.callMethod(...)` and `tickOwnership()` are both synchronized on the composite. Server tick calls `HQSpeakerCompositePeripheral.tickAll()`, which invokes `tickOwnership()` for every active composite. The dynamic STREAM methods route through `callMethod(...)` into `HQSpeakerPeripheral.startStreamAtTick(...)`, whose URL validation performs synchronous `InetAddress.getAllByName(host)`. A computer-thread stream call can therefore hold the composite monitor during DNS while the server tick waits for the same monitor. This does not apply to every annotated composite method: for example, `audioPrepareStaged(...)` is not itself synchronized on the composite.
+A ComputerCraft thread blocked in DNS can therefore make server tick ownership work or lifecycle cleanup wait on that composite monitor. `audioPrepareStaged(...)` is not itself synchronized on this monitor. This is KI-062.
 
-### FACT-AUDIT-014
+### FACT-AUDIT-013 — replacement-before-admission
 
-`HQSpeakerCompositePeripheral.startRaw(...)` calls `beginReplacingHQ(Owner.RAW)` before it checks RAW capacity and may then return `false`; `audioPlayPrepared(...)` calls `beginReplacingHQ(Owner.STAGED_FINITE)` before `finite.playPrepared(...)` can reject or throw. A rejected/failed replacement can therefore stop an existing HQ continuous source before the new source is accepted.
+RAW replacement transfers/stops HQ ownership before capacity acceptance is final. Prepared replacement transfers/stops ownership before `finite.playPrepared(...)` has completed all rejection/failure paths. A rejected/failed replacement can therefore destroy current valid playback. This is KI-063.
 
-### FACT-AUDIT-015
+### FACT-AUDIT-014 — inherited HLS progression
 
-Inherited live HLS uses one monotonic `currentSegmentIndex` across refreshed playlists whose segment lists are indexed from zero. After the initial playlist window has been consumed, a normal refreshed live window can therefore have `segs.size() <= currentSegmentIndex`, causing no new segments to play. This is inherited live-stream work, not modern M1G finite playback.
+Inherited live HLS keeps one monotonically increasing `currentSegmentIndex` across refreshed playlists whose segment arrays are fresh zero-based lists. After the initial window, a refreshed list may have no index at or above `currentSegmentIndex`, leaving the stream alive but producing no new segments.
 
-### FACT-AUDIT-016
+### FACT-AUDIT-015 — legacy capability reporting
 
-Legacy Lua-visible capability lists advertise formats/stream capabilities broader than the modern prepared engine. `HQSpeakerPeripheral.speakSupportedFiles()` includes `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared gate accepts only supported common WAV or MP3. These lists describe inherited surfaces and must not be treated as the modern prepared contract.
+Legacy Lua-visible capability lists advertise formats broader than the modern prepared engine. For example, `speakSupportedFiles()` includes `mp2`, `mp4`, `m4a`, and `aac`, while modern prepared support is MP3 + supported common WAV.
 
-### FACT-AUDIT-017
+### FACT-AUDIT-016 — legacy multispeaker note/sound helpers
 
-Legacy `playNoteAll(...)` synthesizes a sine wave from pitch and does not use its `instrument` argument; `playSoundAll(...)` delegates to that path and does not use the requested `soundName`. These inherited helpers do not preserve normal CC:T note/sound semantics.
+Legacy `playNoteAll(...)` synthesizes a sine and does not use the requested instrument. `playSoundAll(...)` delegates to that sine path and does not use the requested sound name.
 
-## Current selected direction and remaining implementation choice
+### FACT-AUDIT-017 — provider cache intent
+
+`HQSpeakerPeripheralProvider` uses a Level-keyed `WeakHashMap`, but cached composite values themselves reference their Level. The source comment explicitly states that the weak key is only a fallback and deterministic lifecycle hooks must evict the cache. There is no `HQSpeakerPeripheral -> composite` back-reference.
+
+### FACT-AUDIT-018 — legacy VS2 client movement path
+
+The inherited client has a `tickPosition(...)` path which resolves a speaker's ship from packet block coordinates, transforms block-local position to world coordinates, and calls the sound object's `updatePosition(...)` each tick.
+
+Because modern BEGIN already carries block coordinates, a future modern VS2 movement implementation could mirror this client-side pattern without necessarily adding new wire position fields. Whether M1H should do that or add authoritative position updates remains a design choice, not a fact.
+
+### FACT-AUDIT-019 — retracted audit claims
+
+Exact-source rechecking rejected several first-draft audit claims:
+
+- there are no richer MP3 anchor frame/skip fields beyond `(offset, seconds)`;
+- STATE does not carry live x/y/z;
+- `audioPrepareStaged(...)` is not synchronized on the composite monitor;
+- `HQSpeakerPeripheral` has no composite back-reference;
+- `HQFiniteMediaServer.tick()` does not itself perform the player/fanout work originally attributed to it;
+- inherited HTTP streaming paths do close their streams;
+- pending release retries are driven by `ServerMediaAssets.tickPendingReleases()`.
+
+## Current selected direction / remaining choices
 
 ### FACT-M1G-NEXT-001
 
@@ -244,15 +285,21 @@ Loop behavior is selected: ordinary local replay after physical EOF while author
 
 ### FACT-M1G-NEXT-002
 
-Decoder/re-anchor behavior is selected: introduce an explicit server-authoritative decoder/re-anchor revision so semantic seek is self-describing and ordinary state snapshots do not restart healthy decoders. One implementation-shape choice remains before coding protocol v7: retain PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional low-latency hints, or remove that duplicate authority path and let STATE alone carry those transitions. The unreleased internal v6 protocol does not impose compatibility pressure to keep them.
+Decoder/re-anchor behavior is selected: introduce an explicit server-authoritative decoder/re-anchor revision so semantic seek is self-describing and ordinary snapshots do not restart healthy decoders.
+
+One implementation-shape choice remains before coding v7: retain finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional low-latency hints, or remove that duplicate path and let STATE alone carry those transitions.
 
 ### FACT-M1G-NEXT-003
 
-Range and volume-zero behavior are selected: M1G keeps the existing fixed 32-block core radius; HQ volume changes gain rather than radius; global HQ volume zero hibernates local decode/render/range requests while canonical server time continues. General dynamic listener lifecycle remains M1H; extended acoustic/range behavior belongs to later SPR compatibility.
+Range and volume-zero behavior are selected: M1G keeps the existing fixed 32-block core radius; HQ volume changes gain rather than radius; global HQ volume zero hibernates local decode/render/range requests while canonical server time continues.
+
+### FACT-M1H-NEXT-001
+
+Modern moving-source/VS2 handling remains M1H. Two source-compatible approaches remain plausible: mirror the existing client-side block-coordinate transform path, or add explicit authoritative position updates. No choice has been made.
 
 ## Later milestone facts
 
-Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal.
+Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
 
 ## License
 
