@@ -8,7 +8,7 @@ Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9
 
 CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including tests, package verification, and artifact upload.
 
-Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. Those audits and later scope decisions changed documentation only; no source fix has been made yet.
+Repository/source audits on 2026-09-14 found KI-053 through KI-061 below. A 2026-09-16 full-repository review was subsequently rechecked against exact source: confirmed cross-cutting findings are recorded below as KI-062 through KI-064, while inherited/later findings are parked in `FUTURE-CLEANUP.md`. These audits and later scope decisions changed documentation only; no source fix has been made yet.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md` and overrides older option lists in historical handoffs.
 
@@ -101,7 +101,7 @@ The selected fix direction is the explicit decoder/re-anchor revision. Any local
 
 Every authoritative STATE carries a time-derived codec anchor. Current client logic treats `anchorChanged` as a reason to reset/restart the decode epoch. The server also sends STATE after ordinary pause/resume/volume/loop controls. For WAV the exact frame anchor changes with time, so a normal state update can tear down a healthy decoder/renderer. For MP3 this happens when the coarse seek point advances.
 
-The opposite failure also exists: semantic seek correctness for a same coarse anchor currently depends on the preceding `CONTROL SEEK` setting `restartRequested`. If that best-effort control projection fails while authoritative STATE still arrives, STATE alone does not identify the operation as requiring fresh codec state.
+The opposite failure also exists: semantic seek correctness for a same coarse anchor currently depends on the preceding `CONTROL SEEK` setting `restartRequested`. If that best-effort control projection fails while the authoritative STATE still arrives, STATE alone does not identify the operation as requiring fresh codec state.
 
 **Owner decision:** move to an explicit server-authoritative decoder/re-anchor revision (protocol revision) so ordinary state snapshots preserve a healthy decoder and semantic seek is self-describing.
 
@@ -149,15 +149,20 @@ The selected global-volume-zero behavior is targeted hibernation, not silent con
 
 A player's own Minecraft MASTER/BLOCKS slider is client-local and must not change server transport. `SoundInstance.canStartSilent()` may still be appropriate so a locally-muted source is allowed to exist and later become audible, but the one-way `rendererStarted` latch must be hardened regardless.
 
-### KI-054 — `MediaAssetStore.close()` does not retain failed shutdown deletions for retry
+### KI-054 — shutdown cleanup can lose deletion retry state or leave the media-store root lock held
 
-**Active low-frequency shutdown cleanup issue. No fix has been applied.**
+**Active shutdown correctness/hardening issue. No fix has been applied.**
 
 Normal final release keeps bookkeeping alive if file deletion fails. `MediaAssetStore.close()` instead clears completed entries before deletion attempts and marks close cleanup complete even when a deletion throws, so a later `close()` cannot retry those completed files.
 
-There is an additional shutdown-lifetime consequence: `ServerMediaAssets.closeServer()` removes the stopped server from its static registry only after `store.close()` succeeds. If `store.close()` throws, registry removal is skipped; the server-stop hook currently catches/logs that exception and does not schedule another close. In a long-lived JVM/integrated-server restart scenario, the stopped server/services can therefore remain strongly reachable until process exit unless another explicit retry occurs.
+There are two registry/lifetime failure paths:
 
-Next startup orphan pruning should normally recover the managed files, so this is not active playback corruption. It still needs explicit shutdown-deletion-failure and failed-close registry-lifetime coverage before being called resolved.
+1. if `store.close()` itself throws, `ServerMediaAssets.closeServer()` skips `SERVERS.remove(server, assets)`;
+2. more seriously, `ServerMediaAssets.closeServer()` calls `rangeReads.close()` **before** `store.close()`. `FiniteRangeReadService.close()` may throw if workers do not stop within its shutdown wait or if player accounting remains non-empty. In that case `store.close()` is never called at all, so the `MediaAssetStore` root file lock can remain held and `SERVERS.remove(...)` is also skipped.
+
+In a long-lived JVM/integrated-server restart, a later store on the same root can then fail with "media asset store directory is already in use" until the process exits. The current `ServerStoppedEvent` handler catches/logs the close failure but performs no recovery.
+
+Next-start orphan pruning only helps once the old lock is gone; it does not cure a same-JVM still-held root lock. This needs explicit failure-injection coverage and a shutdown design which releases the store/registry safely even when range-service shutdown reports failure.
 
 ### KI-055 — current test/script surface mixes modern M1G acceptance with historical legacy tests
 
@@ -181,13 +186,49 @@ The high-level `hq.playFile()` path normally deletes/consumes its temporary stag
 
 A likely fix is to clear the mount contents when the whole `HQMediaStaging` object is being cleaned up, after all attached computers are unmounted. Do not clear the shared mount on one computer's ordinary `detach()`. Add failure handling and deterministic coverage for leftover-file cleanup.
 
+## Active cross-cutting correctness / hardening
+
+### KI-062 — a blocking stream URL lookup can hold a monitor required by the server tick
+
+**Confirmed by the 2026-09-16 full-repository review and exact-source recheck. No fix has been applied.**
+
+`HQSpeakerCompositePeripheral.callMethod(...)` is synchronized. Dynamic `speakStream` / `speakHLS` / `speakTS` dispatch through that method into the inherited stream-start path. `HQSpeakerPeripheral.validateStreamUrl(...)` performs synchronous `InetAddress.getAllByName(host)` during that call.
+
+The server main thread calls `HQSpeakerCompositePeripheral.tickAll()` every server tick, and `tickOwnership()` is synchronized on the same composite. A slow DNS resolution on a ComputerCraft computer thread can therefore hold the monitor while the server tick waits for it, stalling the whole server until the lookup returns.
+
+Do not broaden this claim to every media operation: the composite's annotated `audioPrepareStaged(...)` method is not itself synchronized on this monitor. The confirmed problem is the dynamic synchronized call path, especially the legacy stream URL validation.
+
+Fix direction must preserve ownership ordering without allowing a main-thread tick to wait behind blocking I/O. Moving/blocking DNS outside the shared monitor and narrowing or eliminating the tick monitor dependency are the primary design targets.
+
+### KI-063 — replacement attempts can destroy a valid current source before the new source is accepted
+
+**Confirmed. No fix has been applied.**
+
+`HQSpeakerCompositePeripheral.startRaw(...)` calls `beginReplacingHQ(Owner.RAW)` before it computes whether the new RAW chunk can be accepted. If capacity is full, it can then return `false` after the previous HQ source has already been stopped.
+
+`audioPlayPrepared(...)` similarly calls `beginReplacingHQ(Owner.STAGED_FINITE)` before `finite.playPrepared(...)`. Asset lookup/analyzed-state/media-service failures can therefore throw after the previous HQ source has been destroyed.
+
+A retryable `false` or failed replacement should not silently mean "the old valid playback was also stopped" unless that destructive behavior is explicitly chosen and documented. Validation/admission should happen before ownership transfer where practical.
+
+### KI-064 — `MediaAssetStore` import has an unbounded zero-read spin and no non-atomic move fallback
+
+**Confirmed storage hardening gap. No fix has been applied.**
+
+`MediaAssetStore.writeExact(...)` loops indefinitely if its `ReadableByteChannel` repeatedly returns zero bytes: it calls `Thread.onSpinWait()` and immediately retries with no bounded zero-read counter. Other repository readers already use bounded zero-read guards.
+
+The import commit step also calls `Files.move(part, media, ATOMIC_MOVE)` without falling back when the filesystem does not support atomic moves. A valid import can therefore fail on filesystems where atomic move is unavailable even though a same-filesystem non-atomic rename would otherwise succeed.
+
+Both changes are local to storage/import behavior and have existing `MediaAssetStoreTest` coverage to extend. They are not part of the decoder protocol design.
+
 ## Active listener lifecycle — M1H
 
-### KI-004 — complete leave/re-enter lifecycle is not final
+### KI-004 — complete leave/re-enter and moving-source lifecycle is not final
 
 M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
 
 The fixed M1G radius decision intentionally does **not** pull general dynamic listener lifecycle forward.
+
+The 2026-09-16 source review also confirmed that modern `FiniteSpeakerSound.updatePosition(...)` currently has no M1G client call site after renderer creation. BEGIN carries the initial world/block position, while modern STATE does not carry x/y/z. A speaker moving on a VS2 ship can therefore keep its modern finite sound at the original client position until that lifecycle is implemented. Do not "fix" this by assuming STATE already contains world position; it does not.
 
 ## Gated/later work
 
@@ -197,7 +238,7 @@ The fixed M1G radius decision intentionally does **not** pull general dynamic li
 - KI-034: native FLAC remains gated M1I work.
 - KI-018: inherited expected-member multispeaker barrier can deadlock partial listeners — M1J.
 - KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
-- KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues — M3/later cleanup.
+- KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues — M3/later cleanup. The 2026-09-16 review additionally confirmed the refreshed-live-playlist `currentSegmentIndex` bug; see `FUTURE-CLEANUP.md`.
 - KI-022: separate `hqspeaker:hq_speaker` registration remains a release-cleanup decision.
 - KI-025: top-level `LICENSE` is MPL-2.0 while NeoForge metadata declares LGPL-3.0; resolve provenance before public release and do not silently relicense.
 
@@ -206,6 +247,6 @@ The fixed M1G radius decision intentionally does **not** pull general dynamic li
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.
 - M1G integrated source is green, but audible runtime PASS is unrecorded.
-- KI-053/KI-054/KI-056/KI-057/KI-058/KI-060/KI-061 are source findings with no implementation fix yet.
+- KI-053/KI-054/KI-056/KI-057/KI-058/KI-060/KI-061/KI-062/KI-063/KI-064 are source findings with no implementation fix yet.
 - KI-051 and KI-059 now have owner-selected product behavior but still need any corresponding source/test work described above.
 - Historical docs/scripts may preserve earlier contracts; `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, current testing/facts documents, and exact source override them.
