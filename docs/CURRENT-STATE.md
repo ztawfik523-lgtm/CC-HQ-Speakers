@@ -48,23 +48,29 @@ Pause/resume/volume use the Minecraft channel-control path. Seek/replacement/sto
 
 ## Current correctness/evidence blockers
 
-The deepest source issue is the KI-053/KI-056/KI-057 decoder restart/re-anchor cluster:
+The deepest modern-finite source issue is the KI-053/KI-056/KI-057 decoder restart/re-anchor cluster:
 
 - **KI-053:** an ordinary same-anchor STATE can reset an already-slid encoded window without restarting the decoder, potentially making the live cursor stale.
 - **KI-056:** expected SEEK cancellation can race into `decoderFailed()` before replacement state exists because the old worker token is not invalidated first.
 - **KI-057:** STATE currently doubles as both timeline snapshot and implicit decoder-reanchor instruction; changed time-derived anchors can restart healthy playback, while same-anchor semantic seek still depends on the preceding CONTROL packet.
 
-Other open items:
+Other M1G/open storage items:
 
 - **KI-058:** live modern-finite volume/channel attenuation behavior does not yet implement the selected fixed-range HQ contract.
 - **KI-060:** renderer startup is latched before Minecraft proves the sound actually started; locally-silent start and retry behavior need hardening.
 - **KI-055:** real progressive MP3 fixture coverage and focused `FinitePcmAudioStream` coverage are still missing.
 - **KI-061:** per-speaker persistent staging mounts can leave unreachable files on disk.
-- **KI-054:** shutdown deletion failure/retry + stopped-server registry retention remain lower-frequency hardening.
+- **KI-054:** shutdown cleanup has two failure shapes: completed-file deletion retry state can be lost, and an earlier `FiniteRangeReadService.close()` failure can prevent `MediaAssetStore.close()` entirely, leaving the root lock and stopped-server registry entry alive in the JVM.
+
+The rechecked 2026-09-16 full-repository review also found three cross-cutting items which are not part of the decoder protocol but are too concrete to leave as vague future cleanup:
+
+- **KI-062:** synchronized dynamic stream dispatch can hold the composite monitor across blocking DNS while the server tick needs the same monitor, allowing a slow lookup to stall the server main thread;
+- **KI-063:** RAW/prepared replacement paths stop the current HQ source before all rejection/failure conditions are known, so a rejected replacement can destroy valid playback;
+- **KI-064:** `MediaAssetStore.writeExact()` has an unbounded zero-read spin and the import rename has no fallback when `ATOMIC_MOVE` is unsupported.
 
 Historical KI-059 described fixed 32-block relevance as conflicting with vanilla volume-3 reach. That conflict is now an intentional product choice rather than an M1G requirement: HQ finite playback will use a fixed core range, while future SPR compatibility owns any extended acoustic/delivery range.
 
-See `KNOWN-ISSUES.md`, `TESTING.md`, and `M1G-SCOPE-DECISIONS-2026-09-14.md`.
+See `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, and `M1G-SCOPE-DECISIONS-2026-09-14.md`.
 
 ## Owner-selected M1G direction
 
@@ -134,15 +140,32 @@ Do **not** add M1G work for:
 
 Seek/replacement/stop still override stale local work through generation/revision checks. General severe-starvation rejoin remains M1H unless a concrete M1G correctness bug requires a narrower fix.
 
-## Narrowed M1G implementation order
+## Rechecked 2026-09-16 audit: what changed the plan
+
+The broad audit was useful but is not authoritative by itself. Exact-source rechecking kept the concrete findings above and rejected/qualified several claims:
+
+- `FiniteDecodeAnchorSelector.Anchor` is only `(offset, seconds)`; there are no richer frame/skip fields being computed and discarded by `HQFiniteMediaServer`.
+- modern finite STATE does **not** carry world x/y/z. BEGIN carries the initial position. `FiniteSpeakerSound.updatePosition(...)` currently has no M1G call site, so moving-source/VS2 position remains a real M1H gap, but not for the reason the audit originally gave.
+- `audioPrepareStaged(...)` is not synchronized on the composite monitor. The confirmed monitor/DNS freeze path is the synchronized dynamic stream dispatch, not every media operation.
+- inherited HLS progression, legacy format-advertising mismatches, legacy `playNoteAll`/`playSoundAll` semantics, and the incomplete separate `hqspeaker:hq_speaker` product surface are real/largely confirmed but remain later cleanup unless the owner changes priority. They are recorded in `FUTURE-CLEANUP.md` rather than expanding M1G.
+
+## Narrowed implementation order
+
+There are two work streams with different scope:
+
+**Cross-cutting safety/hardening:** KI-062 should be addressed before relying on legacy stream calls on a server because it can stall the main thread. KI-063 is a small ownership/admission correctness repair. KI-054 and KI-064 are storage/shutdown hardening and can be grouped when storage code is touched.
+
+**M1G player completion:**
 
 1. Fix KI-053/KI-056/KI-057 together with the explicit decoder/re-anchor revision.
 2. Implement the fixed-radius renderer contract: fixed attenuation distance, volume as gain only, and robust live channel updates.
 3. Implement global-volume-zero hibernation and fix renderer-start robustness/local silent-start handling.
 4. Implement ordinary local replay for `looping=true`; accept normal loop gaps.
 5. Add deterministic cancellation/seek coverage, a real progressive MP3 fixture path, and focused `FinitePcmAudioStream` tests.
-6. Fix KI-061 staging cleanup; keep KI-054 as separate shutdown hardening unless priority changes.
+6. Fix KI-061 staging cleanup; combine or sequence KI-054/KI-064 storage hardening based on source-change scope.
 7. Run both NeoForge targets and focused Minecraft modern-prepared runtime acceptance.
+
+This ordering does not silently choose whether protocol-v7 CONTROL hints survive. That remains the one meaningful implementation-shape choice before the decoder-revision source patch.
 
 ## Explicitly deferred
 
@@ -154,7 +177,9 @@ Unless a concrete correctness bug proves otherwise, M1G does not include:
 - gapless MP3 metadata handling;
 - continuous-source loop engineering;
 - generalized long-underrun current-time rejoin;
-- native FLAC.
+- native FLAC;
+- inherited HLS/TS repair or legacy API migration;
+- finishing the separate `hqspeaker:hq_speaker` block as a second product.
 
 Those remain later milestones/compatibility work.
 
@@ -167,6 +192,9 @@ M1G integrated source/tests/package: green at 957832348eaa6e497282d923f2312c9c7d
 M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
 M1G fixed-range volume/start correctness: open KI-058/KI-060
 M1G staging lifecycle cleanup: open KI-061
+Cross-cutting synchronized-DNS/main-thread stall: open KI-062
+Cross-source replacement-before-admission: open KI-063
+Storage import progress/rename hardening: open KI-064
 M1G real-MP3 progressive integration coverage: incomplete
 M1G focused FinitePcmAudioStream coverage: incomplete
 M1G ordinary replay loop implementation: not yet implemented
@@ -180,10 +208,11 @@ M1G audible Minecraft PASS: unrecorded
 3. `KNOWN-ISSUES.md`
 4. `TESTING.md`
 5. `VERIFIED-FACTS.md`
-6. `HANDOFF-2026-09-13-M1G-START.md`
-7. `M1G-DESIGN-DECISIONS-2026-09-13.md`
-8. `ROADMAP.md`
-9. `LUA-API.md`
-10. exact current source and CI
+6. `FUTURE-CLEANUP.md`
+7. `HANDOFF-2026-09-13-M1G-START.md`
+8. `M1G-DESIGN-DECISIONS-2026-09-13.md`
+9. `ROADMAP.md`
+10. `LUA-API.md`
+11. exact current source and CI
 
 Historical milestone/handoff documents preserve checkpoint history and do not override current records.
