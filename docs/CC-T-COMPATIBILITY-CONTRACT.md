@@ -1,5 +1,7 @@
 # CC:Tweaked 1.120.0 speaker compatibility contract
 
+Updated: 2026-09-17
+
 ## Why this is mandatory
 
 This mod injects into CC:Tweaked's `SpeakerBlockEntity` and still exposes peripheral type:
@@ -27,20 +29,20 @@ Official API documentation:
 
 `https://tweaked.cc/peripheral/speaker.html`
 
-This document records the contract needed by this fork. It does not copy implementation internals unnecessarily.
+Exact target source wins for version-specific internals.
 
 ## Current implementation boundary
 
 M1A keeps CC:T's actual `SpeakerPeripheral` inside `SpeakerBlockEntity` and exposes it through `HQSpeakerCompositePeripheral` for the standard calls.
 
-Consequently the source implementation for standard CC behavior no longer attempts to synthesize or duplicate notes, Minecraft sounds, DFPWM buffering, or the native readiness event.
+Consequently the standard CC behavior does not synthesize or duplicate notes, Minecraft sounds, DFPWM buffering, or the native readiness event.
 
 Status labels in this document distinguish:
 
 - **SOURCE IMPLEMENTED** — current Java delegates to the exact CC:T implementation and compiles in CI;
 - **RUNTIME PASS** — only after the Minecraft acceptance script has actually passed.
 
-At the current M1A branch, the standard contract is source-implemented but runtime acceptance is still pending.
+The standard contract is source-implemented; focused runtime acceptance remains unrecorded.
 
 ## Standard peripheral identity
 
@@ -66,8 +68,7 @@ Required semantics:
 - volume is optional and defaults to `1.0`;
 - pitch is optional;
 - invalid instrument throws a Lua error;
-- volume is clamped/validated as CC:T does;
-- pitch must be finite;
+- volume/pitch validation follows exact CC:T behavior;
 - note playback is subject to CC:T's configured per-tick note limit;
 - return value indicates whether the note was accepted.
 
@@ -75,19 +76,13 @@ Required semantics:
 
 The official speaker documentation says omitted pitch defaults to `12` semitones.
 
-The exact Minecraft 1.21.1 / CC:T 1.120.0 source tag instead calls:
+The exact Minecraft 1.21.1 / CC:T 1.120.0 source tag calls `pitchA.orElse(1.0)` before converting semitones with `(pitch - 12) / 12`.
 
-`pitchA.orElse(1.0)`
-
-before converting semitones with `(pitch - 12) / 12`.
-
-Those sources therefore disagree. Do not silently rewrite this discrepancy as a settled fact.
-
-For drop-in compatibility work, the exact 1.120.0 runtime/source behavior is the version-specific reference unless the project explicitly decides to correct the upstream bug/documentation mismatch. The runtime contract checks that the optional argument may be omitted, not which audible default pitch is chosen.
+Those sources therefore disagree. Do not silently rewrite this discrepancy as settled.
 
 Current HQ source status: **SOURCE IMPLEMENTED**
 
-M1A delegates directly to CC:T's original `SpeakerPeripheral.playNote`, preserving actual instruments, the native note limit, validation, and exact-version pitch behavior.
+M1A delegates directly to CC:T's original `SpeakerPeripheral.playNote`, preserving actual instruments, native note limits, validation, and exact-version pitch behavior.
 
 Notes remain independent of HQ continuous-source ownership. Starting HQ RAW/finite/stream playback does not clear pending native notes.
 
@@ -105,14 +100,14 @@ Required semantics:
 - volume optional, default `1.0`;
 - pitch optional, default `1.0`;
 - malformed/invalid sound names are rejected according to CC:T behavior;
-- method returns false when the speaker's normal sound/audio conflict rules prevent playback;
+- method returns false when normal CC:T sound/audio conflict rules prevent playback;
 - requested sound is actually the sound which is played.
 
 Current HQ source status: **SOURCE IMPLEMENTED**
 
 When no HQ continuous source owns the physical speaker, M1A delegates directly to the original CC:T method.
 
-Extension collision rule: while an HQ RAW/finite/live continuous source is active, standard `playSound` returns `false` instead of overlapping that source. This is an HQ extension policy; it does not alter native behavior when standard methods are used on their own.
+Extension collision rule: while an HQ RAW/finite/live continuous source is active, standard `playSound` returns `false` instead of overlapping that source. This does not alter native behavior when standard methods are used on their own.
 
 ## `playAudio`
 
@@ -188,11 +183,11 @@ HQ `speakStop()` remains a full physical-speaker stop for inherited compatibilit
 
 HQ `audioStop()` is a truthful stop capability for the current HQ continuous source, including RAW and live intent. It does not invent finite controls for open-ended sources.
 
-## Collision rules with HQ extensions
+## Collision / ownership rules with HQ extensions
 
 CC:T does not define MP3/OGG/WAV/live-stream calls, so their interaction with standard audio is an extension rule.
 
-Accepted M1A rule for the normal single-speaker path:
+Accepted single-speaker rule:
 
 - `playNote` remains independent;
 - one HQ continuous source owns HQ output at a time;
@@ -202,13 +197,21 @@ Accepted M1A rule for the normal single-speaker path:
 - standard `playSound` / `playAudio` return `false` while HQ continuous ownership is active;
 - Java does not create a playlist or automatic finite-media queue.
 
-The inherited multi-speaker `*All` / `*At` helpers are not covered by this M1A ownership guarantee. They are scheduled for replacement by the later shared-asset/sync-clock architecture.
+### KI-063 replacement-admission bug
+
+The intended “new HQ start replaces old HQ source” rule does **not** mean a failed/rejected start should destroy valid current playback.
+
+Current source transfers/stops ownership too early in some RAW and prepared replacement paths. A capacity rejection or `audioPlayPrepared` failure can therefore stop the previous valid HQ source before the new source is admitted.
+
+That is KI-063 and is an implementation defect to fix; do not document it as intended compatibility behavior.
+
+The inherited multi-speaker `*All` / `*At` helpers are not covered by this single-speaker guarantee. They are scheduled for later replacement/migration. Source review also confirmed that legacy `playNoteAll`/`playSoundAll` do not preserve requested normal note/sound semantics.
 
 ## HQ RAW capability notes
 
 `speakPCM` is not the standard `playAudio` API.
 
-M1A source behavior:
+Current source behavior:
 
 - signed 16-bit samples as inherited by HQ;
 - 48 kHz;
@@ -222,13 +225,48 @@ M1A source behavior:
 
 Audible drain timing is still runtime-pending.
 
-## Volume/category notes
+## Modern HQ finite range / volume contract
 
-CC:T native volume range is `0.0..3.0`.
+This section applies to the **HQ modern finite extension**, not to native CC:T methods.
 
-Standard CC:T note/sound/audio now stay on CC:T's own rendering path.
+CC:T native volume range is `0.0..3.0`, and exact target CC:T client code increases its live attenuation distance when volume is above 1.
 
-HQ custom audio still uses the inherited HQ renderer category and will be normalized in a later milestone. This does not change the standard native methods because they no longer go through HQ's generated PCM approximation.
+The owner deliberately selected a different M1G policy for modern HQ finite playback:
+
+- fixed 32-block core listening/delivery radius;
+- positional attenuation inside that radius;
+- HQ finite `volume` changes gain/loudness, not core radius;
+- future Sound Physics Remastered compatibility owns intentional range/acoustic extension and matching transport relevance.
+
+Therefore M1G modern finite code should **not** copy CC:T's `Math.max(volume, 1) * attenuationDistance` behavior for its custom finite renderer. Standard CC:T methods remain on the native CC:T path and retain native behavior.
+
+Current source still needs KI-058 to explicitly install/retain the selected fixed attenuation distance on the modern finite live channel.
+
+## Modern HQ volume zero
+
+For the modern finite extension, selected target behavior is:
+
+- global HQ volume zero does not pause canonical server time;
+- local modern finite decoder/renderer/range requests hibernate while globally muted;
+- unmute rebuilds/rejoins current authoritative time.
+
+This is not yet fully implemented.
+
+A player's own Minecraft MASTER/BLOCKS slider remains client-local and does not change server transport policy.
+
+## Standard versus inherited legacy helpers
+
+The standard singular CC:T methods above are the compatibility contract.
+
+Inherited HQ capability lists and `*All` / `*At` helpers are legacy surfaces and are not proof of standard semantics or modern prepared format support.
+
+Examples confirmed by source review:
+
+- legacy `speakSupportedFiles()` advertises formats broader than modern prepared support;
+- legacy `playNoteAll(...)` ignores the requested instrument and synthesizes a sine;
+- legacy `playSoundAll(...)` ignores the requested sound name by routing into that sine path.
+
+These are later migration/cleanup issues; do not use them to redefine the standard singular contract.
 
 ## Compatibility acceptance tests
 
@@ -244,6 +282,8 @@ M1A extension/output contract:
 scripts/m1a_output_contract.lua [optional-small-mp3]
 ```
 
+These scripts are historical/current only for the surfaces they actually exercise. They do not prove the modern M1G prepared path.
+
 CI proves compilation/tests/package structure, not actual Minecraft sound and peripheral lifecycle behavior.
 
-Do not mark this document **RUNTIME PASS** until those runtime checks have actually passed on the target stack.
+Do not mark this document **RUNTIME PASS** until focused target-stack runtime checks have actually passed.
