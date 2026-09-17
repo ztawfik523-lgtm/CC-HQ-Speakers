@@ -1,10 +1,12 @@
 # M1C — local ComputerCraft file import
 
+> **Historical milestone record with still-active import/ownership concepts.** M1C established the staging -> immutable server MediaAsset flow, but several “current checkpoint”/transitional statements from 2026-09-13 are now obsolete. Current user-facing API is `LUA-API.md`; current implementation/state is `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, and exact source.
+
 ## Scope
 
-M1C connects ComputerCraft-visible local files to the reusable server media-asset layer built in M1B.
+M1C connected ComputerCraft-visible local files to the reusable server media-asset layer built in M1B.
 
-The ownership model is:
+The ownership model remains:
 
 ```text
 CC file
@@ -13,9 +15,7 @@ CC file
   -> prepared owner and/or playback references
 ```
 
-The writable mount is temporary import space. It is not the media library and is not the final client playback store.
-
-For the current user-facing programming reference, read `LUA-API.md`.
+The writable mount is temporary import space. It is not the media library and is not a client playback cache.
 
 ## Recommended Lua surface
 
@@ -28,30 +28,18 @@ local hq = require("hqspeaker")
 hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 ```
 
-It implements that as:
+Conceptually it:
 
-1. validate the ComputerCraft-local file and size;
-2. copy it into the temporary writable HQ staging mount;
-3. import the staged bytes into the server-wide media asset store;
-4. analyze the committed immutable asset;
-5. start playback from the resulting asset UUID;
-6. release the temporary prepared-owner reference.
+1. validates the ComputerCraft-local file/size;
+2. copies into the temporary writable HQ staging mount;
+3. imports exact staged bytes into the server media-asset store;
+4. analyzes the committed immutable asset;
+5. starts playback from the resulting asset UUID;
+6. releases the temporary prepared-owner reference.
 
-The playback has already retained its own reference before `playFile` releases the preparation reference, so the encoded asset remains alive for the active playback.
+Successful playback retains its own reference before the preparation reference is released, so the encoded asset remains alive for playback.
 
-Lua also gets lower-level preload/reuse helpers:
-
-```lua
-local asset = hq.prepareFile(speaker, "/music/song.mp3")
-local info = hq.preparedInfo(speaker, asset)
-
-assert(hq.playPrepared(speaker, asset, { volume = 0.6 }))
-
--- Releases preparation ownership only. Active playback has its own reference.
-assert(hq.releasePrepared(speaker, asset))
-```
-
-Recommended helper functions:
+Reusable helpers remain:
 
 - `hq.prepareFile(speaker, path)`
 - `hq.preparedInfo(speaker, assetId)`
@@ -59,94 +47,85 @@ Recommended helper functions:
 - `hq.releasePrepared(speaker, assetId)`
 - `hq.playFile(speaker, path [, options])`
 
-The matching low-level peripheral capabilities are documented in `LUA-API.md` and currently include:
+Low-level import/prepared capabilities remain documented in `LUA-API.md`.
 
-- `audioMountPath()`
-- `audioMaxStagedBytes()`
-- `audioPrepareStaged(path [, consume])`
-- `audioPreparedInfo(assetId)`
-- `audioPlayPrepared(assetId [, volume])`
-- `audioReleasePrepared(assetId)`
+## `audioPlayStaged()` — removal now implemented
 
-Most programs should use the module helpers instead of manually managing staging.
+`audioPlayStaged()` was this project's prototype direct-staging route, not original HQ Speakers compatibility.
 
-## `audioPlayStaged()` provenance and removal decision
+The 2026-09-13 decision was to remove it when M1F replaced the direct staged/whole-file transport. That removal is now implemented.
 
-The historical `audioPlayStaged()` direct-play command is **not** an original HQ Speakers compatibility API.
+Current programs use `hq.playFile()` or prepare -> play -> release. Do not restore a second direct-staging playback transport.
 
-It was introduced by this project during the earlier staged/local-file prototype so a file sitting in the temporary writable mount could be played directly.
+## Staging cleanup / current KI-061
 
-That design has been superseded by the reusable asset flow:
+High-level successful `hq.playFile()` normally consumes/removes its temporary staging copy.
 
-```text
-staging/import
-    -> immutable server MediaAsset
-    -> prepared playback
-```
+However, the per-speaker writable mount is persistent under a random `hqspeaker/staging/<uuid>` path. Whole staging-owner cleanup currently unmounts/releases prepared references but does **not** remove arbitrary files still present in the mount.
 
-Project decision on 2026-09-13:
+Therefore low-level/interrupted staging can leave files unreachable after the speaker/staging owner is destroyed and recreated. This is KI-061.
 
-**remove `audioPlayStaged()` when M1F implementation begins.**
+Target fix:
 
-Do not carry a second direct-staging playback transport into M1F. New programs use `hq.playFile()` or prepare/play/release.
-
-At the current documentation checkpoint the command still exists in source; its removal has not been implemented yet.
-
-## Staging cleanup
-
-The Lua helper checks file size before copying.
-
-`fs.copy` is wrapped so a failed copy attempts to delete any partial destination it created.
-
-After a successful asset import, staging deletion is best-effort. Failure to remove temporary staging must **not** invalidate an already-valid shared asset. The Java staging layer logs a failed deletion and the Lua helper retries deletion from the mounted filesystem.
+- clear leftover mount contents on **whole staging-owner cleanup** after attached computers are unmounted;
+- do not clear the shared mount on one computer's normal detach;
+- surface/log cleanup failure without corrupting valid prepared MediaAsset ownership.
 
 ## Asset ownership
 
-A successful prepare creates one prepared-owner reference associated with the ComputerCraft computer which prepared it through that speaker.
+A successful prepare creates a prepared-owner reference associated with the ComputerCraft computer which prepared it.
 
-A playback takes a separate reference before playback starts.
+Playback takes a separate reference.
 
-Consequences:
+Consequences remain:
 
-- releasing the prepared reference while the asset is playing does not delete the encoded file;
-- releasing an unused prepared asset removes it when that was its final reference;
-- detaching the preparing computer releases prepared references it still owns;
-- removing/cleaning the speaker also releases prepared references through normal peripheral cleanup;
-- the encoded asset lives in the server-wide M1B store and can be deliberately played by another speaker when Lua passes that asset UUID to it.
-
-Prepared-reference release remains tied to the computer which prepared it. Knowing the UUID alone does not let another computer release someone else's preparation reference.
+- releasing preparation ownership while playing does not delete the active asset;
+- releasing an unused final preparation reference removes the asset when deletion succeeds;
+- detaching the preparing computer releases its prepared references;
+- whole speaker cleanup releases prepared references;
+- the encoded asset lives in the server-wide store and can be deliberately played from another speaker by UUID;
+- another computer cannot release someone else's preparation ownership merely by knowing the UUID.
 
 ## Server-wide store lifetime
 
-`ServerMediaAssets` owns one `MediaAssetStore` per running Minecraft server.
-
-The store directory is under the current world/server root at:
+`ServerMediaAssets` owns one `MediaAssetStore` per running Minecraft server under:
 
 ```text
 hqspeaker/media-assets
 ```
 
-M1C established disk-backed immutable assets, size/quota policy, retain/release ownership, and seekable reads.
+The M1B/M1C server-side immutable asset model remains active in M1G.
 
-The later M1F transport must keep this server-side media ownership model while changing how relevant clients obtain encoded bytes.
+Current storage hardening issues are tracked separately:
 
-## Transitional playback bridge
+- KI-054 — shutdown deletion retry/root-lock lifetime;
+- KI-064 — repeated-zero-read no-progress and unsupported-atomic-move fallback.
 
-Current prepared playback still feeds the old whole-file sender underneath the modern server-authority semantics:
+## Transitional playback bridge — superseded
 
-- prepared asset is validated;
-- playback retains a separate reference;
-- the server opens the shared encoded file;
-- playback uses the asset UUID as media identity;
-- the old bridge pushes the encoded file to the client;
-- playback releases its reference on stop/end/error.
+At the original M1C checkpoint, prepared playback still fed the old whole-file client sender beneath newer server-authority semantics.
 
-This bridge is not final architecture.
+That statement is historical.
 
-M1E replaced playback authority. M1F replaces transfer.
+M1F replaced transfer with bounded demand-driven range request/data. Modern prepared playback no longer pushes a complete encoded song to a client or creates a modern complete client cache file.
 
-## Current checkpoint note
+M1G additionally integrates progressive MP3/common-WAV decoding, bounded PCM, and positional rendering.
 
-M1E source/tests/CI are finalized, but the project owner skipped the final manual Minecraft M1E test. Do not call M1E runtime-verified.
+## Current format/playback boundary
 
-M1F implementation has not started. This document update is documentation-only.
+Modern prepared/local support is MP3 + supported common WAV. Historical analyzer/legacy OGG/AIFF/AU surfaces do not define modern support.
+
+Selected current M1G semantics also include:
+
+- explicit decoder/re-anchor revision as the next protocol design;
+- fixed 32-block core modern-finite range, volume as gain rather than radius;
+- global-volume-zero local hibernation while canonical server time continues;
+- ordinary non-gapless loop replay after local EOF.
+
+Those decisions did not exist at the original M1C checkpoint; current docs override historical assumptions.
+
+## Evidence boundary
+
+The M1C milestone remains useful evidence for local-file import and ownership semantics. It is not evidence that current M1G audible playback, staging cleanup, shutdown hardening, or replacement-admission bugs are resolved.
+
+Use `TESTING.md` and `M1-RUNTIME-TEST.md` for present acceptance work.
