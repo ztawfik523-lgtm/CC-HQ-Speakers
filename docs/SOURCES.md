@@ -1,5 +1,7 @@
 # Sources and provenance
 
+Updated: 2026-09-17
+
 ## Exact target dependencies
 
 - Minecraft 1.21.1
@@ -23,13 +25,15 @@ Upstream source:
 
 `cc-tweaked/CC-Tweaked`
 
+Primary speaker source:
+
 `projects/common/src/main/java/dan200/computercraft/shared/peripheral/speaker/SpeakerPeripheral.java`
 
 Official docs:
 
 `https://tweaked.cc/peripheral/speaker.html`
 
-Use the exact target source when implementation behavior matters. Current docs are useful for API semantics, but source wins for version-specific internals.
+Use the exact target source when implementation behavior matters. Current docs are useful for API semantics, but exact source wins for version-specific internals.
 
 ## Fork provenance
 
@@ -49,6 +53,12 @@ M1 reviewed reference:
 
 `fba84a33a94d451af09b983bcb04416c97ff64cf`
 
+Current green integrated M1G source checkpoint:
+
+`957832348eaa6e497282d923f2312c9c7d7c550f`
+
+Documentation/audit commits after that checkpoint do not change source implementation.
+
 ## Codec dependencies
 
 Build currently packages:
@@ -57,9 +67,11 @@ Build currently packages:
 - `com.googlecode.soundlibs:jlayer:1.0.1.4`
 - `com.googlecode.soundlibs:tritonus-share:0.3.7.4`
 
-OGG finite decode uses LWJGL STBVorbis from the Minecraft/LWJGL stack.
+**Modern prepared MP3 playback uses JLayer progressively.** mp3spi/Tritonus remain because inherited legacy paths still exist; their presence is not evidence that modern prepared playback uses the old JavaSound bridge.
 
-Do not claim AAC/MP4 support merely from file extensions; require an exact decoder/runtime proof.
+Historical/inherited OGG finite decode uses LWJGL STBVorbis from the Minecraft/LWJGL stack. OGG does not define the current modern prepared support surface.
+
+Current modern prepared support is MP3 + supported common WAV only. Do not claim AAC/MP4/M4A/MP2 support merely because inherited capability lists advertise extensions or because JavaSound providers are packaged.
 
 ## HighAudio research
 
@@ -67,7 +79,7 @@ See:
 
 `research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md`
 
-Use only transferable facts such as sound-thread behavior, PCM alignment, STB experiments, and source reservation evidence.
+Use only transferable facts such as sound-thread behavior, PCM alignment, STB experiments, and source reservation evidence. Do not import HighAudio's application architecture wholesale.
 
 ## Sound Physics Remastered
 
@@ -83,15 +95,41 @@ Approved V7.1 JAR SHA-256:
 
 `30d457c2a52672f893b1076938e2fdea3f41759173dfd843ff652bd490692101`
 
+Current project direction:
+
+- M1G keeps a fixed 32-block core modern-finite range;
+- HQ volume changes gain, not core range;
+- later SPR compatibility owns intentional acoustic/range extension and matching transport relevance;
+- do not build a speculative SPR range/plugin layer into M1G.
+
+See `research/SPR-INTEGRATION-BASELINE.md`.
+
+## Repository audit evidence
+
+PR #1 (`docs: add corrected 2026-09-16 repository implementation review`) is supporting audit evidence, not current authority.
+
+Its corrected report explicitly records first-draft retractions. Current project docs and exact source take precedence.
+
+Important rechecked facts which should not be lost:
+
+- `FiniteDecodeAnchorSelector.Anchor` is exactly `(offset, seconds)`;
+- modern STATE does not carry live x/y/z;
+- `audioPrepareStaged(...)` is not synchronized on the composite monitor;
+- the confirmed shared-monitor/DNS path is dynamic legacy stream dispatch;
+- `HQSpeakerPeripheral` has no composite back-reference;
+- provider cache lifetime intentionally depends on explicit lifecycle eviction;
+- inherited HTTP stream paths close their streams.
+
 ## Evidence policy
 
 Order:
 
-1. exact runtime;
+1. exact runtime evidence for behavior which requires runtime proof;
 2. exact current source;
 3. `VERIFIED-FACTS.md`;
-4. current-state/contract docs;
-5. architecture/roadmap;
-6. historical notes.
+4. `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`;
+5. current architecture/roadmap/API/config docs;
+6. corrected audit/research evidence;
+7. historical milestone/handoff notes.
 
-Keep facts and recommendations separate.
+Keep facts, owner-selected decisions, recommendations, and unresolved choices separate.
