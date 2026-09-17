@@ -1,5 +1,7 @@
 # Server configuration
 
+Updated: 2026-09-17
+
 HQ Speaker does **not** decide how much storage a ComputerCraft computer has. ComputerCraft disks, mounts, and filesystem quotas remain ComputerCraft/server policy.
 
 The settings here only limit disk space allocated by **HQ Speaker itself** for temporary staging and prepared encoded media under the Minecraft world/server files.
@@ -44,7 +46,7 @@ For the ComputerCraft-visible staging mount, HQ Speaker translates the unlimited
 
 ## Modern finite transport limits
 
-Modern prepared playback does not push the complete file to a client. Protocol v6 carries the finite descriptor/state and uses client-requested bounded encoded ranges.
+Current implementation uses protocol **v6** with client-requested bounded encoded ranges. A selected future decoder/reanchor revision (likely v7) does not change the storage quota model described here.
 
 Current implementation tuning is:
 
@@ -57,4 +59,29 @@ Current implementation tuning is:
 
 These are implementation safety/tuning values, not public API guarantees and not currently exposed as server config options.
 
-The old staged-finite prototype's hard-coded 512 MiB begin-packet policy check is gone. Encoded file size policy belongs to the server configuration/store; the wire carries the total encoded size as a variable-length long while actual transfer remains bounded by range requests/responses.
+Modern prepared playback does not push the complete file to a client. Encoded file size policy belongs to the server configuration/store; the wire carries total encoded size while actual transfer remains bounded by range requests/responses.
+
+## Core listening/delivery radius
+
+Modern finite M1G currently uses a **fixed 32-block core radius** for server relevance/delivery.
+
+This is an owner-selected product rule for M1G:
+
+- HQ finite volume changes gain/loudness, not the core radius;
+- volume above 1 does not intentionally enlarge modern-finite server relevance;
+- no dynamic volume-aware relevance config is being added in M1G;
+- future Sound Physics Remastered compatibility owns intentional acoustic/range extension and matching transport relevance.
+
+The 32-block value is currently an implementation constant, **not** a server config option. Do not document a range config until one actually exists.
+
+If later SPR compatibility needs configurable delivery headroom/caps, design that with the acoustic integration rather than prebuilding a generic range knob now.
+
+## Current storage hardening caveats
+
+These are implementation issues, not configuration options:
+
+- **KI-061:** arbitrary files left in a per-speaker staging mount can become unreachable after whole staging-owner cleanup/recreation;
+- **KI-054:** shutdown failure can lose deletion retry state, and a range-service close failure can prevent media-store close entirely, leaving the root lock alive in the JVM;
+- **KI-064:** media import can spin on repeated zero-byte reads and lacks an unsupported-`ATOMIC_MOVE` fallback.
+
+Changing `maxAssetMiB` or `maxTotalMiB` does not fix those lifecycle/hardening issues.
