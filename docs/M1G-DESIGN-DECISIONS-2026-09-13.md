@@ -1,8 +1,14 @@
 # M1G design decisions — 2026-09-13
 
-## Status
+> **Historical decision checkpoint with still-valid A1/B1/C1/D1/E1 choices.**
+>
+> This file preserves the original M1G design gates and rationale. It does **not** override later owner decisions in `M1G-SCOPE-DECISIONS-2026-09-14.md`, `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, or exact current source.
+>
+> Later selected M1G scope: explicit server-authoritative decoder/re-anchor revision (current source is still v6); fixed 32-block core modern-finite radius with volume changing gain rather than range; global-volume-zero local hibernation while canonical server time continues; ordinary non-gapless replay after local EOF. Do not reopen old loop/range/reanchor alternatives from historical material unless the owner explicitly changes scope.
 
-The pre-M1G owner decision gates are resolved. M1G implementation may proceed from these decisions.
+## Status at this checkpoint
+
+The pre-M1G owner decision gates were resolved. M1G implementation proceeded from these decisions.
 
 Implementation branch:
 
@@ -12,20 +18,20 @@ Preparation base:
 
 `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`
 
-M1E and M1F evidence boundaries remain unchanged. Green CI is not a Minecraft runtime PASS.
+M1E and M1F evidence boundaries remained unchanged. Green CI was not a Minecraft runtime PASS.
 
-## Locked decisions
+## Locked decisions which remain valid
 
 ### A1 — Minecraft AudioStream / SoundManager renderer
 
-Modern finite PCM will reach Minecraft through a custom `AudioStream` and the normal positional `SoundManager`/`Channel` path.
+Modern finite PCM reaches Minecraft through a custom `AudioStream` and the normal positional `SoundManager`/`Channel` path.
 
 Why:
 
 - substantially less lifecycle/resource complexity than owning raw OpenAL sources/buffers;
 - preserves normal Minecraft BLOCKS-category and attenuation behavior;
 - stays on the same `Channel` path that Sound Physics Remastered already intercepts;
-- leaves lower-level OpenAL cleanup/optimization in the later M1N/M2 work instead of pulling it into M1G.
+- leaves lower-level OpenAL cleanup/optimization in later M1N/M2 work instead of pulling it into M1G.
 
 Important implementation constraints:
 
@@ -41,7 +47,7 @@ The server analyzer resolves common-WAV physical layout once and carries a norma
 
 The client still performs cheap sanity validation, but does not run a second full RIFF parser.
 
-Normalized layout facts should include at least:
+Normalized layout facts include at least:
 
 - sample representation;
 - sample rate;
@@ -54,7 +60,7 @@ This allows exact WAV byte/time mapping and avoids reparsing the same immutable 
 
 ### C1 — preserve source sample rate
 
-M1G will normalize decoded finite PCM to mono signed 16-bit samples while preserving the source sample rate.
+M1G normalizes decoded finite PCM to mono signed 16-bit samples while preserving the source sample rate.
 
 Examples:
 
@@ -64,11 +70,11 @@ Examples:
 22.05 kHz source -> mono S16 @ 22.05 kHz
 ```
 
-Do not add a finite 48 kHz resampler in M1G. OpenAL/Minecraft already receives the PCM sample rate and the device/mixer can perform the required output-rate conversion.
+Do not add a finite 48 kHz resampler in M1G. OpenAL/Minecraft already receives the PCM sample rate and the device/mixer can perform required output-rate conversion.
 
 ### D1 — narrow WAVE_FORMAT_EXTENSIBLE support
 
-Treat `WAVE_FORMAT_EXTENSIBLE` as another standard header representation of the same common PCM/float WAV data M1G already intends to support.
+Treat `WAVE_FORMAT_EXTENSIBLE` as another standard header representation of the same common PCM/float WAV data M1G supports.
 
 Accept only:
 
@@ -103,11 +109,13 @@ safeTime = max(0, targetTime - approximately 1 second)
 anchor = newest existing MP3 seek point at or before safeTime
 ```
 
-Current seek points are coarse, so this can decode several seconds of extra MP3 after an occasional seek/rejoin. That bounded overhead is preferred over the complexity and failure surface of custom reservoir-aware seek metadata.
+Current seek points are coarse, so this can decode several seconds of extra MP3 after an occasional seek/rejoin. That bounded overhead is preferred over custom reservoir-aware metadata complexity.
 
 JLayer's Layer III decoder naturally rebuilds reservoir history while decoding forward; frames without enough prior main-data history can produce no PCM until the reservoir is usable.
 
-## Additional correctness decisions
+Current-source clarification from the later audit recheck: `FiniteDecodeAnchorSelector.Anchor` contains exactly `(offset, seconds)`. There are no richer frame/skip fields being computed and discarded.
+
+## Additional correctness decisions which remain valid
 
 ### Semantic seek always creates a new local decoder epoch
 
@@ -120,32 +128,40 @@ Even when the server-selected encoded anchor byte is unchanged, a SEEK invalidat
 
 Encoded-byte identity must not be used as decoder-state identity.
 
+Later scope refined how this intent should be represented: use an explicit server-authoritative decoder/re-anchor revision rather than inferring it from anchor movement or relying on CONTROL SEEK ordering.
+
 ### Decoder EOF is not server EOF
 
-Physical decoder EOF means the local encoded asset ended. Canonical ENDED/loop behavior remains server-owned under M1E.
+Physical decoder EOF means the local encoded asset ended. Canonical state remains server-owned under M1E.
 
 Temporary M1F `NEED_DATA` must never be translated into decoder EOF.
 
+Later loop policy is ordinary local replay when authoritative state still says `looping=true`; a restart gap is acceptable.
+
 ### One physical speaker remains one mono positional source
 
-Stereo finite media is safely downmixed to mono. Java does not infer music/effect/notification roles from the file type or API path.
+Stereo finite media is safely downmixed to mono. Java does not infer music/effect/notification roles from file type or API path.
 
-## M1G implementation order
+## Original M1G implementation order
 
-1. Normalize the modern finite format descriptor to MP3/common WAV and add validated WAV layout metadata.
-2. Add D1 server analyzer support and exact WAV byte/time mapping.
-3. Add a cancelable starvation-aware encoded-input bridge over the M1F window.
-4. Add a bounded PCM queue with backpressure and nonblocking renderer-facing reads.
-5. Add progressive common-WAV conversion.
-6. Add progressive JLayer MP3 decode with E1 pre-roll and audible-target discard.
-7. Add A1 positional Minecraft renderer lifecycle.
-8. Integrate pause/resume/seek/loop/volume/stop with server-authoritative state.
-9. Complete deterministic/component acceptance, then focused Minecraft audible acceptance.
+The original order was:
+
+1. normalize the modern finite format descriptor to MP3/common WAV and add validated WAV layout metadata;
+2. add D1 server analyzer support and exact WAV byte/time mapping;
+3. add a cancelable starvation-aware encoded-input bridge over the M1F window;
+4. add a bounded PCM queue with backpressure and nonblocking renderer-facing reads;
+5. add progressive common-WAV conversion;
+6. add progressive JLayer MP3 decode with E1 pre-roll and audible-target discard;
+7. add A1 positional Minecraft renderer lifecycle;
+8. integrate pause/resume/seek/loop/volume/stop with server-authoritative state;
+9. complete deterministic/component acceptance, then focused Minecraft audible acceptance.
+
+Much of this is now integrated at source checkpoint `957832348eaa6e497282d923f2312c9c7d7c550f`. Current remaining work and sequencing are documented in `CURRENT-STATE.md` and `ROADMAP.md`; do not use this original order as the present task list.
 
 ## Boundaries retained
 
-M1H still owns full late listener discovery, proactive leave cleanup, return/rejoin policy, dimension/resource-reload recovery, robust underrun rejoin, and final VS2 listener lifecycle.
+M1H still owns full late listener discovery, proactive leave cleanup, return/rejoin policy, dimension/resource-reload recovery, robust underrun rejoin, and final VS2 moving-source lifecycle.
 
 M1I still owns gated native FLAC.
 
-M1N/M2 still own broader OpenAL cleanup and Sound Physics Remastered integration.
+M1N/M2 still own broader OpenAL cleanup and Sound Physics Remastered integration. Later SPR compatibility owns intentional acoustic/range extension and matching transport relevance; M1G keeps its fixed core range.
