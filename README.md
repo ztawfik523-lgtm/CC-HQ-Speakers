@@ -31,7 +31,7 @@ CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, p
 
 Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` also passed both targets in CI `34780519972`.
 
-Later 2026-09-14 repository/source/docs audits reconciled stale documentation and recorded additional correctness/evidence findings without changing implementation.
+Later repository/source/docs audits reconciled stale documentation and recorded additional correctness/evidence findings without changing implementation.
 
 Focused real-Minecraft M1F transport acceptance is not recorded. Focused audible M1G Minecraft acceptance is also not recorded. Green CI/component proof is not runtime proof.
 
@@ -65,9 +65,15 @@ Locked choices remain:
 
 Modern prepared/local support is MP3 + supported common WAV. Historical OGG/AIFF/AU support in legacy code does not define the modern prepared surface.
 
-Current blockers are tracked in `docs/KNOWN-ISSUES.md`. The highest-priority cluster is decoder epoch/reanchor correctness: KI-053 (same-anchor window rewind), KI-056 (expected SEEK cancellation can race into fatal decoder error), and KI-057 (STATE currently conflates timeline snapshots with decoder-reanchor intent). These should be solved coherently rather than patching KI-053 alone.
+The owner-selected current M1G scope is recorded in `docs/M1G-SCOPE-DECISIONS-2026-09-14.md`:
 
-Other current items include KI-058 through KI-060 for live volume/attenuation, server relevance and silent/failed renderer starts; KI-055 for missing real-MP3/renderer deterministic proof; KI-061 for leftover per-speaker staging directories/files; and KI-054 for shutdown deletion retry/registry cleanup. Loop-wrap policy KI-051 remains an owner choice between L1 client EOF refresh, L2 server wrap STATE, and L3 client local modulo/restart.
+- move to an explicit server-authoritative decoder/re-anchor revision rather than inferring restart intent from anchor movement;
+- keep a fixed 32-block M1G core listening/delivery radius; HQ volume changes gain, not that radius;
+- globally setting HQ volume to zero keeps canonical server time running but hibernates client decode/render/range requests until unmuted;
+- looping is ordinary replay of the same media after local EOF; a restart gap is acceptable and gapless/continuous-source loop engineering is out of scope;
+- future Sound Physics Remastered compatibility owns deliberate extended-range/acoustic behavior and matching transport relevance.
+
+Current blockers are tracked in `docs/KNOWN-ISSUES.md`. The highest-priority M1G cluster is decoder epoch/reanchor correctness: KI-053 (same-anchor window rewind), KI-056 (expected SEEK cancellation can race into fatal decoder error), and KI-057 (STATE currently conflates timeline snapshots with decoder-reanchor intent). KI-058 and KI-060 cover the selected fixed-radius renderer contract and renderer-start/volume-zero behavior; KI-051 is selected-but-unimplemented ordinary replay; KI-055 covers missing real-MP3/renderer deterministic proof; KI-061 covers leftover per-speaker staging files; and KI-054 covers shutdown cleanup/lock lifetime hardening.
 
 No implementation fix was made during these documentation/source audits.
 
@@ -104,7 +110,7 @@ See `docs/LUA-API.md`.
 
 - **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
 - **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + positional renderer — integrated in source; correctness/evidence work and owner decisions remain.
+- **M1G:** progressive MP3/common-WAV decode + positional renderer — integrated in source; selected correctness/scope work and evidence remain.
 - **M1H:** dynamic listener/late-join/leave-return/recovery.
 - **M1I:** optional gated native FLAC.
 - later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
@@ -124,10 +130,11 @@ Read current development docs in this order:
 2. `docs/KNOWN-ISSUES.md`
 3. `docs/TESTING.md`
 4. `docs/VERIFIED-FACTS.md`
-5. `docs/HANDOFF-2026-09-13-M1G-START.md`
-6. `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`
-7. `docs/ROADMAP.md`
-8. `docs/LUA-API.md`
-9. exact current source/CI
+5. `docs/M1G-SCOPE-DECISIONS-2026-09-14.md`
+6. `docs/HANDOFF-2026-09-13-M1G-START.md`
+7. `docs/M1G-DESIGN-DECISIONS-2026-09-13.md`
+8. `docs/ROADMAP.md`
+9. `docs/LUA-API.md`
+10. exact current source/CI
 
 Older milestone/handoff documents preserve checkpoint history but do not override current records.
