@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /** Authoritative finite playback snapshot sent by the server. */
 public record HQFiniteMediaStatePacket(
-    UUID source, UUID mediaId, long generation, PlaybackState state,
+    UUID source, UUID mediaId, long generation, long decodeRevision, PlaybackState state,
     double position, double duration, float volume, boolean looping,
     long anchorOffset, double anchorTime, String error
 ) implements CustomPacketPayload {
@@ -25,7 +25,7 @@ public record HQFiniteMediaStatePacket(
     public static final StreamCodec<RegistryFriendlyByteBuf, HQFiniteMediaStatePacket> STREAM_CODEC = new StreamCodec<>() {
         @Override public HQFiniteMediaStatePacket decode(RegistryFriendlyByteBuf buf) {
             return new HQFiniteMediaStatePacket(
-                buf.readUUID(), buf.readUUID(), buf.readVarLong(), buf.readEnum(PlaybackState.class),
+                buf.readUUID(), buf.readUUID(), buf.readVarLong(), buf.readVarLong(), buf.readEnum(PlaybackState.class),
                 buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readBoolean(),
                 buf.readVarLong(), buf.readDouble(), buf.readUtf(MAX_ERROR));
         }
@@ -34,6 +34,7 @@ public record HQFiniteMediaStatePacket(
             buf.writeUUID(p.source());
             buf.writeUUID(p.mediaId());
             buf.writeVarLong(Math.max(1L, p.generation()));
+            buf.writeVarLong(Math.max(1L, p.decodeRevision()));
             buf.writeEnum(p.state());
             buf.writeDouble(p.position());
             buf.writeDouble(p.duration());
@@ -47,7 +48,7 @@ public record HQFiniteMediaStatePacket(
     };
 
     public boolean sensible() {
-        return source != null && mediaId != null && generation > 0L && state != null
+        return source != null && mediaId != null && generation > 0L && decodeRevision > 0L && state != null
             && Double.isFinite(position) && position >= 0.0
             && Double.isFinite(duration) && duration > 0.0
             && position <= duration + 1.0e-6
@@ -61,7 +62,8 @@ public record HQFiniteMediaStatePacket(
     public static void handle(HQFiniteMediaStatePacket packet, IPayloadContext context) {
         if (!packet.sensible()) {
             HQSpeakerMod.warn("M1F finite STATE rejected as nonsensical source=" + packet.source()
-                + " generation=" + packet.generation() + " state=" + packet.state()
+                + " generation=" + packet.generation() + " revision=" + packet.decodeRevision()
+                + " state=" + packet.state()
                 + " position=" + packet.position() + " duration=" + packet.duration());
             return;
         }

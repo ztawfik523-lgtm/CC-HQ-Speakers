@@ -234,6 +234,28 @@ public final class HQMediaStaging {
             preparedByComputerId.clear();
         }
         for (Set<UUID> assets : leftover.values()) releaseDetached(assets);
+
+        try {
+            clearMountContents(mount);
+        } catch (IOException e) {
+            HQSpeakerMod.warn("could not clear speaker staging mount " + stagingId + ": " + safeMessage(e));
+        }
+    }
+
+    static void clearMountContents(WritableMount mount) throws IOException {
+        ArrayList<String> entries = new ArrayList<>();
+        mount.list("", entries);
+
+        IOException failure = null;
+        for (String entry : entries) {
+            try {
+                mount.delete(entry);
+            } catch (IOException e) {
+                if (failure == null) failure = e;
+                else failure.addSuppressed(e);
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     private void releaseDetached(Set<UUID> assets) {

@@ -11,9 +11,8 @@
 -- server-owned media asset, and then played from that asset. Staging is import plumbing,
 -- not the persistent media/playback model.
 --
--- The old peripheral-level audioPlayStaged() command is intentionally not wrapped here.
--- It belongs to this project's earlier staged-file prototype and is scheduled for removal
--- when M1F replaces the old whole-file transport.
+-- The old peripheral-level audioPlayStaged() prototype was removed in M1F. This module
+-- uses the reusable prepare/play/release asset path only.
 --
 -- Full user-facing reference: docs/LUA-API.md in the project repository.
 

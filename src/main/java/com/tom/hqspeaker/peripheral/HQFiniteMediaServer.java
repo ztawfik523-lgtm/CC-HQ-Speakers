@@ -54,6 +54,7 @@ public final class HQFiniteMediaServer {
         final FiniteRangeReadService rangeReads;
         final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
+        long decodeRevision = 1L;
         boolean assetReferenceHeld = true;
 
         Session(UUID mediaId, long generation, MediaMetadata metadata, long totalBytes,
@@ -178,7 +179,6 @@ public final class HQFiniteMediaServer {
             return false;
         }
         if (!s.playback.pause(now)) return false;
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.PAUSE, 0.0);
         notifyState(s, now);
         return true;
     }
@@ -188,7 +188,6 @@ public final class HQFiniteMediaServer {
         if (s == null) return false;
         long now = System.nanoTime();
         if (!s.playback.resume(now)) return false;
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.RESUME, 0.0);
         notifyState(s, now);
         return true;
     }
@@ -212,7 +211,11 @@ public final class HQFiniteMediaServer {
             return true;
         }
 
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SEEK, result.position());
+        if (s.decodeRevision == Long.MAX_VALUE) {
+            failServerSession(s, "finite decoder revision exhausted");
+            return false;
+        }
+        s.decodeRevision++;
         notifyState(s, now);
         return true;
     }
@@ -227,7 +230,6 @@ public final class HQFiniteMediaServer {
             return false;
         }
         if (!s.playback.setVolume(volume)) return false;
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SET_VOLUME, s.playback.volume());
         notifyState(s, now);
         return true;
     }
@@ -241,7 +243,6 @@ public final class HQFiniteMediaServer {
             return false;
         }
         if (!s.playback.setLooping(looping, now)) return false;
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.SET_LOOP, looping ? 1.0 : 0.0);
         notifyState(s, now);
         return true;
     }
@@ -293,7 +294,7 @@ public final class HQFiniteMediaServer {
 
     private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
         Session s = session;
-        if (s == null || player == null || s.playback.terminal()) return;
+        if (s == null || player == null || s.playback.terminal() || s.playback.volume() <= 0.0f) return;
         if (!FiniteRangeValidation.requestMatches(
                 source, s.mediaId, s.generation, s.totalBytes,
                 packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
@@ -320,7 +321,7 @@ public final class HQFiniteMediaServer {
     private synchronized void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
                                             FiniteRangeReadService.ReadResult result) {
         Session s = session;
-        if (s == null || s.playback.terminal()) return;
+        if (s == null || s.playback.terminal() || s.playback.volume() <= 0.0f) return;
         if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
@@ -402,7 +403,7 @@ public final class HQFiniteMediaServer {
         double position = s.playback.position(now);
         FiniteDecodeAnchorSelector.Anchor anchor = FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, position);
         return new HQFiniteMediaStatePacket(
-            source, s.mediaId, s.generation, wireState(s.playback.state()),
+            source, s.mediaId, s.generation, s.decodeRevision, wireState(s.playback.state()),
             position, s.playback.duration(), s.playback.volume(), s.playback.looping(),
             anchor.offset(), anchor.seconds(), s.playback.error()
         );

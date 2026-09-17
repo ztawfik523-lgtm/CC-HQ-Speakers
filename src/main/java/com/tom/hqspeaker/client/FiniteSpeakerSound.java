@@ -46,6 +46,7 @@ final class FiniteSpeakerSound extends AbstractSoundInstance implements Tickable
     }
 
     @Override public boolean isStopped() { return stopped; }
+    @Override public boolean canStartSilent() { return true; }
     @Override public void tick() {}
 
     @Override

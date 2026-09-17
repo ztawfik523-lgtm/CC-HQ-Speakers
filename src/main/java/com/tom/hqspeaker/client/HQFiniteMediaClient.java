@@ -31,6 +31,8 @@ public final class HQFiniteMediaClient {
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
     private static final int MIN_PCM_QUEUE_BYTES = 32 * 1024;
     private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
+    private static final float FIXED_ATTENUATION_DISTANCE = 32.0f;
+    private static final long RENDERER_START_GRACE_NANOS = 1_000_000_000L;
     private static final ExecutorService DECODERS = Executors.newThreadPerTaskExecutor(
         Thread.ofVirtual().name("hqspeaker-finite-decoder-", 0L).factory());
 
@@ -47,10 +49,10 @@ public final class HQFiniteMediaClient {
         long stateSnapshotNanos;
         double pcmTimelineStart;
         long pcmDiscardedBytes;
-        long decodeEpoch;
+        final FiniteDecodeCoordinator coordinator = new FiniteDecodeCoordinator();
         boolean anchorReady;
-        boolean restartRequested;
         boolean terminal;
+        boolean localExhausted;
         boolean desiredPaused;
         boolean looping;
         float volume;
@@ -60,6 +62,9 @@ public final class HQFiniteMediaClient {
         FinitePcmAudioStream rendererStream;
         FiniteSpeakerSound sound;
         boolean rendererStarted;
+        long rendererStartNanos;
+        boolean rendererActiveSeen;
+        boolean fixedAttenuationApplied;
         Boolean appliedPause;
 
         Session(HQFiniteMediaBeginPacket begin) {
@@ -81,10 +86,14 @@ public final class HQFiniteMediaClient {
             rendererStream = null;
             if (stream != null) stream.close();
             rendererStarted = false;
+            rendererStartNanos = 0L;
+            rendererActiveSeen = false;
+            fixedAttenuationApplied = false;
             appliedPause = null;
         }
 
         void cancelDecodeEpoch() {
+            coordinator.invalidateLocalEpoch();
             stopRenderer();
             Future<?> task = decoderTask;
             decoderTask = null;
@@ -127,10 +136,11 @@ public final class HQFiniteMediaClient {
         }
         long now = System.nanoTime();
         SESSIONS.forEach((source, session) -> {
-            if (!session.anchorReady) return;
+            if (!session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
             pump(session, now);
             tryStartRenderer(session, now);
+            observeRendererLifecycle(session, now);
             applyRendererState(session);
         });
     }
@@ -169,37 +179,46 @@ public final class HQFiniteMediaClient {
             return;
         }
 
+        boolean decoderUsable = session.encodedInput != null && session.pcmQueue != null;
+        boolean exhaustedBlocksRestart = session.localExhausted && !packet.looping();
+        FiniteDecodeCoordinator.StateDecision decision = session.coordinator.observeState(
+            packet.decodeRevision(), decoderUsable, exhaustedBlocksRestart, packet.volume() <= 0.0f);
+        if (decision == FiniteDecodeCoordinator.StateDecision.STALE) return;
+
         long now = System.nanoTime();
         session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
         session.looping = packet.looping();
         session.duration = packet.duration();
         session.statePosition = packet.position();
         session.stateSnapshotNanos = now;
-        setVolume(session, packet.volume());
-
-        boolean anchorChanged = !session.anchorReady || packet.anchorOffset() != session.anchorOffset;
-        boolean anchorOutsideWindow = session.window.anchored()
-            && (packet.anchorOffset() < session.window.windowStart() || packet.anchorOffset() >= session.window.windowEnd());
-        boolean restart = anchorChanged || session.restartRequested || session.encodedInput == null || session.pcmQueue == null;
-
-        if (!session.window.anchored() || anchorChanged || anchorOutsideWindow) {
-            session.window.reset(packet.anchorOffset());
-        }
         session.anchorOffset = packet.anchorOffset();
         session.anchorTime = packet.anchorTime();
         session.targetPosition = packet.position();
         session.anchorReady = true;
+        setVolume(session, packet.volume());
 
-        if (restart) restartDecodeEpoch(session, packet.anchorOffset());
-        session.restartRequested = false;
+        if (decision == FiniteDecodeCoordinator.StateDecision.HIBERNATE) {
+            session.localExhausted = false;
+            if (hasLocalEpoch(session)) session.cancelDecodeEpoch();
+            session.window.cancel();
+            return;
+        }
+
+        if (decision == FiniteDecodeCoordinator.StateDecision.RESTART) {
+            session.localExhausted = false;
+            restartDecodeEpoch(session, packet.anchorOffset(), packet.anchorTime(), packet.position());
+        }
+
         pump(session, now);
         tryStartRenderer(session, now);
+        observeRendererLifecycle(session, now);
         applyRendererState(session);
     }
 
     private static void rangeData0(HQFiniteMediaRangeDataPacket packet) {
         Session session = SESSIONS.get(packet.source());
-        if (!matches(session, packet.assetId(), packet.generation()) || session.terminal || !session.anchorReady) return;
+        if (!matches(session, packet.assetId(), packet.generation()) || session.terminal
+                || !session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
         if (session.window.accept(packet.offset(), packet.data())) {
             FiniteEncodedInputStream input = session.encodedInput;
             if (input != null) input.signalDataAvailable();
@@ -210,54 +229,35 @@ public final class HQFiniteMediaClient {
     private static void control0(HQFiniteMediaControlPacket packet) {
         Session session = SESSIONS.get(packet.source());
         if (session == null || session.begin.generation() != packet.generation() || session.terminal) return;
-        long now = System.nanoTime();
-        switch (packet.action()) {
-            case STOP -> {
-                session.terminal = true;
-                session.cancelAll();
-                SESSIONS.remove(packet.source(), session);
-            }
-            case SEEK -> {
-                session.cancelDecodeEpoch();
-                session.restartRequested = true;
-            }
-            case PAUSE -> {
-                if (!session.desiredPaused && session.anchorReady) {
-                    session.statePosition = projectedServerPosition(session, now);
-                    session.stateSnapshotNanos = now;
-                }
-                session.desiredPaused = true;
-                applyRendererState(session);
-            }
-            case RESUME -> {
-                if (session.desiredPaused) session.stateSnapshotNanos = now;
-                session.desiredPaused = false;
-                applyRendererState(session);
-            }
-            case SET_VOLUME -> setVolume(session, packet.value());
-            case SET_LOOP -> session.looping = packet.value() >= 0.5;
-        }
+        // Protocol v7 uses STATE as the sole authority for pause/resume/seek/volume/loop.
+        // STOP remains explicit because the server removes the session instead of retaining a STOPPED state.
+        if (packet.action() != HQFiniteMediaControlPacket.Action.STOP) return;
+
+        session.terminal = true;
+        session.cancelAll();
+        SESSIONS.remove(packet.source(), session);
     }
 
-    private static void restartDecodeEpoch(Session session, long startOffset) {
+    private static void restartDecodeEpoch(Session session, long startOffset,
+                                           double decodeAnchorTime, double decodeTargetTime) {
         session.cancelDecodeEpoch();
         try {
+            session.window.reset(startOffset);
             FiniteEncodedInputStream input = new FiniteEncodedInputStream(session.window, startOffset);
             FinitePcmQueue pcm = new FinitePcmQueue(pcmQueueCapacity(session.begin.descriptor().sampleRate()));
             session.encodedInput = input;
             session.pcmQueue = pcm;
             session.pcmDiscardedBytes = 0L;
-            long epoch = ++session.decodeEpoch;
+            session.localExhausted = false;
+            long epoch = session.coordinator.currentLocalEpoch();
 
             if (session.begin.descriptor().kind() == FiniteDecodeDescriptor.Kind.WAV) {
-                session.pcmTimelineStart = session.anchorTime;
+                session.pcmTimelineStart = decodeAnchorTime;
                 session.decoderTask = DECODERS.submit(() -> runWavDecoder(session, epoch, input, pcm, startOffset));
             } else {
-                double anchorTime = session.anchorTime;
-                double targetTime = session.targetPosition;
-                session.pcmTimelineStart = targetTime;
+                session.pcmTimelineStart = decodeTargetTime;
                 session.decoderTask = DECODERS.submit(() -> runMp3Decoder(
-                    session, epoch, input, pcm, anchorTime, targetTime));
+                    session, epoch, input, pcm, decodeAnchorTime, decodeTargetTime));
             }
         } catch (RuntimeException e) {
             session.encodedInput = null;
@@ -287,12 +287,14 @@ public final class HQFiniteMediaClient {
     }
 
     private static void decoderFailed(Session session, long epoch, Exception failure) {
-        if (session.terminal || session.decodeEpoch != epoch || SESSIONS.get(session.begin.source()) != session) return;
+        if (session.terminal || !session.coordinator.isCurrentLocalEpoch(epoch)
+                || SESSIONS.get(session.begin.source()) != session) return;
         fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
     private static void tryStartRenderer(Session session, long nowNanos) {
-        if (session.terminal || session.rendererStarted || session.pcmQueue == null) return;
+        if (session.terminal || session.rendererStarted || session.pcmQueue == null
+                || session.volume <= 0.0f || session.localExhausted) return;
         if (!catchUpToServerTime(session, nowNanos)) return;
 
         FinitePcmQueue pcm = session.pcmQueue;
@@ -305,9 +307,72 @@ public final class HQFiniteMediaClient {
             session.begin.x(), session.begin.y(), session.begin.z());
         session.rendererStream = stream;
         session.sound = sound;
-        session.rendererStarted = true;
         session.appliedPause = null;
-        Minecraft.getInstance().getSoundManager().play(sound);
+        session.fixedAttenuationApplied = false;
+        try {
+            Minecraft.getInstance().getSoundManager().play(sound);
+            session.rendererStarted = true;
+            session.rendererStartNanos = nowNanos;
+            session.rendererActiveSeen = false;
+        } catch (RuntimeException failure) {
+            HQSpeakerMod.warn("M1G finite renderer start failed source=" + session.begin.source()
+                + " generation=" + session.begin.generation() + ": " + safeMessage(failure));
+            requestAuthoritativeRejoin(session);
+        }
+    }
+
+    private static void observeRendererLifecycle(Session session, long nowNanos) {
+        if (!session.rendererStarted || session.sound == null || session.rendererStream == null) return;
+
+        boolean active = Minecraft.getInstance().getSoundManager().isActive(session.sound);
+        if (active) {
+            session.rendererActiveSeen = true;
+            return;
+        }
+
+        if (session.rendererStream.reachedEof()) {
+            handleLocalEof(session, nowNanos);
+            return;
+        }
+
+        if (nowNanos - session.rendererStartNanos < RENDERER_START_GRACE_NANOS) return;
+
+        HQSpeakerMod.warn("M1G finite renderer did not remain active; requesting authoritative rejoin source="
+            + session.begin.source() + " generation=" + session.begin.generation());
+        requestAuthoritativeRejoin(session);
+    }
+
+    private static void handleLocalEof(Session session, long nowNanos) {
+        if (session.terminal) return;
+        if (session.looping && session.volume > 0.0f) {
+            double target = projectedServerPosition(session, nowNanos);
+            restartDecodeEpoch(session, loopStartOffset(session), 0.0, target);
+            pump(session, nowNanos);
+            return;
+        }
+
+        session.cancelDecodeEpoch();
+        session.window.cancel();
+        session.localExhausted = true;
+    }
+
+    private static void requestAuthoritativeRejoin(Session session) {
+        session.cancelDecodeEpoch();
+        session.window.cancel();
+        session.localExhausted = false;
+        report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
+    }
+
+    private static long loopStartOffset(Session session) {
+        if (session.begin.descriptor().kind() == FiniteDecodeDescriptor.Kind.WAV) {
+            return session.begin.descriptor().wavLayout().dataOffset();
+        }
+        return 0L;
+    }
+
+    private static boolean hasLocalEpoch(Session session) {
+        return session.decoderTask != null || session.encodedInput != null || session.pcmQueue != null
+            || session.rendererStream != null || session.sound != null || session.rendererStarted;
     }
 
     /**
@@ -342,26 +407,43 @@ public final class HQFiniteMediaClient {
         if (!session.desiredPaused && session.stateSnapshotNanos > 0L) {
             position += Math.max(0L, nowNanos - session.stateSnapshotNanos) / 1_000_000_000.0;
         }
-        // Loop wrap needs an explicit authority decision. Until that is chosen, never locally modulo the server clock.
-        if (session.duration > 0.0) position = Math.min(position, session.duration);
+        if (session.duration > 0.0) {
+            if (session.looping) {
+                position %= session.duration;
+                if (position < 0.0) position += session.duration;
+            } else {
+                position = Math.min(position, session.duration);
+            }
+        }
         return Math.max(0.0, position);
     }
 
     private static void applyRendererState(Session session) {
         FiniteSpeakerSound sound = session.sound;
         if (sound == null || !Minecraft.getInstance().getSoundManager().isActive(sound)) return;
+
         boolean desired = session.desiredPaused;
-        if (session.appliedPause != null && session.appliedPause == desired) return;
+        boolean needsPause = session.appliedPause == null || session.appliedPause != desired;
+        boolean needsAttenuation = !session.fixedAttenuationApplied;
+        if (!needsPause && !needsAttenuation) return;
+
         boolean found = HQSoundChannelControl.execute(sound, channel -> {
-            if (desired) channel.pause();
-            else channel.unpause();
+            channel.linearAttenuation(FIXED_ATTENUATION_DISTANCE);
+            if (needsPause) {
+                if (desired) channel.pause();
+                else channel.unpause();
+            }
             Minecraft.getInstance().execute(() -> {
-                if (session.sound == sound && session.desiredPaused == desired) {
-                    session.appliedPause = desired;
+                if (session.sound == sound) {
+                    session.fixedAttenuationApplied = true;
+                    if (needsPause && session.desiredPaused == desired) session.appliedPause = desired;
                 }
             });
         });
-        if (!found) session.appliedPause = null;
+        if (!found) {
+            session.fixedAttenuationApplied = false;
+            if (needsPause) session.appliedPause = null;
+        }
     }
 
     private static void setVolume(Session session, double value) {
@@ -388,7 +470,8 @@ public final class HQFiniteMediaClient {
     }
 
     private static void pump(Session session, long nowNanos) {
-        if (session.terminal || !session.anchorReady) return;
+        if (session.terminal || !session.anchorReady || session.volume <= 0.0f
+                || session.localExhausted || !session.window.anchored()) return;
         while (session.window.pendingRequests() < MAX_IN_FLIGHT_REQUESTS) {
             var next = session.window.nextRequest(FiniteRangeLimits.MAX_RANGE_BYTES, nowNanos);
             if (next.isEmpty()) return;

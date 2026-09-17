@@ -16,6 +16,7 @@ public final class FinitePcmAudioStream implements AudioStream {
     private final AudioFormat format;
     private final int silenceBytes;
     private volatile boolean closed;
+    private volatile boolean reachedEof;
 
     public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate) {
         if (queue == null) throw new NullPointerException("queue");
@@ -47,7 +48,11 @@ public final class FinitePcmAudioStream implements AudioStream {
         return switch (result.state()) {
             case DATA -> direct(result.data());
             case STARVED -> silence(Math.min(wanted, silenceBytes));
-            case EOF, CANCELLED -> null;
+            case EOF -> {
+                reachedEof = true;
+                yield null;
+            }
+            case CANCELLED -> null;
         };
     }
 
@@ -62,6 +67,10 @@ public final class FinitePcmAudioStream implements AudioStream {
 
     public boolean closed() {
         return closed;
+    }
+
+    public boolean reachedEof() {
+        return reachedEof;
     }
 
     static int maxReadBytes() {
