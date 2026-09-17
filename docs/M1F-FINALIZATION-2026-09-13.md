@@ -1,5 +1,9 @@
 # M1F finalization — 2026-09-13
 
+> **Historical M1F completion record.** The transport milestone remains complete at source/test/CI/package/component level, but later audits found shutdown hardening gaps outside the original happy-path/component proof. Current KI-054/KI-064 status lives in `KNOWN-ISSUES.md` / `VERIFIED-FACTS.md`.
+>
+> Also, M1G is no longer “next, not started”: progressive MP3/common-WAV decode + positional rendering are integrated in current source. Use `CURRENT-STATE.md` for current continuation.
+
 ## Result
 
 M1F demand-driven finite encoded transport is complete at the **source/test/CI/package** level.
@@ -39,37 +43,27 @@ NeoForge 21.1.248 artifact:
 
 ## Player-facing behavior established by M1F
 
-The modern prepared-file path is now:
+The modern prepared-file transport became:
 
 ```text
 ComputerCraft file
-    -> immutable server MediaAsset
-    -> server-authoritative playback state
-    -> server-selected encoded anchor
-    -> nearby client requests only bounded encoded ranges it needs
-    -> server reads those ranges on bounded background IO
-    -> client keeps only a bounded sliding encoded RAM window
+-> immutable server MediaAsset
+-> server-authoritative playback state
+-> server-selected encoded anchor
+-> relevant client requests bounded encoded ranges
+-> server reads bounded ranges on background IO
+-> client keeps a bounded sliding encoded RAM window
 ```
 
 A large track no longer requires a same-sized client-side download or complete song file.
 
-M1F intentionally does not decode/render the song. M1G owns progressive MP3/common-WAV decode, PCM buffering, and audible positional rendering.
+M1F intentionally did not own decode/render. M1G now integrates progressive MP3/common-WAV decode, bounded PCM, and audible positional rendering.
 
-## Final transport contract
+## Transport contract
 
-Protocol v5 modern finite transport uses:
+M1F protocol v5 introduced bounded range request/data and authoritative anchors. Current modern protocol is v6 because M1G later added the decode descriptor; the range contract itself remains the same shape.
 
-```text
-client -> server:
-source + asset + generation + offset + bounded length
-
-server -> client:
-source + asset + generation + offset + encoded bytes
-```
-
-Authoritative STATE also carries the server-selected encoded anchor.
-
-Current implementation bounds are tuning values, not frozen public API:
+Current implementation tuning inherited from M1F:
 
 - maximum range: 128 KiB;
 - client encoded window: 512 KiB;
@@ -78,110 +72,112 @@ Current implementation bounds are tuning values, not frozen public API:
 - server range IO workers: 2;
 - server range IO queue: 64.
 
-## What the finalization pass fixed
+These are tuning values, not public API guarantees.
 
-### Sliding encoded window
+## Sliding encoded window
 
-`FiniteRangeWindow` now:
+`FiniteRangeWindow`:
 
-- starts unanchored, so BEGIN by itself cannot create byte-zero demand;
-- activates only when authoritative STATE supplies an anchor;
-- supports arbitrary reset/re-anchor for seek/rejoin;
-- supports forward `advanceTo(...)` progression;
-- discards consumed prefix bytes;
-- preserves useful unread overlapping bytes;
-- preserves only whole still-useful in-flight requests;
+- starts unanchored so BEGIN alone cannot demand byte zero;
+- activates when authoritative STATE installs an anchor;
+- supports arbitrary reset/re-anchor;
+- supports forward sliding/consumption;
+- discards consumed prefix;
+- preserves useful unread overlap/prefetch;
 - rejects obsolete/stale responses;
-- opens new bounded demand at the tail;
-- shifts overlap in place instead of allocating another full window on every small advance;
-- distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE.
+- opens bounded tail demand/refill;
+- distinguishes DATA_AVAILABLE, NEED_DATA, TRUE_ASSET_EOF, and CANCELLED_OR_STALE;
+- keeps memory bounded independently of track duration.
 
-### Shared request validation
+These core M1F facts remain current.
 
-`FiniteRangeValidation` is the pure shared rule for:
+## Shared request validation / async IO
 
-- wire range sanity;
-- source/asset/generation identity;
-- asset offset/length bounds;
-- stale completion identity;
-- same-dimension/current-range relevance.
+M1F established pure validation for wire range sanity, source/asset/generation identity, bounds, stale completion identity, and relevance.
 
-Range request/data packets and the server request path use the same 128 KiB maximum.
+`FiniteRangeReadService` retains the MediaAsset around accepted asynchronous reads and uses bounded per-player/accounting limits. Completion/cancellation releases the temporary lease through the release owner.
 
-### Server IO/lifetime/shutdown
+The original component tests proved off-thread read execution, queued cancellation accounting, release retry ownership in active paths, and bounded fake-consumer transfer into the client window.
 
-`FiniteRangeReadService` retains the MediaAsset before accepted async work enters the executor. Completion/cancellation releases the temporary lease through the shared retry-safe release owner and drops per-player accounting.
+## Later shutdown correction — KI-054
 
-The final tests also prove:
+The original M1F finalization wording was too broad if read as “all shutdown failure paths are solved.”
 
-- production range completion runs on the dedicated `hqspeaker-range-io-*` worker rather than the submitting/server thread;
-- queued shutdown cancellation releases lease/accounting;
-- a failed in-flight final release transfers to `MediaAssetReleaseQueue` and later succeeds;
-- shutdown timeout leaves the media store intact and `close()` can be retried;
-- the normal server shutdown order still closes/drains range IO before closing the asset store.
+Two current gaps remain:
 
-## Deterministic/component acceptance matrix
+1. `MediaAssetStore.close()` clears completed-entry bookkeeping before deletion attempts, so a failed completed-file shutdown deletion cannot be retried from retained entry state;
+2. `ServerMediaAssets.closeServer()` calls `FiniteRangeReadService.close()` **before** `MediaAssetStore.close()`. If range close throws, store close and registry removal are skipped, leaving the store root file lock and stopped-server/assets object alive in the JVM.
 
-| Requirement | Final evidence |
-| --- | --- |
-| exact arbitrary encoded ranges | `FiniteRangeReadServiceTest` |
-| max packet/range bound | `FiniteRangeValidationTest` + packet delegation to shared rule |
-| source/generation/asset identity | `FiniteRangeValidationTest` + server use of validator |
-| asset offset/length bounds | `FiniteRangeValidationTest` + read-service bounds |
-| same-dimension/current relevance rule | `FiniteRangeValidationTest` + server `isRelevant` use |
-| stale replacement completion rejection | `FiniteRangeValidationTest` + server completion use |
-| disconnected/out-of-range completion discard | current server player lookup + tested relevance rule |
-| per-player outstanding limits | `FiniteRangeReadServiceTest` |
-| in-flight MediaAsset lifetime | `FiniteRangeReadServiceTest` |
-| cancellation accounting/ref cleanup | `FiniteRangeReadServiceTest` |
-| release-failure retry ownership | `FiniteRangeReadServiceTest` |
-| shutdown drain/retry safety | `FiniteRangeReadServiceTest` + `ServerMediaAssets` ordering |
-| reads off server tick/submitting thread | `FiniteRangeReadServiceTest` |
-| BEGIN cannot demand before STATE | unanchored `FiniteRangeWindowTest` + client `anchorReady` gate |
-| arbitrary non-zero anchor | `FiniteRangeWindowTest` |
-| seek/re-anchor drops obsolete demand/data | `FiniteRangeWindowTest` |
-| missing network bytes != true EOF | `FiniteRangeWindowTest` |
-| sliding consume/discard preserving prefetch | `FiniteRangeWindowTest` |
-| progress/refill beyond one window while bounded | `FiniteRangeWindowTest` |
-| integrated fake range-reader -> client-window flow | `FiniteRangeTransportTest` |
-| no modern complete client song file | source review of `HQFiniteMediaClient` |
-| no modern CHUNK/END whole-file packets | current source-tree review |
-| direct `audioPlayStaged()` prototype removed | current composite/source review |
+So the original test result “range service close can be retried” is a component fact, not proof that the current server-stop integration retries it or still reaches store close after failure.
+
+Next-start orphan pruning does not fix a same-JVM lock that is still held.
+
+## Later import correction — KI-064
+
+M1F did not close all import-level hardening either:
+
+- `MediaAssetStore.writeExact()` can spin indefinitely if a source repeatedly returns zero bytes;
+- asset publication uses `ATOMIC_MOVE` without fallback when atomic move is unsupported.
+
+These are storage/import hardening issues, not failures of bounded range transport.
+
+## Deterministic/component acceptance from the milestone
+
+M1F's original matrix remains valid for what those tests actually prove:
+
+- exact arbitrary encoded ranges;
+- range/bounds identity validation;
+- relevance rule validation;
+- stale replacement completion rejection;
+- per-player outstanding limits;
+- in-flight MediaAsset lifetime;
+- cancellation accounting/ref cleanup;
+- active-path release retry ownership;
+- off-thread exact reads;
+- authoritative anchor-before-demand;
+- arbitrary re-anchor;
+- missing bytes != true EOF;
+- sliding consume/discard/refill under fixed memory;
+- integrated fake range-reader -> client-window exact byte flow;
+- no modern complete client song file;
+- no modern CHUNK/END whole-file packets;
+- removed direct `audioPlayStaged()` prototype.
+
+Do not reinterpret this historical matrix as proof of KI-054/KI-064 resolution.
 
 ## Component proof
 
-`FiniteRangeTransportTest` exercises the M1F core without Minecraft rendering:
+`FiniteRangeTransportTest` historically exercises:
 
 ```text
 2 MiB server MediaAsset
 -> non-zero range demand
--> actual async exact server reads
+-> async exact server reads
 -> bounded client encoded window
 -> advance/refill beyond one full window
--> distant re-anchor/jump
+-> distant re-anchor
 -> obsolete old region rejected
 -> exact bytes preserved
 -> RAM remains bounded
 ```
 
-This is the fake-consumer proof requested by the original M1F design.
+This remains useful M1F component evidence.
 
-## Recheck result
+## Architecture boundaries which remain valid
 
-After the final implementation/test pass, no new M1F architecture/correctness choice with meaningful tradeoffs was found.
-
-The modern path still intentionally has:
+M1F deliberately has:
 
 - no whole-file server push;
 - no complete-song client `.part/.media` cache;
 - no Java playlist/application-role policy;
-- no client authority over the server playback timeline;
-- no M1G decoding/rendering work pulled into M1F;
-- no M1H full listener discovery/rejoin lifecycle pulled into M1F.
+- no client authority over server finite time;
+- no full M1H listener discovery/rejoin lifecycle.
+
+M1G decode/render is now integrated rather than “next.”
 
 ## Evidence boundary
 
-Record current status exactly as:
+Record M1F itself as:
 
 ```text
 M1F source implementation:                 COMPLETE
@@ -192,4 +188,6 @@ M1F focused Minecraft transport runtime:   NOT RECORDED
 M1F audible playback:                      NOT AN M1F REQUIREMENT
 ```
 
-The next implementation milestone is M1G progressive MP3/common-WAV decode and audible positional rendering. Full dynamic late-entry/leave-return/rejoin remains M1H.
+Separately record KI-054/KI-064 as later hardening findings rather than retroactively erasing the transport milestone evidence.
+
+Current continuation is M1G correctness/evidence work documented in `CURRENT-STATE.md`, not the original “M1G next” line from this historical checkpoint.
