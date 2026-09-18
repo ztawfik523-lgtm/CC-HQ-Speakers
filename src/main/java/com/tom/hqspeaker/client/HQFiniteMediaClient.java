@@ -335,7 +335,8 @@ public final class HQFiniteMediaClient {
             return;
         }
 
-        if (nowNanos - session.rendererStartNanos < RENDERER_START_GRACE_NANOS) return;
+        if (!session.rendererActiveSeen
+                && nowNanos - session.rendererStartNanos < RENDERER_START_GRACE_NANOS) return;
 
         HQSpeakerMod.warn("M1G finite renderer did not remain active; requesting authoritative rejoin source="
             + session.begin.source() + " generation=" + session.begin.generation());

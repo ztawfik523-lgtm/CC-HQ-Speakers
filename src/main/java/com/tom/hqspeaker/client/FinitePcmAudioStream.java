@@ -44,10 +44,9 @@ public final class FinitePcmAudioStream implements AudioStream {
 
         int wanted = Math.min(maxBytes - (maxBytes & 1), MAX_READ_BYTES);
         if (wanted < 2) wanted = 2;
-        FinitePcmQueue.ReadResult result = queue.read(wanted);
+        FinitePcmReadAdapter.Result result = FinitePcmReadAdapter.read(queue, wanted, silenceBytes);
         return switch (result.state()) {
-            case DATA -> direct(result.data());
-            case STARVED -> silence(Math.min(wanted, silenceBytes));
+            case DATA, SILENCE -> direct(result.data());
             case EOF -> {
                 reachedEof = true;
                 yield null;
@@ -83,10 +82,4 @@ public final class FinitePcmAudioStream implements AudioStream {
         return out;
     }
 
-    private static ByteBuffer silence(int bytes) {
-        int aligned = Math.max(2, bytes - (bytes & 1));
-        ByteBuffer out = ByteBuffer.allocateDirect(aligned).order(ByteOrder.LITTLE_ENDIAN);
-        out.position(aligned).flip();
-        return out;
-    }
 }
