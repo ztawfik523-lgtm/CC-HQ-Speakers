@@ -19,7 +19,7 @@ M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`, CI `34757923455
 
 M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`. Source/test/CI/package and deterministic/component acceptance are complete; focused Minecraft M1F transport acceptance is unrecorded.
 
-M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `e0e98ae77335828f02f8e93825b27632de2b8ee6`, CI `35406123680`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
 
 ## What is actually integrated now
 
@@ -87,7 +87,7 @@ The broader checklist below also contains post-M1G hardening and M1H-adjacent ch
 
 ### Post-M1G hardening evidence
 
-KI-062/063/054/064 are resolved at source/component level at hardening checkpoint `e836dfac702dcc438fa0366dc2fba2132b5140c1`.
+KI-062/063/054/064 are resolved at source/component level at hardening checkpoint `e0e98ae77335828f02f8e93825b27632de2b8ee6`.
 
 Deterministic coverage added/retained includes:
 
@@ -100,7 +100,7 @@ Deterministic coverage added/retained includes:
 
 Exact-source re-audit additionally verifies:
 
-- URL DNS validation executes outside the ownership monitor required by `tickOwnership()`/cleanup while a separate command lock preserves Lua command ordering;
+- URL DNS validation executes outside both the ownership monitor required by `tickOwnership()`/cleanup and the command-order lock; validated single-speaker stream commit rejoins the short command lock only after DNS returns;
 - prepared finite replacement is fully admitted/retained/constructed before current ownership is stopped;
 - RAW replacement validates/converts before current ownership is stopped;
 - the same stopping server cannot reopen media services after shutdown begins;
