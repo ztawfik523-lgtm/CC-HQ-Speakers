@@ -1,6 +1,6 @@
 # M1 consolidated runtime test
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 This is a current integration guide. For exact deterministic prerequisites and evidence gaps, read `TESTING.md` first. Current source/state authority is `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `VERIFIED-FACTS.md`, and exact source.
 
@@ -31,11 +31,21 @@ The M1G source prerequisites are already satisfied at final source checkpoint `f
 6. KI-061 whole-owner staging cleanup is implemented;
 7. both supported NeoForge builds are green at CI `35297026277`.
 
-The purpose of this guide is now **focused runtime evidence**, especially KI-046. It is not a source-completion checklist.
+A focused **M1G audible/core runtime PASS was recorded on 2026-09-19** on NeoForge 21.1.247 integrated singleplayer, resolving KI-046. This guide remains the regression/release rerun checklist rather than a source-completion checklist.
 
 Strongly consider closing KI-062 before relying on legacy stream calls in the same test instance, because blocking DNS under the shared composite monitor can stall server tick/lifecycle cleanup.
 
 KI-054/KI-064 storage hardening and KI-063 replacement-admission correctness remain tracked post-M1G. They should be tested when their respective fixes land, but they do not retroactively make the M1G core finite engine incomplete.
+
+## Recorded M1G runtime result — 2026-09-19
+
+The focused runtime kit recorded PASS for modern WAV/MP3 playback, pause/resume, seek/reanchor, MP3 seek, prepared-asset lifetime, float32 WAV, natural EOF, ordinary loop replay, positional attenuation/fixed-range behavior, stop, and global-volume-zero hibernation/unmute.
+
+The dedicated mute retest used the 2-second looping WAV so EOF could not invalidate the result. While HQ volume was 0, authoritative status remained `playing` and `looping=true` for more than five seconds while the user confirmed complete silence. Restoring volume to 0.65 returned audible playback while the same generation remained active, then STOP returned the session to idle.
+
+Environment: Minecraft 1.21.1, Java 21, CC:T 1.120.0, NeoForge 21.1.247, final M1G jar/source family. NeoForge 21.1.248 was not manually runtime-tested in this session.
+
+This resolves KI-046 only. KI-062/063/054/064 and M1H lifecycle/recovery remain separate.
 
 ## Test environment
 
