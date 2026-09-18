@@ -1,6 +1,6 @@
 # Verified facts
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
@@ -299,7 +299,7 @@ Exact-source rechecking rejected several first-draft audit claims:
 
 M1G is complete at source/test/CI/package/component level at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
 
-Focused audible Minecraft acceptance remains unrecorded under KI-046 and is not represented as a CI PASS.
+A separate focused audible/core Minecraft acceptance PASS was recorded on 2026-09-19 using NeoForge 21.1.247 integrated singleplayer, resolving KI-046. That runtime evidence is separate from CI and does not claim manual runtime coverage of NeoForge 21.1.248.
 
 ### FACT-POST-M1G-001
 
