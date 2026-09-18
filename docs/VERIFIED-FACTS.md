@@ -1,6 +1,6 @@
 # Verified facts
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 Facts only. Recommendations and unresolved choices belong elsewhere.
 
@@ -17,7 +17,7 @@ Important source checkpoints:
 - M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`;
 - M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`;
 - M1G preparation base: `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`;
-- current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`.
+- final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`.
 
 ### FACT-PLATFORM-001
 
@@ -27,18 +27,16 @@ Target stack: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.247 b
 
 ### FACT-CI-001
 
-M1E CI `34757923455`, M1F CI `34763362365`, and M1G integrated-source CI `34778546164` passed both target NeoForge versions. M1G CI included build, tests, packaged-mod verification, and artifact upload.
+M1E CI `34757923455`, M1F CI `34763362365`, and final M1G CI `35297026277` passed both target NeoForge versions. Final M1G CI included build, deterministic tests, packaged-mod verification, and artifact upload.
+
+CI is not Minecraft runtime proof.
 
 ### FACT-CI-002
 
-M1G artifacts for source checkpoint `957832348eaa6e497282d923f2312c9c7d7c550f`:
+Final M1G artifacts for source checkpoint `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`:
 
-- 21.1.247 artifact `10324148909`, ZIP SHA-256 `7555b34fe1c44e87b35161fa12ea67a7f38c6e409a879a8725863b78757d27db`;
-- 21.1.248 artifact `10324273482`, ZIP SHA-256 `f308b9a52a5688e011e1e9d10b2da06d01cc5f5957b9368ed355c4fc302e12c1`.
-
-Documentation checkpoint `7ec70d4674b237f055d450e1290a652f7c23b65d` passed CI `34780519972` on both targets.
-
-CI is not Minecraft runtime proof.
+- 21.1.247 artifact `10527498657`, SHA-256 `3b873edd94a924cf3922a75cdd059c2b3963500787bd479ec8b386600ef055b1`;
+- 21.1.248 artifact `10528645404`, SHA-256 `3b9304a509d37bf2ef1c0797d4449fa2cb6c8cc705678e63a68ed8c2ef72f8b1`.
 
 ### FACT-CI-003
 
@@ -66,7 +64,7 @@ The owner-selected modern HQ finite contract intentionally differs: M1G keeps a 
 
 ### FACT-CCT-003
 
-Minecraft 1.21.1 exposes `SoundInstance.canStartSilent()` for long-lived sounds which should be allowed to start while currently silent. Current `FiniteSpeakerSound` does not override it.
+Minecraft 1.21.1 exposes `SoundInstance.canStartSilent()` for long-lived sounds which should be allowed to start while currently silent. Final M1G `FiniteSpeakerSound` overrides it.
 
 ## Asset/import facts
 
@@ -88,7 +86,7 @@ The current server-stop hook catches/logs the failure but does not schedule reco
 
 ### FACT-ASSET-004
 
-Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Whole-owner cleanup unmounts/releases ownership but does not clear arbitrary leftover staged files. Unmounting does not delete the persistent directory. This is KI-061 and remains unfixed.
+Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Final M1G whole-owner cleanup unmounts/releases ownership and then deletes all remaining top-level staging entries; the writable mount's delete operation removes nested directories recursively. One-computer detach does not clear the shared mount. KI-061 is resolved in source.
 
 ### FACT-ASSET-005
 
@@ -124,22 +122,22 @@ Output is mono signed 16-bit PCM at source sample rate; one physical speaker rem
 
 ### FACT-M1G-ARCH-002
 
-Owner-selected later M1G target semantics are:
+Implemented final M1G semantics are:
 
 - explicit server-authoritative decoder/re-anchor revision;
-- fixed 32-block modern finite core listening/delivery radius;
+- fixed 32-block modern finite core delivery/listening/attenuation radius;
 - HQ volume changes gain rather than core radius;
-- global-volume-zero local transport/render hibernation while canonical server time continues;
+- global-volume-zero local transport/decode/render hibernation while canonical server time continues;
 - ordinary non-gapless replay after local physical EOF while authoritative looping remains enabled;
 - future SPR compatibility owns intentional extended range/acoustics and matching transport relevance.
-
-These target semantics are not all implemented yet.
 
 ## M1G integrated source facts
 
 ### FACT-M1G-001
 
-Modern finite protocol version is currently **6**. BEGIN carries an MP3/common-WAV `FiniteDecodeDescriptor`.
+Modern finite protocol version is **7**. STATE carries a positive `decodeRevision`.
+
+Semantic seek increments the server revision. Ordinary pause/resume/volume/loop snapshots preserve it.
 
 ### FACT-M1G-002
 
@@ -147,7 +145,7 @@ Modern prepared/local media is narrowed to MP3 or supported common WAV: U8/S16/S
 
 ### FACT-M1G-003
 
-STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors. `FiniteDecodeAnchorSelector.Anchor` contains exactly two fields: encoded byte `offset` and anchor time `seconds`. STATE carries both. It does not contain frame-index, skip-frame, or skip-sample fields.
+STATE anchor selection provides exact frame-aligned WAV anchors and conservative E1 MP3 pre-roll anchors. `FiniteDecodeAnchorSelector.Anchor` contains exactly encoded byte `offset` and anchor time `seconds`.
 
 ### FACT-M1G-004
 
@@ -165,65 +163,83 @@ STATE anchor selection provides exact frame-aligned WAV anchors and conservative
 
 `ProgressiveMp3Decoder` uses packaged JLayer frame-by-frame, validates analyzed rate/channel facts, decodes from earlier E1 anchors, and discards pre-target PCM.
 
+A real synthetic mono 44.1 kHz MP3 fixture is decoded in tests across initial encoded starvation, repeated bounded range refill, multiple encoded-window slides, and pre-target discard.
+
 ### FACT-M1G-008
 
-`HQFiniteMediaClient` owns local decode epochs; seek/replacement/stop cancel old encoded waits, decode work, PCM, and renderer state. Range arrivals wake the active encoded input.
+`FiniteDecodeCoordinator` separates server decoder revision from local worker identity. Old local identity is incremented before cancellation. Same-revision ordinary STATE keeps a healthy decoder; higher revision STATE restarts; stale lower revision STATE is ignored.
 
 ### FACT-M1G-009
 
-`FinitePcmAudioStream` performs no network/disk/codec work and represents temporary PCM starvation with short bounded silence instead of terminal EOF.
+Protocol v7 uses STATE as the sole authority for pause/resume/seek/volume/loop. The server no longer projects those nonterminal CONTROL actions. Explicit STOP remains distinct because stop removes the server session.
 
 ### FACT-M1G-010
 
-`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker. It exposes `updatePosition(...)`.
-
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does **not** carry x/y/z. The current modern client does not call `FiniteSpeakerSound.updatePosition(...)` after renderer creation, so moving-source/VS2 lifecycle remains incomplete.
+`FinitePcmReadAdapter` is a pure renderer-read policy used by `FinitePcmAudioStream`. It maps live empty PCM to bounded silence and keeps physical EOF distinct from cancellation. The pure adapter is unit tested because the ordinary JUnit source set does not expose Minecraft's client-only `AudioStream`; the Minecraft adapter itself compiles/packages on both targets.
 
 ### FACT-M1G-011
 
-The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared finite engine.
+`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, positional linear attenuation, and one source per physical speaker. It overrides `canStartSilent()`.
+
+The active channel is explicitly assigned a fixed 32-block attenuation distance independent of HQ volume.
+
+### FACT-M1G-012
+
+Global HQ volume zero keeps the canonical server playback clock alive while clients cancel decoder/renderer state and stop range demand. The server rejects new range work and drops completed range delivery while global volume is zero. A later non-zero STATE rebuilds from current authoritative position/anchor.
+
+### FACT-M1G-013
+
+At physical local EOF, authoritative `looping=true` causes a fresh local decode/render iteration. The client projects current server loop position modulo duration for catch-up. M1G does not claim sample-gapless MP3 or permanent-source loop continuity.
+
+### FACT-M1G-014
+
+Whole-owner `HQMediaStaging.cleanup()` deletes remaining top-level entries from the persistent staging mount after attached computers are detached and ownership references released.
+
+### FACT-M1G-015
+
+Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry x/y/z. The current modern client still does not call `FiniteSpeakerSound.updatePosition(...)` after renderer creation, so moving-source/VS2 lifecycle remains M1H.
 
 ## Rechecked client/protocol facts
 
 ### FACT-AUDIT-001
 
-`HQFiniteMediaClient.state0()` can reset the encoded window when the server anchor is outside the current slid window even when the coarse anchor is unchanged; the decoder epoch may be preserved. This is KI-053.
+KI-053 is resolved: ordinary same-revision STATE no longer resets a healthy slid range window merely because the time-derived codec anchor moved or fell outside the current window.
 
 ### FACT-AUDIT-002
 
-`ProgressiveMp3DecoderTest` does not decode a real MP3 fixture through JLayer. The current client test tree has no focused `FinitePcmAudioStreamTest`. This is part of KI-055.
+KI-055 deterministic coverage is resolved: real JLayer MP3 progressive decode and pure renderer-read policy tests exist.
 
 ### FACT-AUDIT-003
 
-`scripts/m1d_media_analysis_test.lua` reflects the historical broad M1D format surface and is not a valid current M1G modern-prepared gate. `m1_player_test.lua` and `p0_finite_regression.lua` primarily exercise inherited byte-taking APIs.
+`scripts/m1d_media_analysis_test.lua` remains historical and is not a valid current M1G prepared-format gate. `m1_player_test.lua` and `p0_finite_regression.lua` primarily exercise inherited byte-taking APIs.
 
 ### FACT-AUDIT-004
 
-After renderer start, an empty live PCM queue becomes short local silence until PCM returns. Current M1G does not implement general long-underrun current-time rejoin; that remains M1H.
+After renderer start, an empty live PCM queue becomes short local silence until PCM returns. General long-underrun current-time rejoin remains M1H.
 
 ### FACT-AUDIT-005
 
-`CONTROL SEEK` currently cancels the decode epoch before a new worker identity is installed. Expected cancellation can therefore race into `decoderFailed()` while the old epoch still appears current. This is KI-056.
+KI-056 is resolved: the local worker token is invalidated before decoder/input/PCM cancellation, so expected old-worker cancellation cannot report as current.
 
 ### FACT-AUDIT-006
 
-The server sends STATE after successful pause/resume/seek/volume/loop transitions and recomputes the codec anchor from canonical position. The client currently treats anchor change as restart intent. This is part of KI-057.
+KI-057 is resolved: STATE carries explicit decoder revision and no longer overloads anchor movement as restart intent.
 
 ### FACT-AUDIT-007
 
-Same-coarse-anchor semantic seek restart currently depends on the preceding SEEK control setting client-local restart state. STATE has no explicit decoder/reanchor revision. This is the other half of KI-057.
+Same-coarse-anchor semantic seek does not depend on CONTROL SEEK ordering; seek increments `decodeRevision` and STATE is self-describing.
 
 ### FACT-AUDIT-008
 
-Modern finite live volume updates mutate sound volume and refresh BLOCKS category volume, but they do not explicitly install the owner-selected fixed 32-block attenuation distance on the active channel. This is KI-058.
+KI-058 is resolved: the modern finite live channel installs the selected fixed 32-block attenuation distance while HQ volume updates gain.
 
 ### FACT-AUDIT-009
 
-`HQFiniteMediaServer` uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving. The owner selected that fixed-radius shape for M1G rather than volume-dependent relevance.
+`HQFiniteMediaServer` uses a fixed 32-block relevance radius for modern finite BEGIN/STATE/range serving.
 
 ### FACT-AUDIT-010
 
-`HQFiniteMediaClient.tryStartRenderer()` sets `rendererStarted=true` before `SoundManager.play(sound)` and has no simple retry path merely because the sound failed to become active. This is KI-060.
+KI-060 source hardening is implemented: renderer start is latched after `SoundManager.play(...)` returns, activation/EOF are observed, failed/lost activation can request authoritative rejoin, global zero volume hibernates resources, and client-local silent start is allowed.
 
 ### FACT-AUDIT-011
 
@@ -279,19 +295,15 @@ Exact-source rechecking rejected several first-draft audit claims:
 
 ## Current selected direction / remaining choices
 
-### FACT-M1G-NEXT-001
+### FACT-M1G-CLOSE-001
 
-Loop behavior is selected: ordinary local replay after physical EOF while authoritative state still says `looping=true`, with a normal restart gap acceptable. It is not implemented yet.
+M1G is complete at source/test/CI/package/component level at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
 
-### FACT-M1G-NEXT-002
+Focused audible Minecraft acceptance remains unrecorded under KI-046 and is not represented as a CI PASS.
 
-Decoder/re-anchor behavior is selected: introduce an explicit server-authoritative decoder/re-anchor revision so semantic seek is self-describing and ordinary snapshots do not restart healthy decoders.
+### FACT-POST-M1G-001
 
-One implementation-shape choice remains before coding v7: retain finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional low-latency hints, or remove that duplicate path and let STATE alone carry those transitions.
-
-### FACT-M1G-NEXT-003
-
-Range and volume-zero behavior are selected: M1G keeps the existing fixed 32-block core radius; HQ volume changes gain rather than radius; global HQ volume zero hibernates local decode/render/range requests while canonical server time continues.
+KI-062, KI-063, KI-054, and KI-064 remain open cross-cutting correctness/hardening after M1G.
 
 ### FACT-M1H-NEXT-001
 

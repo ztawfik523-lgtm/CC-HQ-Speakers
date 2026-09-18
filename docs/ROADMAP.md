@@ -6,19 +6,15 @@ Build a better programmable ComputerCraft speaker peripheral. Lua owns applicati
 
 Do not add permanent music/effect/notification roles or a Java playlist manager.
 
-## Current sequencing note — updated 2026-09-17
+## Current sequencing note — updated 2026-09-18
 
-M1E and M1F are complete at source/test/CI/package level.
+M1E, M1F, and M1G are complete at source/test/CI/package level.
 
-M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`, green on NeoForge 21.1.247 and 21.1.248 with packaged-mod verification and artifact upload.
 
-M1G is in progress on `codex/m1g-progressive-finite-decode`.
+Focused audible Minecraft M1G acceptance remains unrecorded under KI-046. That is an evidence boundary, not an open decoder-engine implementation item.
 
-Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`.
-
-Documentation/audit work after that checkpoint has not changed implementation source.
-
-The September 16/17 repository review was re-verified against exact source. The findings that materially affect current sequencing are KI-062, KI-063, KI-064, and the stronger KI-054 shutdown-lock interpretation. Several initial audit claims were retracted; current docs record only the verified forms.
+The next current work is the post-M1G cross-cutting hardening set KI-062/KI-063/KI-054/KI-064 and then/alongside M1H listener/recovery lifecycle according to patch cohesion.
 
 ## Foundation
 
@@ -52,71 +48,44 @@ Focused real-Minecraft M1F transport acceptance remains unrecorded.
 
 ## M1G — core progressive finite engine: MP3 + common WAV
 
-**Integrated in source; correctness/evidence work remains.**
+**Complete at source/test/CI/package/component level.**
 
-Locked media/renderer decisions:
+Final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`.
 
-- A1 — Minecraft `AudioStream` / normal `SoundManager` renderer;
-- B1 — server-normalized common-WAV layout;
-- C1 — preserve source sample rate;
-- D1 — narrow PCM/float WAVEX;
-- E1 — conservative MP3 pre-roll from an earlier analyzed seek point.
+Final CI: `35297026277`, both NeoForge 21.1.247 and 21.1.248 green.
 
-Selected later M1G scope decisions:
+Completed contract:
 
-- explicit server-authoritative decoder/re-anchor revision; do not infer restart intent from codec-anchor movement;
-- fixed 32-block core listening/delivery radius; HQ volume changes gain, not the core radius;
-- global HQ volume zero keeps canonical server time advancing but hibernates local decode/render/range work;
-- looping is ordinary replay after local physical EOF while authoritative looping remains enabled; a normal restart gap is acceptable;
-- no gapless MP3, permanent-source loop engineering, dynamic volume-aware range, or SPR acoustic/range integration in M1G.
+- A1 Minecraft `AudioStream` / normal `SoundManager` renderer;
+- B1 server-normalized common-WAV layout;
+- C1 source-rate preservation;
+- D1 narrow PCM/float WAVEX;
+- E1 conservative MP3 pre-roll;
+- protocol v7 explicit server-authoritative decoder/re-anchor revision;
+- ordinary STATE preserves healthy decode state; semantic seek increments revision;
+- nonterminal finite CONTROL projection removed; STATE is the authority and STOP remains explicit;
+- fixed 32-block delivery/attenuation contract with HQ volume changing gain rather than radius;
+- global HQ volume zero hibernates local transport/decode/rendering while canonical server time continues;
+- renderer-start/lost-renderer recovery plus `canStartSilent()` for client-local mute;
+- ordinary non-gapless replay after physical EOF while authoritative looping remains enabled;
+- real JLayer MP3 fixture coverage across starvation/sliding/pre-target discard;
+- pure renderer-read policy coverage for DATA/starvation/EOF/cancel;
+- whole-owner staging leftover cleanup.
 
-Current source pipeline:
+M1G intentionally does **not** include gapless MP3 metadata handling, permanent-source loop engineering, dynamic volume-aware listener membership, general late-entry/rejoin lifecycle, final VS2 movement, or Sound Physics Remastered acoustic/range integration.
 
-```text
-M1F bounded sliding encoded window
--> starvation-aware decoder input
--> progressive WAV/JLayer MP3 decoder
--> bounded mono S16 PCM queue
--> nonblocking Minecraft AudioStream
--> positional BLOCKS SoundManager source
-```
+Focused real-Minecraft audible proof remains unrecorded under KI-046 and should be included in later consolidated runtime acceptance rather than rewriting CI as audio proof.
 
-Current implementation is still protocol v6. The explicit decoder/re-anchor revision is selected for the next protocol revision, likely v7, but has not been implemented.
+### Post-M1G cross-cutting hardening
 
-### Immediate cross-cutting safety work
+Still open:
 
-**KI-062 — shared monitor + blocking DNS** is the one broad-audit issue currently worth considering before the M1G protocol patch because it can stall the server main thread and lifecycle cleanup.
+- KI-062 — blocking legacy stream DNS while holding the composite monitor;
+- KI-063 — replacement-before-admission can destroy current valid playback;
+- KI-054 — shutdown deletion retry/root-lock hardening;
+- KI-064 — asset-import zero-read progress bound and non-atomic move fallback.
 
-The confirmed path is synchronized dynamic stream dispatch holding the composite monitor while `InetAddress.getAllByName(...)` may block. `tickOwnership()` and synchronized composite `cleanup()` use the same monitor; cleanup is reached from provider removal/Level-unload/server-stop paths.
-
-The narrow fix target is to preserve ownership ordering while moving blocking DNS/I/O outside that monitor or eliminating server-thread dependence on it. Do not turn this into an M3 live-stream rewrite.
-
-**KI-063** replacement-before-admission is a separate ownership correctness issue. It can be fixed before or after the v7 cluster depending on patch cohesion; do not silently make failed replacement destructive.
-
-**KI-054/KI-064** are storage/shutdown hardening and can be grouped when storage code is touched unless the root-lock shutdown risk is intentionally promoted earlier.
-
-### Remaining M1G work
-
-1. Fix KI-053/KI-056/KI-057 together using the selected explicit decoder/re-anchor revision. Ordinary STATE must be non-destructive; semantic seek must be self-describing; stale worker identity must be invalidated before cancellation wakes it.
-2. Decide only the **implementation shape** of protocol v7: retain finite CONTROL packets as optional latency hints, or remove duplicate PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP projection and make STATE the sole correctness authority. There is no compatibility need to preserve unreleased v6 internals.
-3. Implement the selected fixed-radius renderer contract (KI-058): explicitly hold the modern finite attenuation distance at 32 blocks while live volume changes gain.
-4. Implement selected global-volume-zero hibernation and harden renderer-start/local-silent behavior (KI-060).
-5. Implement selected ordinary local replay for looping (KI-051). Do not reopen L1/L2/L3 or gapless/continuous-source design unless the owner changes scope.
-6. Close deterministic evidence gaps: real-MP3 JLayer decode across sliding/starvation/pre-roll, focused `FinitePcmAudioStream` tests, decoder cancellation/revision ordering, repeated seeks, volume/start behavior, and simple replay.
-7. Close staging lifecycle leak KI-061 by reclaiming leftovers only when the whole staging owner is destroyed, not on one-computer detach.
-8. Re-audit timing/cancellation/authority/storage after source fixes; keep both NeoForge targets green/package-verified.
-9. Run focused real-Minecraft audible acceptance for modern `hq.playFile()` MP3/common WAV, controls/seek/starvation, bounded memory, fixed-range positional attenuation, volume-zero/unmute, stop/replacement, ordinary replay, staging lifecycle, and standard CC:T compatibility.
-
-M1G non-negotiables remain:
-
-- encoded and decoded memory bounded independently of duration;
-- temporary `NEED_DATA` is never decoder EOF;
-- semantic seek/rejoin restarts codec state when required even if the coarse anchor byte is unchanged;
-- ordinary server snapshots do not gratuitously restart a healthy decoder;
-- no Minecraft/audio-thread network/disk/codec blocking;
-- cancellation/replacement safety;
-- one physical speaker remains one mono positional source;
-- server M1E timeline remains canonical.
+These are real correctness/hardening items, but they are not retroactively part of the completed M1G core progressive finite-engine scope.
 
 ## M1H — dynamic listener lifecycle/recovery
 

@@ -19,139 +19,69 @@ M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`, CI `34757923455
 
 M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`. Source/test/CI/package and deterministic/component acceptance are complete; focused Minecraft M1F transport acceptance is unrecorded.
 
-M1G current green integrated source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`. Both target NeoForge versions passed build/tests/package verification/artifact upload.
-
-Documentation work after that checkpoint does not change the implementation baseline.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. NeoForge 21.1.247 and 21.1.248 both passed build, deterministic tests, packaged-mod verification, and artifact upload.
 
 ## What is actually integrated now
 
-M1G is no longer a primitive-only/pre-integration checkpoint. Current source wires:
+M1G is complete at source/test/CI/package/component level.
 
-- protocol v6 MP3/common-WAV decode descriptor;
+Current source wires:
+
+- protocol v7 MP3/common-WAV decode descriptor plus authoritative `decodeRevision`;
+- STATE-only nonterminal transition authority; explicit STOP remains distinct;
 - exact WAV and E1 MP3 anchors;
-- `FiniteEncodedInputStream` into `HQFiniteMediaClient` decode epochs;
-- `FinitePcmQueue` into progressive WAV/MP3 decode;
+- starvation-aware `FiniteEncodedInputStream` and bounded sliding `FiniteRangeWindow`;
+- bounded `FinitePcmQueue`;
 - progressive common-WAV conversion;
-- progressive JLayer MP3 decoding with pre-target discard;
-- `FinitePcmAudioStream` and positional `FiniteSpeakerSound`;
-- pause/resume/volume projection;
-- seek/replacement/stop decoder/PCM/renderer cancellation.
+- packaged-JLayer MP3 decode with earlier-anchor/pre-target discard;
+- `FinitePcmReadAdapter` renderer-read policy used by `FinitePcmAudioStream`;
+- positional `FiniteSpeakerSound` through BLOCKS;
+- fixed 32-block live channel attenuation independent of HQ gain;
+- global-volume-zero decoder/render/range hibernation;
+- local renderer activation observation/rejoin behavior and `canStartSilent()`;
+- simple ordinary replay after physical EOF while authoritative looping remains enabled;
+- whole-owner staging leftover cleanup.
 
-Any older statement that the decoder/renderer is “not integrated yet” is obsolete.
+### Strong deterministic M1G coverage
 
-## Selected M1G target behavior which is not implemented yet
-
-Tests must distinguish current source from selected target behavior:
-
-- explicit server-authoritative decoder/re-anchor revision, likely protocol v7;
-- fixed **32-block** core modern-finite range, with HQ volume changing gain rather than radius;
-- global HQ volume zero hibernates local decode/render/range requests while canonical server time continues;
-- looping is ordinary local replay after physical EOF while authoritative state still says looping; a normal restart gap is acceptable;
-- no gapless MP3/LAME padding work, permanent-source loop engineering, dynamic volume-aware range, or SPR integration in M1G.
-
-## Strong existing deterministic coverage
-
-Current tests materially cover:
+The final suite materially covers:
 
 - M1F range validation/read service/window/transport, including sliding and bounded memory;
 - media-asset lifetime/retry behavior in active paths;
-- common-WAV analysis/layout narrowing;
-- common-WAV sample conversion;
+- common-WAV analysis/layout narrowing and conversion;
 - decode descriptor and anchor selection;
-- starvation-aware `FiniteEncodedInputStream`, cancellation and lost-wakeup protection;
-- bounded `FinitePcmQueue`, producer backpressure and nonblocking consumer states;
+- starvation-aware encoded input, cancellation and lost-wakeup protection;
+- bounded PCM queue producer backpressure/nonblocking consumer states;
 - progressive WAV decode;
 - server finite state/authority behavior;
-- storage-limit overflow protection;
-- CC/path/config helper behavior.
+- pure `FiniteDecodeCoordinator` revision/stale-state/local-worker invalidation rules;
+- a real synthetic mono 44.1 kHz MP3 fixture through packaged JLayer;
+- MP3 initial starvation, repeated bounded refill, multiple encoded-window slides, non-silent PCM, and pre-target discard;
+- renderer-facing DATA, bounded starvation silence, physical EOF, and cancellation through the pure read adapter used by `FinitePcmAudioStream`;
+- whole-owner staging cleanup, including best-effort deletion of remaining entries after one deletion fails.
 
-## M1G correctness work before runtime acceptance
+A direct `FinitePcmAudioStreamTest` is intentionally not used because NeoForge's ordinary JUnit source set does not expose Minecraft's client-only `AudioStream` interface. Its non-Minecraft read policy is tested in the shared pure adapter; the actual Minecraft adapter compiles and packages on both supported targets.
 
-### Decoder epoch / authoritative re-anchor coordination — KI-053/KI-056/KI-057
+### Source-correctness closeout
 
-Do not fix KI-053 in isolation.
+The final re-audit confirms:
 
-Deterministic coverage must prove:
+- semantic seek is self-describing through `decodeRevision`;
+- cancellation invalidates the old local worker identity before waking it;
+- stale revision STATE is rejected;
+- ordinary same-revision STATE preserves a healthy decoder/window even when time-derived anchors move;
+- same-anchor semantic seek still restarts codec state because revision, not anchor identity, controls restart;
+- correctness no longer depends on SEEK CONTROL ordering;
+- fixed attenuation and server relevance both remain 32 blocks;
+- global HQ volume zero consumes no finite range/decode/render resources while server time advances;
+- ordinary loop replay is implemented without claiming gapless behavior;
+- persistent staging leftovers are reclaimed only at whole-owner cleanup.
 
-- semantic SEEK increments/uses the selected authoritative decoder-reanchor revision;
-- cancelling a decoder invalidates the old worker token **before** cancellation can wake/report failure;
-- expected old-worker cancellation cannot remove/fail the replacement session;
-- ordinary authoritative STATE reconciliation does not tear down a healthy decoder merely because its time-derived WAV/MP3 anchor differs;
-- an ordinary same-anchor STATE after the encoded window slid forward does not reset/rewind the active window;
-- semantic seek always creates fresh codec state even when the selected encoded anchor byte is unchanged;
-- authoritative seek/reanchor correctness does not depend on a CONTROL packet arriving before STATE;
-- repeated seek/cancel/state ordering does not revive stale decoder/PCM/renderer epochs;
-- stale/out-of-order revision state is rejected or reconciled deterministically.
+### Runtime evidence boundary
 
-One implementation choice remains: finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets may survive only as latency hints, or STATE may become the sole transition authority. Tests must match whichever shape is chosen, but correctness may not depend on duplicate packet ordering.
+Actual Minecraft SoundManager/OpenAL behavior is not proven by Gradle CI. The focused audible checklist below remains useful and KI-046 remains unrecorded.
 
-A small pure coordination/state object extracted from `HQFiniteMediaClient` could make these cases easier to prove without booting Minecraft; that is a structure/testing option, not a currently implemented component.
-
-### Real MP3 progressive integration — KI-055
-
-`ProgressiveMp3DecoderTest` currently verifies helper arithmetic/downmix behavior but does not run a known real MP3 fixture through the full packaged JLayer decode loop.
-
-Add coverage which proves:
-
-- real encoded MP3 produces non-silent PCM;
-- decode begins from bounded range data rather than a complete file;
-- decoding continues across multiple window slides/refills;
-- temporary encoded starvation blocks only the decoder worker and later resumes;
-- true EOF differs from cancellation;
-- output PCM stays bounded;
-- E1 earlier-anchor decode suppresses pre-target PCM;
-- same-anchor semantic seek creates fresh codec state through the revision model.
-
-True codec-level gapless behavior is not an M1G test requirement.
-
-### Renderer adapter — KI-055/KI-060
-
-There is currently no focused `FinitePcmAudioStreamTest` in the client test tree.
-
-Add pure deterministic coverage for:
-
-- bounded/frame-aligned reads;
-- STARVED -> short nonblocking silence, not EOF;
-- true queue EOF -> terminal stream EOF;
-- cancellation/close behavior;
-- no network/disk/codec blocking from renderer reads.
-
-Renderer-start coordination must prove that a failed/deferred `SoundManager.play(...)` does not leave a permanent `rendererStarted=true` latch with no active sound.
-
-Actual Minecraft SoundManager/channel behavior still requires runtime acceptance.
-
-### Fixed-range volume/attenuation — KI-058/KI-059/KI-060
-
-The range choice is no longer open for M1G. The selected core contract is fixed 32 blocks.
-
-Deterministically cover where possible:
-
-- finite volume changes logical sound gain without restarting a healthy decoder epoch;
-- the modern finite live channel installs/retains the selected fixed attenuation distance rather than using volume to enlarge it;
-- volume >1 does not change modern finite server relevance or the fixed channel distance;
-- volume zero triggers the selected local hibernation path rather than continued decode/range consumption;
-- unmute rebuilds/reanchors to current canonical time rather than replaying stale buffered audio;
-- a client-local MASTER/BLOCKS mute does not alter server transport policy;
-- locally silent renderer creation/recovery does not get permanently latched off.
-
-Minecraft runtime coverage should exercise volume below/at/above one while confirming that the fixed core boundary stays fixed.
-
-### Ordinary replay looping — KI-051
-
-The architecture choice is no longer open. Test simple replay only:
-
-- physical decoder EOF while authoritative `looping=true` causes a fresh local decoder/render iteration from the beginning;
-- a normal restart gap is acceptable;
-- no local replay occurs after loop has been disabled;
-- seek/replacement/stop/revision change supersedes stale loop-restart work;
-- loop replay does not introduce a second client wall-clock authority;
-- WAV and MP3 replay both work without requiring gapless metadata/prefetch/permanent-source machinery.
-
-### Staging lifecycle cleanup — KI-061
-
-Create leftover files through the writable staging mount, then destroy/cleanup the whole `HQMediaStaging` owner and prove those files are removed rather than becoming unreachable under the old random staging ID.
-
-Coverage must distinguish whole-owner cleanup from ordinary computer detach: one attached computer detaching must not erase a staging mount still shared with another attached computer. Cleanup failure should be surfaced/logged without corrupting prepared MediaAsset ownership.
+M1G is nevertheless closed as the engineering milestone, consistent with the project's separate tracking of source/component completion versus focused runtime evidence.
 
 ## Cross-cutting safety/hardening tests
 
@@ -240,6 +170,23 @@ Do not require M1G to prove full late-entry/proactive-leave/return-rejoin/dimens
 For later moving-VS2 proof, remember modern STATE does not carry x/y/z. Test whichever M1H approach is actually selected: client-side ship transform from BEGIN block coordinates (mirroring the legacy path) or an explicit position-update protocol. Do not assume one before implementation.
 
 ## Current evidence language
+
+```text
+M1E source/test/CI: PASS
+M1E final focused Minecraft: skipped / unrecorded
+M1F source/test/CI/package/component: PASS
+M1F focused Minecraft transport: unrecorded
+M1G source/test/CI/package/component: PASS at fa679ffcb81a66fd99ab6be8e6d6b77895fbc542
+M1G protocol v7 decoder/reanchor coordination: PASS at source/component level
+M1G fixed-range volume/start behavior: PASS at source/component level
+M1G real-MP3 progressive integration coverage: PASS
+M1G renderer-read policy coverage: PASS
+M1G staging cleanup: PASS
+M1G ordinary replay: implemented
+M1G audible runtime PASS: unrecorded (KI-046)
+```
+
+
 
 ```text
 M1E source/test/CI: PASS

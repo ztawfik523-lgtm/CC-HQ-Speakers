@@ -1,10 +1,10 @@
 # Known issues / product gaps
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
-Current green integrated M1G source checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164` on NeoForge 21.1.247 and 21.1.248.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Both targets passed build, tests, packaged-mod verification, and artifact upload.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historical option lists do not override it.
 
@@ -39,13 +39,15 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 ## M1G source-resolved items
 
+M1G is closed at source/test/CI/package/component level. Focused real-Minecraft audible proof is still tracked separately as KI-046.
+
 ### KI-021 — modern finite format surface needed narrowing
 
-**Resolved for modern prepared/local playback.** New prepared assets are gated to MP3 or supported common WAV. Historical OGG/AIFF/AU support in inherited code does not define the modern prepared surface.
+**Resolved for modern prepared/local playback.** Prepared assets are gated to MP3 or supported common WAV.
 
 ### KI-032 — MP3 Layer III seek/rejoin needs pre-roll
 
-**Resolved in source.** Server anchors use E1 conservative earlier seek points and JLayer decodes forward/discards pre-target PCM. Audible seek proof remains open.
+**Resolved in source.** Server anchors use E1 conservative earlier seek points and JLayer decodes forward/discards pre-target PCM. Audible seek quality remains part of KI-046 runtime proof.
 
 ### KI-033 — historical WAV acceptance broader than converter target
 
@@ -53,100 +55,51 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 ### KI-047 / KI-048 / KI-049 / KI-050 — client integration, WAV decoder, MP3 decoder, renderer
 
-**Resolved in source.** `HQFiniteMediaClient`, `ProgressiveWavDecoder`, `ProgressiveMp3Decoder`, `FinitePcmQueue`, `FinitePcmAudioStream`, and `FiniteSpeakerSound` are integrated. Focused component/runtime proof is still incomplete under KI-052/KI-055.
+**Resolved in source.** The bounded progressive decode/render pipeline is integrated and package-verified.
 
-## Active high priority — M1G
+### KI-051 — ordinary replay
 
-### KI-051 — ordinary loop replay is selected but not implemented
+**Resolved in source.** Physical local EOF restarts a fresh decoder/render iteration when authoritative state still says `looping=true`. A normal restart gap is intentionally acceptable.
 
-**Owner policy selected; source work remains.**
+### KI-052 — focused integrated M1G control/lifecycle proof
 
-At local physical EOF, if authoritative state still says `looping=true`, start the same media again with a fresh local decoder/render iteration. A normal restart gap is acceptable.
+**Resolved at deterministic/source/component level.** Revision/cancellation ordering, real JLayer decode, bounded range-window progression, renderer-read states, staging cleanup, and the existing transport/PCM/WAV/state-machine suites cover the non-Minecraft portions.
 
-Do not add M1G work for MP3 delay/padding trimming, loop-head prefetch solely to hide the boundary, a permanent OpenAL/Minecraft source across iterations, or SPR-specific loop continuity.
+Anything requiring the live Minecraft SoundManager/OpenAL path remains under KI-046 rather than being represented as CI proof.
 
-Do not reopen L1/L2/L3 or L4a/L4b unless the owner explicitly changes the requirement.
+### KI-053 — same-anchor STATE could reset a slid window
 
-### KI-052 — focused integrated M1G control/lifecycle proof is incomplete
+**Resolved.** Protocol v7 separates decoder restart intent from codec-anchor movement. Same-revision ordinary STATE preserves a healthy decoder/window.
 
-Missing proof includes real MP3 integration, repeated seeks, cancellation ordering, long starvation/refill, renderer adapter lifecycle, selected ordinary replay, selected fixed-range volume behavior, and actual positional output.
+### KI-055 — real-MP3 and renderer-adapter deterministic coverage
 
-### KI-053 — same-anchor STATE can reset a slid encoded window without restarting the decoder
+**Resolved.** A real synthetic MP3 fixture runs through packaged JLayer across initial starvation and multiple bounded range-window slides, including pre-target discard. Renderer-facing DATA/STARVED/EOF/CANCELLED policy is extracted into `FinitePcmReadAdapter`, which is used by `FinitePcmAudioStream` and is directly unit tested.
 
-**Active source correctness issue. No fix has been applied.**
+The direct Minecraft `AudioStream` interface itself is compile/package verified because NeoForge's ordinary JUnit source set does not expose that client-only class.
 
-`HQFiniteMediaClient.state0()` can reset the `FiniteRangeWindow` backward to an unchanged coarse anchor while preserving an already-advanced decoder epoch. The decoder cursor can therefore become inconsistent with the active window.
+### KI-056 — expected cancellation could report as fatal decoder failure
 
-Ordinary STATE must preserve a healthy decoder/window. Semantic seek is different and must still create fresh codec state even when the selected encoded anchor byte is unchanged.
+**Resolved.** Local worker identity is invalidated before cancellation wakes/cancels the old decoder, so stale failure callbacks are rejected.
 
-### KI-056 — expected SEEK cancellation can report as fatal decoder failure
+### KI-057 — STATE did not distinguish snapshot from decoder-reanchor intent
 
-**Active source correctness issue. No fix has been applied.**
+**Resolved by protocol v7.** STATE carries server-authoritative `decodeRevision`; semantic seek increments it. Ordinary STATE does not restart a healthy decoder. PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL projection was removed; STATE is the sole nonterminal transition authority.
 
-Current SEEK cancellation can wake the old decoder before its epoch identity is invalidated. The worker may schedule `decoderFailed(...)` while it still appears current, killing a valid session before replacement state is installed.
+### KI-058 — fixed-range attenuation contract
 
-The fix must invalidate stale worker identity **before** cancellation can wake/report.
-
-### KI-057 — STATE does not distinguish timeline snapshot from decoder-reanchor intent
-
-**Active protocol/client coordination issue. No fix has been applied.**
-
-The server sends time-derived anchors in STATE. Current client logic treats anchor change as restart intent, so ordinary pause/resume/volume/loop STATE can restart healthy decoding. Same-coarse-anchor semantic seek still depends on the preceding CONTROL path setting local restart state.
-
-**Owner decision:** move to an explicit server-authoritative decoder/re-anchor revision, likely protocol v7. Ordinary STATE preserves healthy decode state; semantic seek is self-describing.
-
-One implementation-shape choice remains: keep finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional latency hints, or remove the duplicate path and use STATE as the sole transition authority. Correctness must not depend on CONTROL/STATE ordering either way.
-
-`FiniteDecodeAnchorSelector.Anchor` contains only encoded `offset` and anchor `seconds`; STATE already carries both. Do not invent missing frame/skip metadata as part of this fix.
-
-### KI-058 — modern finite channel does not yet enforce the selected fixed-range attenuation contract
-
-**Active renderer correctness issue. No fix has been applied.**
-
-Selected M1G contract:
-
-- fixed 32-block core listening/delivery radius;
-- positional attenuation inside that radius;
-- HQ `volume` changes gain/loudness, not core range;
-- volume >1 must not silently enlarge attenuation distance;
-- future SPR compatibility owns intentional extended range/acoustics and matching transport relevance.
-
-The live modern finite channel should explicitly use the fixed HQ attenuation distance while gain changes independently.
+**Resolved in source.** The live modern finite channel explicitly uses the selected fixed 32-block attenuation distance while HQ volume changes gain.
 
 ### KI-059 — fixed-radius policy selected
 
-**Product decision resolved.**
+**Product decision resolved.** Server delivery/listening radius remains 32 blocks for M1G. Dynamic volume-aware listener membership was not pulled forward.
 
-`HQFiniteMediaServer` already uses `SPEAKER_RADIUS = 32.0`. The owner selected fixed-range M1G behavior and did not request another number, so 32 blocks remains the core value unless explicitly changed.
+### KI-060 — renderer startup / global-volume-zero behavior
 
-Do not pull dynamic volume-aware listener lifecycle into M1G.
+**Resolved in source.** Renderer state is latched only after `SoundManager.play(...)` returns, later activation is observed, failed/lost activation can request authoritative rejoin, `canStartSilent()` supports client-local mute, and global HQ volume zero hibernates decoder/render/range work while canonical server time continues.
 
-### KI-060 — renderer startup is latched before SoundManager proves start
+### KI-061 — per-speaker staging leftovers
 
-**Active renderer robustness issue. No fix has been applied.**
-
-`tryStartRenderer()` sets `rendererStarted=true` before `SoundManager.play(sound)` proves the source became active. There is no later path which simply clears/retries that latch when start fails.
-
-Selected global-volume-zero behavior is **hibernation**, not silent continuous decode:
-
-- canonical server time keeps advancing;
-- local decoder/renderer are cancelled;
-- encoded range requests stop;
-- non-zero volume rebuilds from current authoritative state.
-
-A player's MASTER/BLOCKS slider is client-local and must not change server transport. `canStartSilent()` may still be useful for that local case.
-
-### KI-055 — real-MP3 and renderer-adapter deterministic coverage is incomplete
-
-The suite does not currently run a known real MP3 fixture through the full JLayer progressive decoder across window progression/starvation, and there is no focused `FinitePcmAudioStreamTest`.
-
-Historical Lua scripts are not substitutes for the modern prepared path. See `TESTING.md`.
-
-### KI-061 — per-speaker staging mounts can leave unreachable files
-
-Each `HQMediaStaging` creates a persistent save-directory mount under a fresh random `hqspeaker/staging/<uuid>` path. Whole-owner cleanup releases/unmounts ownership but does not remove arbitrary leftover staged files, so interrupted/low-level staging can accumulate unreachable files across speaker recreation/restarts.
-
-Fix whole-staging cleanup after attached computers are unmounted. Do not clear the shared mount on one computer's ordinary detach.
+**Resolved in source.** Whole-owner staging cleanup deletes all top-level persistent staging entries after computers are unmounted and owner references are released. One-computer detach does not clear the shared mount.
 
 ## Active cross-cutting correctness / hardening
 
@@ -234,11 +187,21 @@ The repository audit is supporting evidence, not current authority. The followin
 
 ## Current working priority
 
-The practical latest-review sequence is to eliminate KI-062 first, then complete KI-053/056/057 as one v7 revision cluster. KI-058/060, KI-051, KI-055, and KI-061 follow for M1G completion. KI-063 and KI-054/KI-064 may be grouped according to patch cohesion.
+M1G is closed. Next engineering priority is no longer the M1G decoder cluster.
 
-A broader safety-first batch which closes KI-062/063/054/064 before v7 is also defensible. Do not silently pull HLS/legacy/release cleanup into either sequence.
+The still-open cross-cutting correctness/hardening issues are KI-062, KI-063, KI-054, and KI-064. M1H owns listener/rejoin/movement lifecycle. Keep those issues visible, but do not retroactively expand M1G to claim they were part of its core progressive finite-engine closeout.
 
 ## Reminders
+
+- M1E final Minecraft PASS: skipped/unrecorded.
+- M1F focused Minecraft transport PASS: unrecorded.
+- M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
+- M1G audible Minecraft PASS: unrecorded under KI-046.
+- KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
+- KI-054/062/063/064 remain open post-M1G.
+- Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
+
+
 
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.

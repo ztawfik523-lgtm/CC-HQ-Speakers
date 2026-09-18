@@ -6,7 +6,7 @@ This document records the owner's narrowed M1G direction after rechecking the pr
 
 It is a current design-decision record. Historical milestone documents remain historical. Exact current source still wins for implementation status.
 
-Current implementation remains protocol **v6** at green source checkpoint `957832348eaa6e497282d923f2312c9c7d7c550f`. The decisions below describe the selected target where source work remains.
+M1G is now implemented at final source checkpoint `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542` using protocol **v7**. The decisions below are the implemented M1G contract; historical option language is retained only for rationale.
 
 ## 1. Decoder/re-anchor semantics: explicit revision
 
@@ -147,19 +147,23 @@ Two later approaches remain valid:
 
 This is a real design tradeoff and remains open for M1H rather than M1G.
 
-## 7. What remains in M1G
+## 7. M1G closeout
 
-The narrowed M1G source work is:
+The narrowed M1G source work is complete.
 
-1. replace anchor-change-as-intent with the explicit decoder/re-anchor revision and eliminate the KI-053/KI-056/KI-057 race/coupling cluster;
-2. implement the selected fixed-radius renderer contract so volume changes gain without extending the core HQ range;
-3. fix renderer-start robustness, including the locally-silent start case, while preserving global-volume-zero hibernation;
-4. implement ordinary local replay for looping, accepting normal restart gaps;
-5. add deterministic cancellation/seek tests, a real progressive MP3 fixture path, and focused `FinitePcmAudioStream` tests;
-6. fix the staging cleanup leak (KI-061);
-7. run both NeoForge targets and focused Minecraft runtime acceptance.
+Implemented:
 
-The current practical sequencing suggestion is to remove the KI-062 server-stall hazard before relying on the legacy stream path, then complete the v7 decoder/reanchor cluster. KI-063 and KI-054/KI-064 may be grouped according to patch cohesion. A broader safety-first batch is also defensible; if chosen, record it explicitly rather than silently expanding M1G.
+1. explicit server-authoritative decoder/re-anchor revision closing KI-053/KI-056/KI-057;
+2. fixed 32-block renderer attenuation contract closing KI-058;
+3. renderer-start recovery, client-local silent-start support, and global-volume-zero hibernation closing KI-060;
+4. ordinary local replay for looping closing KI-051;
+5. deterministic cancellation/revision, real-JLayer-MP3, and renderer-read policy coverage closing KI-055 at component level;
+6. whole-owner staging cleanup closing KI-061;
+7. both NeoForge targets green/package-verified at CI `35297026277`.
+
+Focused audible Minecraft acceptance remains unrecorded under KI-046. It is retained as an evidence gap rather than an unfinished M1G source item.
+
+KI-062, KI-063, KI-054, and KI-064 remain real post-M1G cross-cutting hardening. They were not silently folded into the core finite-engine milestone.
 
 ## Explicitly deferred
 
