@@ -75,15 +75,13 @@ The direct Minecraft `AudioStream` interface cannot be loaded by the ordinary JU
 
 KI-059 was already a resolved product decision.
 
-KI-052 is closed at deterministic/source/component level; live SoundManager/OpenAL evidence is tracked under KI-046.
+KI-052 is closed at deterministic/source/component level. A focused live SoundManager/OpenAL runtime PASS was subsequently recorded on 2026-09-19 under KI-046.
 
-## Evidence not claimed
+## Runtime evidence update — 2026-09-19
 
-Focused audible Minecraft M1G acceptance has **not** been recorded. Do not call KI-046 a PASS based on CI.
+Focused M1G audible/core Minecraft acceptance is now **recorded PASS** on NeoForge 21.1.247 integrated singleplayer, resolving KI-046. The run covered modern WAV/MP3 audibility, pause/resume, seek/reanchor, float32 WAV, natural EOF, ordinary looping, positional/fixed-range behavior, stop, and a dedicated loop-safe global-volume-zero mute/unmute retest.
 
-This means CI does not independently prove subjective/audible seek quality, real positional attenuation in a running client, actual OpenAL source lifecycle under resource reload, or loop-gap perception.
-
-The project has already used the same evidence separation for M1E/M1F: implementation milestones can be complete while focused runtime acceptance remains explicitly unrecorded.
+This runtime PASS is separate from CI and does not claim a manual NeoForge 21.1.248 runtime pass. It also does not claim M1H resource-reload/late-entry/rejoin/moving-source behavior or post-M1G hardening KI-062/063/054/064.
 
 ## Open post-M1G work
 
@@ -104,6 +102,6 @@ Do not reopen these as M1G unless a concrete regression proves the completed fin
 
 No remaining known source issue in KI-051/053/055/056/057/058/060/061 blocks the M1G engineering milestone.
 
-The remaining known issues are either runtime evidence (KI-046), cross-cutting ownership/storage hardening, or explicitly later milestones.
+The remaining known issues are cross-cutting ownership/storage hardening or explicitly later milestones; KI-046 is no longer open.
 
 Therefore M1G is closed.
