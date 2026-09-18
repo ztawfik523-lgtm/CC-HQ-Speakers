@@ -4,7 +4,7 @@
 >
 > This file preserves the original M1G design gates and rationale. It does **not** override later owner decisions in `M1G-SCOPE-DECISIONS-2026-09-14.md`, `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, or exact current source.
 >
-> Later selected M1G scope: explicit server-authoritative decoder/re-anchor revision (current source is still v6); fixed 32-block core modern-finite radius with volume changing gain rather than range; global-volume-zero local hibernation while canonical server time continues; ordinary non-gapless replay after local EOF. Do not reopen old loop/range/reanchor alternatives from historical material unless the owner explicitly changes scope.
+> Later selected M1G scope was implemented at final source checkpoint `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542` using protocol v7: explicit server-authoritative decoder/re-anchor revision; fixed 32-block core modern-finite radius with volume changing gain rather than range; global-volume-zero local hibernation while canonical server time continues; ordinary non-gapless replay after local EOF. Do not reopen old loop/range/reanchor alternatives from historical material unless the owner explicitly changes scope.
 
 ## Status at this checkpoint
 

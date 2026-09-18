@@ -187,22 +187,3 @@ M1G audible runtime PASS: unrecorded (KI-046)
 ```
 
 
-
-```text
-M1E source/test/CI: PASS
-M1E final focused Minecraft: skipped / unrecorded
-M1F source/test/CI/package/component: PASS
-M1F focused Minecraft transport: unrecorded
-M1G integrated source/tests/package: PASS at 957832348eaa6e497282d923f2312c9c7d7c550f
-M1G decoder snapshot/reanchor correctness: open KI-053/KI-056/KI-057
-M1G fixed-range volume/start correctness: open KI-058/KI-060; KI-059 policy selected
-M1G staging lifecycle cleanup: open KI-061
-Cross-cutting synchronized-DNS/main-thread safety: open KI-062
-Cross-source replacement admission safety: open KI-063
-Storage import progress/rename hardening: open KI-064
-Shutdown lock/retry hardening: open KI-054
-M1G real-MP3 progressive integration coverage: incomplete
-M1G focused renderer-adapter coverage: incomplete
-M1G ordinary replay policy: selected, not implemented
-M1G audible runtime PASS: unrecorded
-```

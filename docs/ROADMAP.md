@@ -130,7 +130,7 @@ Final category/gain, reload lifecycle, stale-channel cleanup, remaining attenuat
 
 Includes shutdown/storage hardening such as KI-054/KI-064, practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
 
-KI-061 remains earlier because staging leftovers can accumulate during ordinary speaker lifecycle churn.
+KI-061 was closed in M1G. KI-054/KI-064 remain part of later storage/shutdown hardening.
 
 ## M2 — Sound Physics Remastered
 

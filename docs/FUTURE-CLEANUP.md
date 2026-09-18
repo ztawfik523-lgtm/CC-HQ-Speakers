@@ -1,8 +1,8 @@
 # Future cleanup inventory
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
-This is a parking lot for obsolete/legacy code, later milestones, and release cleanup. It is **not** permission to expand the active M1G milestone.
+This is a parking lot for obsolete/legacy code, later milestones, and release cleanup. M1G is complete; this file is not permission to reopen it without a concrete regression.
 
 Current active correctness/evidence issues belong in `KNOWN-ISSUES.md`.
 
@@ -21,17 +21,16 @@ Do not restore these for temporary audibility.
 
 ## Active issues which are not optional cleanup
 
-Do **not** move these here as “later polish” merely because some were found during broad audits:
+The M1G closeout resolved KI-051/053/055/056/057/058/060/061.
 
-- M1G decoder/reanchor cluster KI-053/KI-056/KI-057;
-- fixed-range renderer/start KI-058/KI-060 and selected loop replay KI-051;
-- evidence/staging KI-055/KI-061;
+The still-active cross-cutting issues must not be demoted to cosmetic cleanup:
+
 - shared-monitor/DNS safety KI-062;
 - replacement-before-admission KI-063;
 - shutdown/root-lock KI-054;
 - import progress/rename hardening KI-064.
 
-The practical latest-review suggestion is KI-062 first, then v7 decoder/reanchor work. A broader safety-first batch is also defensible. This file must not be used to defer a current correctness bug without an explicit priority decision.
+Focused audible M1G Minecraft acceptance remains unrecorded as KI-046, but that is an evidence gap rather than unfinished M1G source.
 
 ## Old complete-file decoder classes/dependencies
 
@@ -74,24 +73,17 @@ Target M1J/M1K:
 - shared server clocks first, optional active-session sharing second, while retaining one positional renderer per physical speaker;
 - route note/sound helpers through actual standard CC:T semantics or remove/reject misleading helpers rather than emitting the wrong sound.
 
-## Protocol/state cleanup after current M1G work
+## Protocol/state cleanup after M1G
 
-Current modern finite protocol is version 6 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
+Modern finite protocol is version 7 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
 
-The selected next decoder/reanchor design is an explicit server-authoritative revision, likely v7.
-
-One implementation-shape decision remains current rather than “future cleanup”:
-
-- keep PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional latency hints; or
-- remove that duplicate path and make STATE the sole transition authority.
-
-Do not preserve duplicate paths merely for compatibility with unreleased v6.
+STATE carries explicit server-authoritative `decodeRevision`. PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP are no longer projected through CONTROL; STATE is the sole nonterminal transition authority. CONTROL remains for explicit STOP.
 
 Review later rather than deleting blindly:
 
-- whether READY remains useful once final listener lifecycle is settled;
+- whether READY remains useful once M1H listener lifecycle is settled;
 - whether M1H needs a specific subscription/cancel message;
-- whether protocol fields can be simplified after legacy migration.
+- whether the STOP-only CONTROL packet should be folded into another lifecycle packet in a future incompatible protocol cleanup.
 
 Server authority must never regress into waiting for client readiness.
 
@@ -159,7 +151,7 @@ Candidates include `FileFiniteAudioStream`, `HQSpeakerCluster`, stale diagnostic
 
 Verify each reference count immediately before deletion; do not delete merely from an old audit note.
 
-The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, not to churn source during active M1G correctness work.
+The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, without churning the completed modern finite engine unnecessarily.
 
 ## Documentation/test cleanup
 
@@ -167,7 +159,7 @@ Historical scripts/handoffs are evidence, not current contracts. Keep them histo
 
 Current docs must point readers to `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` for present behavior.
 
-The bundled ROM module source still contains a stale comment saying `audioPlayStaged()` is scheduled for removal when M1F replaces old whole-file transport. M1F has already removed that route. This is a **source comment**, so do not change it as part of docs-only work unless source/comment edits are explicitly allowed.
+The bundled ROM module comment about `audioPlayStaged()` being scheduled for removal was corrected during the M1G closeout; M1F had already removed that prototype route.
 
 Historical M0 smoke-test log markers also predate the current protocol/payload count. Keep M0 results as historical evidence rather than current regression expectations.
 

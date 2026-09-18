@@ -202,10 +202,3 @@ The still-open cross-cutting correctness/hardening issues are KI-062, KI-063, KI
 - Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
 
 
-
-- M1E final Minecraft PASS: skipped/unrecorded.
-- M1F focused Minecraft transport PASS: unrecorded.
-- M1G integrated source is green, but audible runtime PASS is unrecorded.
-- KI-053/KI-054/KI-056/KI-057/KI-058/KI-060/KI-061/KI-062/KI-063/KI-064 have no source fix yet.
-- KI-051 and KI-059 have selected product behavior but corresponding source/test work remains.
-- Current authority: `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.

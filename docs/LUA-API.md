@@ -160,9 +160,7 @@ Resume paused finite playback.
 
 Change canonical server position. Non-looping exact-duration seek ends playback. Looping exact-duration seek wraps the server timeline to the start.
 
-Current v6 client code discards/restarts local decoder state using CONTROL/STATE coordination and codec-aware anchors. KI-053/KI-056/KI-057 document correctness problems in that coordination.
-
-Selected target behavior is an explicit server-authoritative decoder/re-anchor revision so semantic seek is self-describing and ordinary state snapshots do not restart healthy decode state. This is not implemented yet.
+Protocol v7 uses an explicit server-authoritative decoder/re-anchor revision. Semantic seek increments that revision, making fresh codec state self-describing; ordinary state snapshots keep the revision and do not restart a healthy decoder. Nonterminal CONTROL projection was removed, so seek correctness does not depend on packet ordering.
 
 ### `speaker.audioSetVolume(volume) -> boolean`
 
@@ -177,9 +175,9 @@ Selected M1G modern-finite policy:
 - distance attenuation still makes sound quieter with distance inside that range;
 - future Sound Physics Remastered compatibility owns any intentional extended range/acoustics and matching transport relevance.
 
-Current source still needs KI-058 to explicitly enforce that fixed attenuation distance on the live channel.
+The live modern-finite channel explicitly enforces the fixed 32-block attenuation distance.
 
-For **global HQ volume exactly zero**, selected target behavior is to keep canonical server time running while the client hibernates decode/render/range work, then rebuild/rejoin current authoritative time on unmute. That source work is not implemented yet.
+For **global HQ volume exactly zero**, canonical server time keeps running while clients hibernate decode/render/range work. Server range delivery is suppressed while muted, and non-zero volume rebuilds/rejoins current authoritative time.
 
 A player's personal Minecraft MASTER/BLOCKS slider is client-local and does not change server transport policy.
 
@@ -187,9 +185,7 @@ A player's personal Minecraft MASTER/BLOCKS slider is client-local and does not 
 
 Change canonical server looping.
 
-The loop policy is settled: looping means normal “play the same thing again.” At local physical EOF, while authoritative state still says `looping=true`, the client should start a fresh decoder/render iteration from the beginning. A normal restart gap is acceptable.
-
-**Current M1G caveat:** the server timeline already wraps, but ordinary local replay is not implemented yet. Do not interpret wrapped `audioStatus().position` as proof that the Minecraft client audibly restarted.
+Looping means normal “play the same thing again.” At local physical EOF, while authoritative state still says `looping=true`, the client starts a fresh decoder/render iteration and catches up to the current canonical loop position. A normal restart gap is acceptable.
 
 M1G does **not** promise sample-gapless MP3 looping, LAME/Xing encoder-delay/padding trimming, loop-head prefetch, or a permanent OpenAL source across loop iterations.
 
@@ -243,7 +239,7 @@ Most programs should use the `hqspeaker` module. These remain available because 
 
 The writable mount is import plumbing, not a persistent playback library/cache.
 
-KI-061: arbitrary/interrupted files left in the per-speaker staging mount can currently become unreachable after whole staging-owner cleanup/recreation. High-level successful `hq.playFile()` normally consumes/deletes its temporary staged copy, but the low-level mount should not be treated as permanent storage.
+Whole-owner staging cleanup now removes arbitrary/interrupted leftovers after unmount/release. The low-level mount is still temporary import plumbing and should not be treated as permanent storage.
 
 ## Removed prototype API
 
@@ -286,6 +282,6 @@ server MediaAsset
 -> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-However, focused audible Minecraft M1G acceptance is not recorded, real-MP3 progressive integration coverage is incomplete, ordinary replay is not implemented, and KI-053/KI-056/KI-057 remain open in the current v6 coordination model.
+M1G is complete at source/test/CI/package/component level on protocol v7. Focused audible Minecraft M1G acceptance is still not recorded, so the docs do not claim that CI proves real SoundManager/OpenAL audibility or loop-gap perception.
 
 See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, and `TESTING.md` for the current engineering boundary.
