@@ -253,7 +253,7 @@ NeoForge 1.21.1 payload handlers execute on the main thread by default unless re
 
 Composite `cleanup()` is also synchronized. Provider `forget`, `forgetLevel`, and `clearAll` call cleanup during removal, Level unload, and server stop.
 
-Post-M1G hardening separates Lua-command ordering from the ownership monitor: DNS may block the calling ComputerCraft command, but it no longer holds the monitor used by server tick ownership or lifecycle cleanup. KI-062 is resolved.
+Post-M1G hardening keeps blocking stream DNS outside both the ownership monitor and the command-order lock. DNS may still block the calling ComputerCraft command, but server tick/cleanup cannot wait behind that DNS, and the CC:T main-thread `audioPlayPrepared` path cannot be blocked by it either. Validated single-speaker stream commit reacquires the short command-order lock only after DNS returns. KI-062 is resolved.
 
 ### FACT-AUDIT-013 — replacement-before-admission
 
@@ -303,7 +303,7 @@ A separate focused audible/core Minecraft acceptance PASS was recorded on 2026-0
 
 ### FACT-POST-M1G-001
 
-KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`.
+KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `e0e98ae77335828f02f8e93825b27632de2b8ee6`, CI `35406123680`.
 
 ### FACT-M1H-NEXT-001
 
