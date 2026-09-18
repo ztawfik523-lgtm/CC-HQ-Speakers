@@ -76,8 +76,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
     /**
-     * Serializes Lua audio commands without coupling them to the ownership monitor used by server tick/cleanup.
-     * Blocking URL validation may hold this lock, but never the monitor which tickOwnership()/cleanup() need.
+     * Serializes normal Lua audio command commits without coupling them to the ownership monitor used by
+     * server tick/cleanup. Blocking URL validation must never hold this lock: audioPlayPrepared is a CC:T
+     * main-thread method, so letting DNS hold commandLock could otherwise stall the Minecraft server indirectly.
      */
     private final Object commandLock = new Object();
 
@@ -222,6 +223,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @Override
     public MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
+        if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
+        String name = dynamicNames[method];
+
+        // DNS may block. Keep it outside commandLock as well as the ownership monitor, otherwise a direct
+        // main-thread audioPlayPrepared call could wait behind DNS and stall the Minecraft server.
+        if (STREAM_START.contains(name)) return startStreamReplacing(name, args);
+        if (STREAM_DIRECT.contains(name)) return invokeLegacy(name, computer, context, args);
+
         synchronized (commandLock) {
             return callMethodOrdered(computer, context, method, args);
         }
@@ -262,11 +271,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (FINITE_START.contains(name)) {
             synchronized (this) { return startLegacyReplacing(Owner.LEGACY_FINITE, computer, context, name, args); }
         }
-        if (STREAM_START.contains(name)) return startStreamReplacing(name, args);
-
-        // These inherited helpers may resolve DNS too. They must never run while holding the composite monitor.
-        if (STREAM_DIRECT.contains(name)) return invokeLegacy(name, computer, context, args);
-
         synchronized (this) { return invokeLegacy(name, computer, context, args); }
     }
 
@@ -333,12 +337,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             default -> throw new LuaException("No such stream method " + name);
         };
 
-        synchronized (this) {
-            if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return MethodResult.of(false);
-            beginReplacingHQ(Owner.STREAM);
-            boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
-            if (started) owner = Owner.STREAM;
-            return MethodResult.of(started);
+        // Validation is complete, so the remaining commit is short and may safely rejoin normal command ordering.
+        synchronized (commandLock) {
+            synchronized (this) {
+                if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return MethodResult.of(false);
+                beginReplacingHQ(Owner.STREAM);
+                boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
+                if (started) owner = Owner.STREAM;
+                return MethodResult.of(started);
+            }
         }
     }
 
