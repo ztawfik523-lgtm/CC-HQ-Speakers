@@ -53,11 +53,11 @@ M1 reviewed reference:
 
 `fba84a33a94d451af09b983bcb04416c97ff64cf`
 
-Current green integrated M1G source checkpoint:
+Final M1G source checkpoint:
 
-`957832348eaa6e497282d923f2312c9c7d7c550f`
+`fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
 
-Documentation/audit commits after that checkpoint do not change source implementation.
+Final source CI: `35297026277`, green on NeoForge 21.1.247 and 21.1.248. Closeout commits after that checkpoint are documentation-only.
 
 ## Codec dependencies
 

@@ -1,6 +1,6 @@
 # M1 consolidated runtime test
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 This is a current integration guide. For exact deterministic prerequisites and evidence gaps, read `TESTING.md` first. Current source/state authority is `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `VERIFIED-FACTS.md`, and exact source.
 
@@ -21,17 +21,21 @@ Not valid as current modern-prepared M1G acceptance:
 
 ## Preconditions
 
-Before the consolidated Minecraft M1G pass:
+The M1G source prerequisites are already satisfied at final source checkpoint `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`:
 
-1. KI-053/KI-056/KI-057 must be fixed coherently through the selected explicit decoder/re-anchor revision;
-2. fixed-range renderer/start behavior KI-058/KI-060 should be implemented;
-3. selected ordinary loop replay KI-051 should be implemented if loop is part of the pass;
-4. real-MP3 progressive JLayer integration and focused `FinitePcmAudioStream` coverage should be added;
-5. both target NeoForge builds should be green.
+1. protocol v7 explicit decoder/re-anchor revision is implemented;
+2. KI-053/KI-056/KI-057 are closed at source/component level;
+3. fixed-range renderer/start behavior KI-058/KI-060 is implemented;
+4. ordinary replay KI-051 is implemented;
+5. real-MP3 progressive JLayer coverage and renderer-read policy tests exist;
+6. KI-061 whole-owner staging cleanup is implemented;
+7. both supported NeoForge builds are green at CI `35297026277`.
+
+The purpose of this guide is now **focused runtime evidence**, especially KI-046. It is not a source-completion checklist.
 
 Strongly consider closing KI-062 before relying on legacy stream calls in the same test instance, because blocking DNS under the shared composite monitor can stall server tick/lifecycle cleanup.
 
-KI-054/KI-064 storage hardening and KI-063 replacement-admission correctness remain tracked even if a narrower audible M1G pass proceeds. A broader safety-first batch before runtime acceptance is also defensible.
+KI-054/KI-064 storage hardening and KI-063 replacement-admission correctness remain tracked post-M1G. They should be tested when their respective fixes land, but they do not retroactively make the M1G core finite engine incomplete.
 
 ## Test environment
 
@@ -88,9 +92,8 @@ For both MP3 and WAV where practical:
 - semantic seek recreates codec state even when the selected coarse MP3 anchor byte is unchanged;
 - expected cancellation from old decoder work never becomes a fatal session error;
 - stale/out-of-order decoder revision work cannot revive old PCM/renderers;
-- seek correctness does not depend on a CONTROL packet arriving before STATE.
-
-If protocol v7 retains CONTROL packets as hints, deliberately exercise lost/reordered hint conditions where practical. If STATE becomes the sole transition authority, verify no obsolete control-order dependency remains.
+- seek correctness does not depend on a CONTROL packet arriving before STATE;
+- protocol v7 uses STATE as the sole nonterminal transition authority, so there is no obsolete SEEK/Pause/Resume/Volume/Loop CONTROL-order dependency to preserve.
 
 ## Gate 5 — starvation/refill
 
@@ -109,7 +112,7 @@ Do **not** require general current-server-time catch-up after a long already-sta
 
 Looping is no longer an architecture-choice gate.
 
-After KI-051 source work exists, verify:
+Verify:
 
 - physical EOF while authoritative `looping=true` starts the same media again;
 - WAV and MP3 both replay;
@@ -164,7 +167,7 @@ Modern STATE does not carry live x/y/z. M1H may later mirror the legacy client-s
 For normal operation:
 
 - confirm successful high-level `hq.playFile()` consumes its temporary staging copy;
-- after KI-061 fix, create an interrupted/low-level leftover and verify whole staging-owner cleanup removes it while ordinary one-computer detach does not erase a still-shared mount;
+- create an interrupted/low-level leftover and verify the implemented whole staging-owner cleanup removes it while ordinary one-computer detach does not erase a still-shared mount;
 - confirm no obvious active range/media work remains on normal shutdown.
 
 KI-054 and KI-064 need deterministic failure-injection proof in code: normal shutdown cannot prove root-lock recovery, zero-read no-progress handling, or atomic-move fallback.
