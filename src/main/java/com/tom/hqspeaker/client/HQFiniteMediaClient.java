@@ -377,8 +377,7 @@ public final class HQFiniteMediaClient {
 
     /**
      * Keep dropping already-decoded PCM until its front represents current canonical server time. This means network,
-     * decoder and prebuffer latency do not become permanent audible lag. Loop-wrap restart itself remains a separate
-     * server-authority decision and is intentionally not implemented here.
+     * decoder, prebuffer, and simple local loop-restart latency do not become permanent audible lag.
      */
     private static boolean catchUpToServerTime(Session session, long nowNanos) {
         FinitePcmQueue pcm = session.pcmQueue;

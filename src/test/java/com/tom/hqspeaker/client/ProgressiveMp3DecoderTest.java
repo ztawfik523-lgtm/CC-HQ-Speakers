@@ -52,7 +52,7 @@ class ProgressiveMp3DecoderTest {
         FiniteRangeWindow window = new FiniteRangeWindow(mp3.length, 1024);
         window.reset(0L);
         FiniteEncodedInputStream input = new FiniteEncodedInputStream(window, 0L);
-        FinitePcmQueue output = new FinitePcmQueue(64 * 1024);
+        FinitePcmQueue output = new FinitePcmQueue(256 * 1024);
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -108,7 +108,7 @@ class ProgressiveMp3DecoderTest {
     }
 
     private static byte[] decodeDirect(byte[] mp3, double targetTime) throws Exception {
-        FinitePcmQueue output = new FinitePcmQueue(64 * 1024);
+        FinitePcmQueue output = new FinitePcmQueue(256 * 1024);
         ProgressiveMp3Decoder.decode(new ByteArrayInputStream(mp3), output, 44_100, 1, 0.0, targetTime);
         return drain(output);
     }
