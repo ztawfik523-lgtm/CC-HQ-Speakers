@@ -70,8 +70,8 @@ Recommended helpers are `hq.playFile`, `prepareFile`, `preparedInfo`, `playPrepa
 
 Known lifecycle debt after M1G:
 
-- KI-064: `MediaAssetStore` import can spin indefinitely on repeated zero-byte reads and lacks a non-atomic rename fallback when `ATOMIC_MOVE` is unsupported;
-- KI-054: shutdown failure can lose deletion retry state or prevent store close entirely, leaving the media-store root lock alive in the JVM.
+- KI-064 was closed by post-M1G hardening: import has bounded no-progress handling and unsupported-`ATOMIC_MOVE` fallback;
+- KI-054 was closed by post-M1G hardening: shutdown starts range-worker cancellation early, retains failed cleanup for retry, and preserves the media-store root lock until cleanup truly succeeds.
 
 KI-061 was resolved: whole-owner staging cleanup removes persistent staging leftovers after unmount/release.
 
@@ -183,13 +183,13 @@ Do not silently choose between them before M1H design work.
 
 ## Cross-cutting ownership/threading safety
 
-KI-062 is separate from the decoder protocol but high impact. Dynamic legacy stream calls enter synchronized composite dispatch and may perform blocking DNS while holding the same monitor used by `tickOwnership()`.
+KI-062 is resolved. Dynamic legacy stream calls may still block their calling ComputerCraft thread during DNS, but DNS no longer holds the ownership monitor used by `tickOwnership()`/cleanup. A separate command lock preserves Lua command ordering.
 
 The same monitor is also acquired by synchronized `cleanup()`, which provider `forget`, `forgetLevel`, and `clearAll` paths can call during removal/unload/shutdown. A DNS-parked computer thread can therefore block both server tick ownership work and lifecycle cleanup waiting on that composite.
 
 The fix should preserve ownership ordering while moving blocking DNS/I/O outside the shared monitor or otherwise removing server-thread dependence on that monitor.
 
-KI-063 is the other cross-source ownership defect: RAW/prepared replacement currently stops/transfers ownership before all rejection/failure conditions for the replacement are known.
+KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
 
 ## Multispeaker
 

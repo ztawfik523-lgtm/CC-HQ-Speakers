@@ -23,14 +23,9 @@ Do not restore these for temporary audibility.
 
 The M1G closeout resolved KI-051/053/055/056/057/058/060/061.
 
-The still-active cross-cutting issues must not be demoted to cosmetic cleanup:
+The post-M1G Option A hardening pass closed KI-062, KI-063, KI-054, and KI-064. Do not carry their old pre-fix descriptions forward as active cleanup work.
 
-- shared-monitor/DNS safety KI-062;
-- replacement-before-admission KI-063;
-- shutdown/root-lock KI-054;
-- import progress/rename hardening KI-064.
-
-Focused audible M1G Minecraft acceptance remains unrecorded as KI-046, but that is an evidence gap rather than unfinished M1G source.
+Current active engineering is M1H listener/rejoin/movement lifecycle; this file remains a parking lot for later legacy/release cleanup.
 
 ## Old complete-file decoder classes/dependencies
 

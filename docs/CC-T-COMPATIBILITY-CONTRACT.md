@@ -197,13 +197,13 @@ Accepted single-speaker rule:
 - standard `playSound` / `playAudio` return `false` while HQ continuous ownership is active;
 - Java does not create a playlist or automatic finite-media queue.
 
-### KI-063 replacement-admission bug
+### KI-063 replacement-admission behavior — resolved
 
 The intended “new HQ start replaces old HQ source” rule does **not** mean a failed/rejected start should destroy valid current playback.
 
 Current source transfers/stops ownership too early in some RAW and prepared replacement paths. A capacity rejection or `audioPlayPrepared` failure can therefore stop the previous valid HQ source before the new source is admitted.
 
-That is KI-063 and is an implementation defect to fix; do not document it as intended compatibility behavior.
+Post-M1G hardening fixes KI-063 for the known RAW/prepared replacement paths: admission/validation happens before destructive ownership transfer. Preserve that behavior in future compatibility work.
 
 The inherited multi-speaker `*All` / `*At` helpers are not covered by this single-speaker guarantee. They are scheduled for later replacement/migration. Source review also confirmed that legacy `playNoteAll`/`playSoundAll` do not preserve requested normal note/sound semantics.
 

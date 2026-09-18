@@ -114,7 +114,7 @@ The server metadata is authoritative for finite duration.
 
 Start a previously prepared server asset. A successful play creates a server-owned finite generation and separate playback asset reference.
 
-**Current implementation caveat:** KI-063 means a failed/rejected prepared replacement can currently stop the previous valid HQ source before the replacement is known to be accepted. That is a source bug, not intended API semantics.
+Post-M1G hardening resolved KI-063: failed/rejected prepared replacement is admitted before destructive ownership transfer, so the previous valid HQ source is preserved on normal admission failure.
 
 ### `hq.releasePrepared(speaker, assetId) -> boolean`
 
@@ -216,7 +216,7 @@ Open-ended HQ signed 16-bit PCM producer feed. It is not a finite song and does 
 
 Current composite per-call limit: `131072` contiguous samples.
 
-**Current implementation caveat:** KI-063 also affects failed RAW replacement admission: a rejected replacement can currently stop a previous valid HQ source before capacity failure is returned. That is not intended final behavior.
+Post-M1G hardening also resolves the RAW side of KI-063: the PCM table/volume are validated before replacement stops the previous source.
 
 ### `speaker.speakMaxSamples() -> number`
 
@@ -258,7 +258,7 @@ Important inherited caveats:
 - legacy capability lists advertise formats broader than modern prepared support and should not be used as the modern contract;
 - legacy `playNoteAll`/`playSoundAll` do not preserve requested normal note/sound semantics;
 - inherited live HLS has a confirmed refreshed-playlist index progression bug;
-- KI-062 affects dynamic legacy stream starts: blocking DNS can occur while a shared composite monitor is held, potentially stalling server tick/lifecycle cleanup waiting on that composite.
+- KI-062 is resolved: blocking DNS may still occupy the calling ComputerCraft command, but it no longer holds the ownership monitor needed by server tick/lifecycle cleanup.
 
 ## Positional / VS2 note
 

@@ -33,9 +33,7 @@ The M1G source prerequisites are already satisfied at final source checkpoint `f
 
 A focused **M1G audible/core runtime PASS was recorded on 2026-09-19** on NeoForge 21.1.247 integrated singleplayer, resolving KI-046. This guide remains the regression/release rerun checklist rather than a source-completion checklist.
 
-Strongly consider closing KI-062 before relying on legacy stream calls in the same test instance, because blocking DNS under the shared composite monitor can stall server tick/lifecycle cleanup.
-
-KI-054/KI-064 storage hardening and KI-063 replacement-admission correctness remain tracked post-M1G. They should be tested when their respective fixes land, but they do not retroactively make the M1G core finite engine incomplete.
+KI-062/063/054/064 are now closed by the post-M1G hardening pass. Future regression runs should keep their targeted checks, but they are no longer prerequisites waiting on source fixes.
 
 ## Recorded M1G runtime result — 2026-09-19
 
@@ -45,7 +43,7 @@ The dedicated mute retest used the 2-second looping WAV so EOF could not invalid
 
 Environment: Minecraft 1.21.1, Java 21, CC:T 1.120.0, NeoForge 21.1.247, final M1G jar/source family. NeoForge 21.1.248 was not manually runtime-tested in this session.
 
-This resolves KI-046 only. KI-062/063/054/064 and M1H lifecycle/recovery remain separate.
+This resolves KI-046. The separate post-M1G hardening pass also closed KI-062/063/054/064; M1H lifecycle/recovery remains separate.
 
 ## Test environment
 
@@ -156,7 +154,7 @@ Verify:
 
 - stop while prebuffering/decoding cancels old work promptly;
 - successful replacement cancels old decoder/PCM/render state exactly once;
-- **rejected/failed replacement leaves the previous valid HQ source alive** after KI-063 is fixed;
+- **rejected/failed RAW/prepared replacement leaves the previous valid HQ source alive** (KI-063 regression check);
 - renderer close cannot leave a producer blocked forever;
 - normal client disconnect/world teardown does not leave stale local sound.
 
@@ -180,9 +178,9 @@ For normal operation:
 - create an interrupted/low-level leftover and verify the implemented whole staging-owner cleanup removes it while ordinary one-computer detach does not erase a still-shared mount;
 - confirm no obvious active range/media work remains on normal shutdown.
 
-KI-054 and KI-064 need deterministic failure-injection proof in code: normal shutdown cannot prove root-lock recovery, zero-read no-progress handling, or atomic-move fallback.
+KI-054 and KI-064 now have deterministic component coverage for retryable close bookkeeping, bounded no-progress handling, and atomic-move fallback. Normal runtime shutdown remains a useful regression check but is not the only proof.
 
-## Optional safety regression — KI-062
+## Optional safety regression — KI-062 (resolved regression check)
 
 When a deterministic resolver hook/test exists, block DNS for a legacy stream start and verify the server tick and provider cleanup paths do not wait on the composite monitor held by that lookup.
 

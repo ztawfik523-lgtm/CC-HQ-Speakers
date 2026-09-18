@@ -80,7 +80,6 @@ If later SPR compatibility needs configurable delivery headroom/caps, design tha
 
 These are implementation issues, not configuration options:
 
-- **KI-054:** shutdown failure can lose deletion retry state, and a range-service close failure can prevent media-store close entirely, leaving the root lock alive in the JVM;
-- **KI-064:** media import can spin on repeated zero-byte reads and lacks an unsupported-`ATOMIC_MOVE` fallback.
+- KI-054 and KI-064 were resolved by the post-M1G hardening pass. Shutdown cleanup is retryable/root-lock safe, import no-progress is bounded, and unsupported atomic rename has a same-root fallback.
 
-KI-061 was resolved in M1G: whole-owner staging cleanup removes persistent leftovers after unmount/release. Changing `maxAssetMiB` or `maxTotalMiB` does not fix KI-054/KI-064.
+KI-061 was resolved in M1G: whole-owner staging cleanup removes persistent leftovers after unmount/release. Quota settings remain independent of those lifecycle guarantees.

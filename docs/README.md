@@ -69,10 +69,7 @@ The modern path does not use the inherited complete-file JavaSound/mp3spi bridge
 
 ## Open after M1G
 
-- **KI-062:** synchronized legacy stream dispatch can hold the composite monitor across blocking DNS.
-- **KI-063:** replacement-before-admission can destroy current valid playback.
-- **KI-054:** shutdown deletion retry/root-lock hardening.
-- **KI-064:** media import no-progress and non-atomic-move fallback.
+- **Post-M1G hardening:** KI-062/063/054/064 resolved at `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
 - **M1H:** late-entry/leave/rejoin/resource recovery and final moving-source/VS2 lifecycle.
 
 Later milestones still own FLAC, multispeaker work, legacy migration, OpenAL cleanup, SPR, live streams, and release cleanup.
