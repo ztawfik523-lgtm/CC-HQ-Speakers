@@ -240,17 +240,16 @@ The owner deliberately selected a different M1G policy for modern HQ finite play
 
 Therefore M1G modern finite code should **not** copy CC:T's `Math.max(volume, 1) * attenuationDistance` behavior for its custom finite renderer. Standard CC:T methods remain on the native CC:T path and retain native behavior.
 
-Current source still needs KI-058 to explicitly install/retain the selected fixed attenuation distance on the modern finite live channel.
+Final M1G source explicitly installs/retains the selected fixed 32-block attenuation distance on the modern finite live channel. KI-058 is resolved.
 
 ## Modern HQ volume zero
 
-For the modern finite extension, selected target behavior is:
+For the modern finite extension, current M1G behavior is:
 
 - global HQ volume zero does not pause canonical server time;
 - local modern finite decoder/renderer/range requests hibernate while globally muted;
+- server range delivery is suppressed while globally muted;
 - unmute rebuilds/rejoins current authoritative time.
-
-This is not yet fully implemented.
 
 A player's own Minecraft MASTER/BLOCKS slider remains client-local and does not change server transport policy.
 

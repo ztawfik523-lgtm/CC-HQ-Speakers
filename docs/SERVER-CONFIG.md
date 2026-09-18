@@ -80,8 +80,7 @@ If later SPR compatibility needs configurable delivery headroom/caps, design tha
 
 These are implementation issues, not configuration options:
 
-- **KI-061:** arbitrary files left in a per-speaker staging mount can become unreachable after whole staging-owner cleanup/recreation;
 - **KI-054:** shutdown failure can lose deletion retry state, and a range-service close failure can prevent media-store close entirely, leaving the root lock alive in the JVM;
 - **KI-064:** media import can spin on repeated zero-byte reads and lacks an unsupported-`ATOMIC_MOVE` fallback.
 
-Changing `maxAssetMiB` or `maxTotalMiB` does not fix those lifecycle/hardening issues.
+KI-061 was resolved in M1G: whole-owner staging cleanup removes persistent leftovers after unmount/release. Changing `maxAssetMiB` or `maxTotalMiB` does not fix KI-054/KI-064.

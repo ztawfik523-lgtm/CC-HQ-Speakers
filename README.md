@@ -21,17 +21,15 @@ One physical speaker remains one mono positional source.
 
 ## Current development status
 
-M1E server-authoritative finite playback and M1F bounded demand-driven encoded transport are complete at source/test/CI/package level.
+M1E, M1F, and M1G are complete at source/test/CI/package level.
 
-M1G progressive decode/rendering is integrated in source on `codex/m1g-progressive-finite-decode`.
+Final M1G source checkpoint on `codex/m1g-progressive-finite-decode`:
 
-Current green integrated M1G **source** checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`.
+`fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
 
-CI `34778546164` passed NeoForge 21.1.247 and 21.1.248 including build, tests, packaged-mod verification, and artifact upload.
+Final M1G CI `35297026277` passed NeoForge 21.1.247 and 21.1.248 including build, deterministic tests, packaged-mod verification, and artifact upload.
 
-Documentation/audit work after that checkpoint has not changed implementation source.
-
-Focused real-Minecraft M1F transport acceptance is not recorded. Focused audible M1G Minecraft acceptance is also not recorded. Green CI/component proof is not runtime proof.
+Focused real-Minecraft M1F transport acceptance is unrecorded. Focused audible M1G Minecraft acceptance is also unrecorded under KI-046. Green CI/component proof is not runtime audio proof.
 
 Current finite implementation:
 
@@ -39,53 +37,53 @@ Current finite implementation:
 ComputerCraft file
 -> reusable server MediaAsset
 -> server-authoritative finite playback state
--> protocol v6 descriptor + codec-aware STATE anchor
+-> protocol v7 STATE decodeRevision + codec-aware anchor
 -> bounded client range requests / off-thread server reads
 -> bounded sliding client encoded RAM
 -> starvation-aware decoder-worker input
 -> progressive MP3/common-WAV decoder
 -> bounded mono S16 PCM at source rate
+-> pure renderer-read policy
 -> nonblocking Minecraft AudioStream
 -> one positional BLOCKS SoundManager source
 ```
 
 The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared engine.
 
-## Current M1G decisions
+## Completed M1G contract
 
 Locked media/renderer choices remain A1 Minecraft `AudioStream`/SoundManager, B1 server-normalized common-WAV layout, C1 source-rate preservation, D1 narrow PCM/float WAVEX, and E1 conservative MP3 pre-roll.
 
-Later rechecks narrowed the remaining M1G scope:
+M1G now implements:
 
-- move to an explicit server-authoritative decoder/re-anchor revision, likely protocol v7; current source is still v6;
-- keep a fixed **32-block** modern-finite core listening/delivery radius; HQ volume changes gain, not the core radius;
-- global HQ volume zero keeps canonical server time running but hibernates client decode/render/range requests until unmuted;
-- looping is ordinary replay of the same media after local physical EOF while authoritative state still says looping; a normal restart gap is acceptable;
-- do not add gapless MP3/LAME padding work, permanent-source loop engineering, dynamic volume-aware range, or SPR acoustic/range integration to M1G;
-- future Sound Physics Remastered compatibility owns deliberate extended range/acoustics and matching transport relevance.
+- explicit server-authoritative decoder/re-anchor revision in protocol v7;
+- semantic seek increments revision while ordinary STATE preserves healthy decoder/window state;
+- stale local worker identity is invalidated before cancellation;
+- STATE is the sole nonterminal transition authority; explicit STOP remains;
+- fixed **32-block** modern-finite core delivery and attenuation radius;
+- HQ volume changes gain, not radius;
+- global HQ volume zero keeps canonical time running while client transport/decode/render hibernates;
+- client-local mute support through `canStartSilent()`;
+- renderer activation/loss recovery through authoritative rejoin;
+- ordinary non-gapless replay after physical EOF while authoritative looping remains enabled;
+- real packaged-JLayer MP3 coverage across starvation/refill/sliding/pre-target discard;
+- deterministic renderer-read policy coverage;
+- persistent staging-leftover cleanup on whole-owner destruction.
 
-One implementation-shape choice remains for the v7 work: keep finite CONTROL packets only as optional latency hints, or remove duplicate PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP projection and let STATE be the sole transition authority. Correctness must not depend on CONTROL/STATE ordering either way.
+Resolved M1G issues: KI-051, KI-053, KI-055, KI-056, KI-057, KI-058, KI-060, KI-061. KI-059 was already a product decision.
 
-## Current blockers / hardening
+M1G intentionally does not include gapless MP3, permanent-source loop engineering, dynamic volume-aware listener membership, full M1H rejoin/movement lifecycle, or Sound Physics Remastered range/acoustic integration.
 
-The main M1G decoder cluster is KI-053/KI-056/KI-057: current v6 can rewind a live window, race expected seek cancellation into a fatal decoder error, and conflates ordinary STATE snapshots with decoder-reanchor intent.
+## Open after M1G
 
-Other current M1G items:
-
-- KI-058: explicitly enforce the selected fixed 32-block channel attenuation distance while volume changes gain;
-- KI-060: harden renderer-start/local-silent/global-volume-zero behavior;
-- KI-051: implement selected ordinary replay;
-- KI-055: add real-MP3 progressive integration and focused `FinitePcmAudioStream` proof;
-- KI-061: clean leftover per-speaker staging files on whole-owner cleanup.
-
-Rechecked repository-wide findings which also remain real:
+Rechecked repository-wide findings which remain real:
 
 - KI-062: synchronized dynamic stream dispatch can hold the composite monitor across blocking DNS while server tick or synchronized lifecycle cleanup waits on that monitor;
-- KI-063: rejected/failed RAW or prepared replacement can destroy valid current playback before the replacement is admitted;
+- KI-063: rejected/failed RAW or prepared replacement can destroy valid current playback before replacement admission succeeds;
 - KI-054: shutdown can lose deletion retry state or fail before media-store close, leaving the root lock/registry alive in the JVM;
 - KI-064: media import can spin indefinitely on repeated zero-byte reads and lacks an unsupported-atomic-move fallback.
 
-The latest practical sequencing suggestion is to remove KI-062 before relying on legacy stream calls, then complete the v7 decoder/reanchor cluster. A broader safety-first batch is also defensible; later HLS/legacy/CI/release cleanup should not derail M1G.
+M1H owns dynamic listener/late-join/leave-return/resource recovery and final moving-source/VS2 lifecycle.
 
 ## Audit recheck notes
 
@@ -134,7 +132,7 @@ See `docs/LUA-API.md`.
 
 - **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
 - **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + positional renderer — integrated in source; selected correctness/source/evidence work remains.
+- **M1G:** progressive MP3/common-WAV decode + positional renderer — source/test/CI/package/component complete; focused audible Minecraft acceptance remains unrecorded.
 - **M1H:** dynamic listener/late-join/leave-return/recovery and final moving-source/VS2 lifecycle.
 - **M1I:** optional gated native FLAC.
 - later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
@@ -151,7 +149,7 @@ See `docs/LUA-API.md`.
 Read current development docs in this order:
 
 1. `docs/CURRENT-STATE.md`
-2. `docs/M1G-SCOPE-DECISIONS-2026-09-14.md`
+2. `docs/HANDOFF-2026-09-18-M1G-COMPLETE.md`
 3. `docs/KNOWN-ISSUES.md`
 4. `docs/TESTING.md`
 5. `docs/VERIFIED-FACTS.md`
