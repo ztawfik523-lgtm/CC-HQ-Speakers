@@ -1,6 +1,6 @@
 # Known issues / product gaps
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
@@ -18,9 +18,11 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 **Active evidence gap, not a source/test blocker.** M1F source/test/CI/package/component work is complete.
 
-### KI-046 — M1G audible Minecraft acceptance is not recorded
+### KI-046 — M1G audible/core Minecraft acceptance
 
-**Active.** Progressive decode/render is integrated in source, but there is no recorded focused Minecraft audible PASS. CI cannot prove audibility, attenuation, channel lifecycle, starvation/refill, seek quality, loop replay, or selected volume-zero behavior.
+**Resolved as focused M1G runtime evidence on 2026-09-19.** NeoForge 21.1.247 integrated singleplayer recorded audible modern WAV/MP3 playback, pause/resume, seek/reanchor, float32 WAV, natural EOF, ordinary looping, positional attenuation/fixed 32-block range behavior, prepared-asset lifetime, stop, and a dedicated loop-safe global-volume-zero hibernation/unmute PASS. No HQSpeaker WARN/ERROR lines were present during the focused mute/unmute run.
+
+This is not a claim that NeoForge 21.1.248 was manually runtime-tested, nor does it subsume later KI-062/063/054/064 or M1H recovery/resource-reload work.
 
 ## Resolved by M1E/M1F
 
@@ -39,7 +41,7 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 ## M1G source-resolved items
 
-M1G is closed at source/test/CI/package/component level. Focused real-Minecraft audible proof is still tracked separately as KI-046.
+M1G is closed at source/test/CI/package/component level, and the focused real-Minecraft audible/core proof is now recorded under resolved KI-046.
 
 ### KI-021 — modern finite format surface needed narrowing
 
@@ -47,7 +49,7 @@ M1G is closed at source/test/CI/package/component level. Focused real-Minecraft 
 
 ### KI-032 — MP3 Layer III seek/rejoin needs pre-roll
 
-**Resolved in source.** Server anchors use E1 conservative earlier seek points and JLayer decodes forward/discards pre-target PCM. Audible seek quality remains part of KI-046 runtime proof.
+**Resolved in source.** Server anchors use E1 conservative earlier seek points and JLayer decodes forward/discards pre-target PCM. The 2026-09-19 focused runtime pass also recorded audible MP3 seek/reanchor behavior.
 
 ### KI-033 — historical WAV acceptance broader than converter target
 
@@ -65,7 +67,7 @@ M1G is closed at source/test/CI/package/component level. Focused real-Minecraft 
 
 **Resolved at deterministic/source/component level.** Revision/cancellation ordering, real JLayer decode, bounded range-window progression, renderer-read states, staging cleanup, and the existing transport/PCM/WAV/state-machine suites cover the non-Minecraft portions.
 
-Anything requiring the live Minecraft SoundManager/OpenAL path remains under KI-046 rather than being represented as CI proof.
+The focused live Minecraft SoundManager/OpenAL path now has a recorded NeoForge 21.1.247 PASS under KI-046. Broader resource-reload, long-underrun, late-entry/rejoin, and moving-source lifecycle remain M1H rather than being folded into this evidence item.
 
 ### KI-053 — same-anchor STATE could reset a slid window
 
@@ -196,7 +198,7 @@ The still-open cross-cutting correctness/hardening issues are KI-062, KI-063, KI
 - M1E final Minecraft PASS: skipped/unrecorded.
 - M1F focused Minecraft transport PASS: unrecorded.
 - M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
-- M1G audible Minecraft PASS: unrecorded under KI-046.
+- M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247; KI-046 resolved.
 - KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
 - KI-054/062/063/064 remain open post-M1G.
 - Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
