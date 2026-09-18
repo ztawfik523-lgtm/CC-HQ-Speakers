@@ -29,7 +29,7 @@ Final M1G source checkpoint on `codex/m1g-progressive-finite-decode`:
 
 Final M1G CI `35297026277` passed NeoForge 21.1.247 and 21.1.248 including build, deterministic tests, packaged-mod verification, and artifact upload.
 
-Focused real-Minecraft M1F transport acceptance is unrecorded. Focused audible M1G Minecraft acceptance is also unrecorded under KI-046. Green CI/component proof is not runtime audio proof.
+Focused real-Minecraft M1F transport acceptance remains unrecorded. Focused **M1G audible/core Minecraft acceptance is recorded PASS** on NeoForge 21.1.247 in an integrated singleplayer runtime on 2026-09-19. This does not claim a manual runtime PASS on 21.1.248 or cover post-M1G KI-062/063/054/064 and M1H lifecycle work.
 
 Current finite implementation:
 
@@ -132,7 +132,7 @@ See `docs/LUA-API.md`.
 
 - **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
 - **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + positional renderer — source/test/CI/package/component complete; focused audible Minecraft acceptance remains unrecorded.
+- **M1G:** progressive MP3/common-WAV decode + positional renderer — source/test/CI/package/component complete; focused audible/core Minecraft acceptance PASS recorded on NeoForge 21.1.247 (2026-09-19).
 - **M1H:** dynamic listener/late-join/leave-return/recovery and final moving-source/VS2 lifecycle.
 - **M1I:** optional gated native FLAC.
 - later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
