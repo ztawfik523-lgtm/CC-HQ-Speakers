@@ -1,6 +1,6 @@
 # Documentation index
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 ## Start here
 
@@ -12,7 +12,7 @@ Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`.
 
 Final M1G CI: `35297026277`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifact upload.
 
-Focused Minecraft M1F transport acceptance remains unrecorded. Focused audible M1G Minecraft acceptance also remains unrecorded under KI-046. Green CI/component proof is not runtime audio proof.
+Focused Minecraft M1F transport acceptance remains unrecorded. Focused **M1G audible/core Minecraft acceptance is recorded PASS** on NeoForge 21.1.247 in integrated singleplayer on 2026-09-19. CI still provides the cross-build proof for both supported NeoForge targets.
 
 ## Current authority order
 
@@ -69,7 +69,6 @@ The modern path does not use the inherited complete-file JavaSound/mp3spi bridge
 
 ## Open after M1G
 
-- **KI-046:** focused audible M1G Minecraft acceptance is unrecorded.
 - **KI-062:** synchronized legacy stream dispatch can hold the composite monitor across blocking DNS.
 - **KI-063:** replacement-before-admission can destroy current valid playback.
 - **KI-054:** shutdown deletion retry/root-lock hardening.
