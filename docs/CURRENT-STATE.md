@@ -14,9 +14,9 @@ Final M1G **source** checkpoint:
 
 Post-M1G hardening **source** checkpoint:
 
-`e836dfac702dcc438fa0366dc2fba2132b5140c1`
+`e0e98ae77335828f02f8e93825b27632de2b8ee6`
 
-Hardening CI `35404646105` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
+Hardening CI `35406123680` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
 
 Hardening artifacts:
 
@@ -152,7 +152,7 @@ The Option A hardening pass is complete at source/test/CI/package level.
 
 Resolved after M1G:
 
-- KI-062 — blocking stream URL DNS no longer holds the ownership monitor used by server tick/cleanup. Lua audio command ordering is preserved with a separate command lock.
+- KI-062 — blocking stream URL DNS now runs outside both the ownership monitor and the command-order lock. Single-speaker stream commit rejoins the short command-order lock only after validation, so main-thread prepared playback cannot wait behind DNS.
 - KI-063 — RAW and prepared replacement validate/admit the replacement before destructively stopping the current valid source.
 - KI-054 — range shutdown begins during `ServerStopping`; failed final cleanup remains retryable, old stopped-server ownership remains reachable, and a later server instance retries stale cleanup before reopening the media root.
 - KI-064 — media import has a bounded no-progress policy and falls back to a safe same-root non-atomic rename when `ATOMIC_MOVE` is unsupported.
