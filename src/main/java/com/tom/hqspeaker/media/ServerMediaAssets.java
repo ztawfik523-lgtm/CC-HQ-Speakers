@@ -36,12 +36,17 @@ public final class ServerMediaAssets {
 
     public static synchronized ServerMediaAssets get(MinecraftServer server) throws IOException {
         Objects.requireNonNull(server, "server");
-        retryClosingServers();
+
+        // Never resurrect media services for the same server once its stopping lifecycle has begun.
         ServerMediaAssets current = SERVERS.get(server);
         if (current != null) {
             if (current.closing) throw new IOException("server media assets are shutting down");
             return current;
         }
+
+        // A genuinely new server instance may inherit the same world root. Retry old stopped-server cleanup first
+        // so a transient earlier shutdown failure does not strand the root lock forever in this JVM.
+        retryClosingServers();
 
         ServerMediaAssets created = new ServerMediaAssets(server);
         SERVERS.put(server, created);
