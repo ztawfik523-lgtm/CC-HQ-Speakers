@@ -75,6 +75,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /** Requested sample count for each computer currently waiting for RAW capacity. */
     private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
+    /**
+     * Serializes Lua audio commands without coupling them to the ownership monitor used by server tick/cleanup.
+     * Blocking URL validation may hold this lock, but never the monitor which tickOwnership()/cleanup() need.
+     */
+    private final Object commandLock = new Object();
 
     private volatile Owner owner = Owner.NONE;
 
@@ -189,15 +194,19 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @LuaFunction(mainThread = true)
-    public final synchronized boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
-        try (HQFiniteMediaServer.PreparedStart prepared =
-                 finite.preparePreparedStart(assetId, volume.orElse(1.0))) {
-            beginReplacingHQ(Owner.STAGED_FINITE);
-            if (!finite.commitPreparedStart(prepared)) {
-                throw new IllegalStateException("admitted prepared replacement could not be committed");
+    public final boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
+        synchronized (commandLock) {
+            synchronized (this) {
+                try (HQFiniteMediaServer.PreparedStart prepared =
+                         finite.preparePreparedStart(assetId, volume.orElse(1.0))) {
+                    beginReplacingHQ(Owner.STAGED_FINITE);
+                    if (!finite.commitPreparedStart(prepared)) {
+                        throw new IllegalStateException("admitted prepared replacement could not be committed");
+                    }
+                    owner = Owner.STAGED_FINITE;
+                    return true;
+                }
             }
-            owner = Owner.STAGED_FINITE;
-            return true;
         }
     }
 
@@ -213,6 +222,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @Override
     public MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
+        synchronized (commandLock) {
+            return callMethodOrdered(computer, context, method, args);
+        }
+    }
+
+    private MethodResult callMethodOrdered(IComputerAccess computer, ILuaContext context, int method, IArguments args)
+            throws LuaException {
         if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
         String name = dynamicNames[method];
 
