@@ -79,13 +79,13 @@ Resolved M1G issues: KI-051, KI-053, KI-055, KI-056, KI-057, KI-058, KI-060, KI-
 
 Option A is complete.
 
-Source checkpoint: `e0e98ae77335828f02f8e93825b27632de2b8ee6`.
+Source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`.
 
-CI: `35406123680`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
+CI: `35406434097`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
 
 Resolved:
 
-- KI-062 — blocking DNS now runs outside both the server tick/cleanup ownership monitor and the command-order lock; validated single-speaker commit only rejoins the short lock after DNS returns;
+- KI-062 — blocking DNS now runs outside both the server tick/cleanup ownership monitor and the command-order lock; validated single-speaker commit only rejoins the short lock after DNS returns, and a newer playback/control command invalidates an older pending normal stream;
 - KI-063 — RAW/prepared replacement admits first, then destructively replaces;
 - KI-054 — shutdown cleanup/root-lock state remains retryable and starts draining earlier;
 - KI-064 — import no-progress is bounded and atomic-move fallback exists.
