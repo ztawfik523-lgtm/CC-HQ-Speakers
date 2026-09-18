@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The physical CC speaker exposed to Lua.
@@ -46,6 +47,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
     private static final Set<String> STREAM_DIRECT = Set.of(
         "speakStreamAll", "speakHLSAll", "speakTSAll", "speakStreamAt", "speakHLSAt", "speakTSAt"
+    );
+    /** Dynamic calls which observe state/capabilities but do not supersede an in-flight stream start. */
+    private static final Set<String> READ_ONLY_DYNAMIC = Set.of(
+        "audioStatus", "audioStatusAll", "audioStatusAt",
+        "getPeripheralType", "getPos", "getSpeakerCount",
+        "getStreamArtist", "getStreamFormats", "getStreamGenre", "getStreamMeta", "getStreamMetaSerial",
+        "getStreamSong", "getStreamStation", "getStreamTitle", "getStreamUrl", "isStreaming",
+        "speakIsPlaying", "speakMaxAudioBytes", "speakMaxFileBytes", "speakMaxOggBytes", "speakMaxSamples",
+        "speakQueueSize", "speakSampleRate", "speakSupportedFiles"
     );
     private static final String[] SUPPORTED_FINITE_FILES = { "wav", "ogg", "mp3", "aiff", "aif", "au", "snd" };
 
@@ -81,6 +91,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
      * main-thread method, so letting DNS hold commandLock could otherwise stall the Minecraft server indirectly.
      */
     private final Object commandLock = new Object();
+    /**
+     * Monotonic mutation sequence used to reject a normal single-speaker stream start whose DNS validation finishes
+     * after a newer playback/control command has already been issued.
+     */
+    private final AtomicLong commandRevision = new AtomicLong();
 
     private volatile Owner owner = Owner.NONE;
 
@@ -196,6 +211,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction(mainThread = true)
     public final boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
+        // This direct CC:T main-thread method must invalidate any older stream still blocked in DNS before it waits
+        // for the short command commit lock.
+        commandRevision.incrementAndGet();
         synchronized (commandLock) {
             synchronized (this) {
                 try (HQFiniteMediaServer.PreparedStart prepared =
@@ -228,9 +246,18 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         // DNS may block. Keep it outside commandLock as well as the ownership monitor, otherwise a direct
         // main-thread audioPlayPrepared call could wait behind DNS and stall the Minecraft server.
-        if (STREAM_START.contains(name)) return startStreamReplacing(name, args);
-        if (STREAM_DIRECT.contains(name)) return invokeLegacy(name, computer, context, args);
+        if (STREAM_START.contains(name)) {
+            long revision = commandRevision.incrementAndGet();
+            return startStreamReplacing(name, args, revision);
+        }
+        if (STREAM_DIRECT.contains(name)) {
+            // These inherited multi/At helpers remain legacy, but they still supersede any older normal stream
+            // validation which is in flight.
+            commandRevision.incrementAndGet();
+            return invokeLegacy(name, computer, context, args);
+        }
 
+        if (!READ_ONLY_DYNAMIC.contains(name)) commandRevision.incrementAndGet();
         synchronized (commandLock) {
             return callMethodOrdered(computer, context, method, args);
         }
@@ -324,7 +351,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return MethodResult.of(true);
     }
 
-    private MethodResult startStreamReplacing(String name, IArguments args) throws LuaException {
+    private MethodResult startStreamReplacing(String name, IArguments args, long expectedCommandRevision) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
         long expectedLifecycle = legacy.lifecycleEpochSnapshot();
@@ -339,6 +366,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         // Validation is complete, so the remaining commit is short and may safely rejoin normal command ordering.
         synchronized (commandLock) {
+            if (commandRevision.get() != expectedCommandRevision) return MethodResult.of(false);
             synchronized (this) {
                 if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return MethodResult.of(false);
                 beginReplacingHQ(Owner.STREAM);
