@@ -323,6 +323,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private MethodResult startStreamReplacing(String name, IArguments args) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
+        long expectedLifecycle = legacy.lifecycleEpochSnapshot();
         HQSpeakerPeripheral.validateStreamUrl(url, name);
 
         HQSpeakerAudioPacket.AudioFormat format = switch (name) {
@@ -333,8 +334,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         };
 
         synchronized (this) {
+            if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return MethodResult.of(false);
             beginReplacingHQ(Owner.STREAM);
-            boolean started = legacy.startValidatedStream(url, volume, format, name);
+            boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
             if (started) owner = Owner.STREAM;
             return MethodResult.of(started);
         }
