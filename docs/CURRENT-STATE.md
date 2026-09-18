@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 ## Checkpoint
 
@@ -21,7 +21,7 @@ Artifacts:
 
 The failed intermediate CI run `35287579710` was a test-source-set problem only: a direct JUnit test referenced Minecraft's client-only `AudioStream` interface. Main source compiled on both targets. The test was replaced with a pure renderer-read adapter shared by `FinitePcmAudioStream`, and the final checkpoint is green.
 
-Green CI is still not Minecraft runtime proof. Focused audible M1G Minecraft acceptance remains unrecorded as KI-046, just as earlier milestone runtime evidence is separately tracked.
+Green CI by itself is still not Minecraft runtime proof. A separate focused **M1G audible/core Minecraft runtime PASS was recorded on 2026-09-19** using NeoForge 21.1.247 in integrated singleplayer. The run exercised modern WAV/MP3 playback, pause/resume, seek/reanchor, natural EOF, ordinary looping, positional attenuation/fixed-range behavior, stop, prepared-asset lifetime, float32 WAV, and global-volume-zero hibernation/unmute. NeoForge 21.1.248 remains CI/package verified but was not manually runtime-tested in that session.
 
 ## Current modern finite pipeline
 
@@ -133,13 +133,12 @@ Resolved in the M1G closeout:
 - KI-060 — renderer start + global-zero hibernation;
 - KI-061 — staging leftovers.
 
-KI-052's deterministic/source portion is satisfied by the final component suite and re-audit. Anything that specifically requires a live Minecraft SoundManager/OpenAL path is tracked under KI-046 rather than pretending CI proves it.
+KI-052's deterministic/source portion is satisfied by the final component suite and re-audit. KI-046 is now also satisfied by the recorded focused live Minecraft/SoundManager/OpenAL run on NeoForge 21.1.247. This does not absorb later M1H recovery/resource-reload work or post-M1G KI-062/063/054/064.
 
 ## Open after M1G
 
 These remain real but are **post-M1G** work:
 
-- KI-046 — focused audible Minecraft acceptance is unrecorded;
 - KI-062 — synchronized legacy stream dispatch can hold the composite monitor across blocking DNS;
 - KI-063 — replacement-before-admission can destroy current valid playback;
 - KI-054 — shutdown deletion retry/root-lock hardening;
@@ -184,7 +183,7 @@ M1G real-MP3 progressive coverage: PASS
 M1G renderer-read policy coverage: PASS
 M1G staging lifecycle cleanup: PASS
 M1G ordinary replay: implemented
-M1G audible Minecraft PASS: unrecorded (KI-046)
+M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247 integrated singleplayer (KI-046 resolved)
 Cross-cutting synchronized-DNS/main-thread stall: open KI-062
 Cross-source replacement-before-admission: open KI-063
 Storage import progress/rename hardening: open KI-064
