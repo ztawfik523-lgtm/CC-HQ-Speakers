@@ -76,7 +76,7 @@ M1G intentionally does not include gapless MP3, permanent-source loop engineerin
 
 ## Post-M1G hardening
 
-The selected Option A hardening pass is complete at `e0e98ae77335828f02f8e93825b27632de2b8ee6`, CI `35406123680`.
+The selected Option A hardening pass is complete at `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`.
 
 Closed:
 
