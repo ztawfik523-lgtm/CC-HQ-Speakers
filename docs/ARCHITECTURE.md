@@ -185,7 +185,7 @@ Do not silently choose between them before M1H design work.
 
 KI-062 is resolved. Dynamic legacy stream calls may still block their calling ComputerCraft thread during DNS, but blocking URL validation now runs outside both the ownership monitor used by `tickOwnership()`/cleanup and the separate command-order lock. This also matters because `audioPlayPrepared` is a CC:T main-thread method: it cannot be forced to wait behind DNS through that lock.
 
-After validation, the normal single-speaker stream path briefly reacquires command ordering and ownership locking for the actual commit. A lifecycle epoch rejects a result which returns after detach/cleanup, preventing a stale DNS completion from reviving a removed speaker.
+After validation, the normal single-speaker stream path briefly reacquires command ordering and ownership locking for the actual commit. A mutation revision rejects a normal stream start superseded by a newer playback/control command while DNS was pending. A lifecycle epoch separately rejects a result which returns after detach/cleanup, preventing a stale DNS completion from reviving a removed speaker.
 
 KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
 
