@@ -20,6 +20,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.slf4j.Logger;
 
@@ -68,6 +69,12 @@ public class HQSpeakerMod {
         if (event.getLevel() instanceof Level level && !level.isClientSide) {
             HQSpeakerPeripheralProvider.forgetLevel(level);
         }
+    }
+
+    /** Start range-worker shutdown before final server cleanup so ServerStopped normally only has to drain it. */
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        ServerMediaAssets.beginCloseServer(event.getServer());
     }
 
     /** Final cache/media safety net for integrated-server restart and dedicated-server shutdown. */

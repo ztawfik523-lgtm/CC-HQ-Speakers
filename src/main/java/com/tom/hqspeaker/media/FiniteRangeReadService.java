@@ -156,8 +156,8 @@ public final class FiniteRangeReadService implements AutoCloseable {
         return closed;
     }
 
-    @Override
-    public void close() throws IOException {
+    /** Stop accepting work and interrupt/cancel queued workers without waiting for termination. */
+    public void beginClose() {
         boolean startShutdown;
         synchronized (this) {
             if (closeComplete) return;
@@ -172,6 +172,11 @@ public final class FiniteRangeReadService implements AutoCloseable {
                 if (runnable instanceof RangeTask task) task.cancelQueued();
             }
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        beginClose();
 
         try {
             if (!executor.awaitTermination(shutdownWaitMillis, TimeUnit.MILLISECONDS)) {

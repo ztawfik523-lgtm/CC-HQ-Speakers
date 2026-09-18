@@ -183,6 +183,24 @@ class FiniteRangeReadServiceTest {
     }
 
     @Test
+    void beginCloseImmediatelyRejectsNewWorkBeforeFinalDrain() throws Exception {
+        byte[] source = new byte[512];
+        MediaAssetStore store = new MediaAssetStore(temp.resolve("begin-close-store"), 1_000_000L, 2_000_000L);
+        MediaAsset asset = store.importAsset("fixture.bin", source.length,
+            Channels.newChannel(new ByteArrayInputStream(source)));
+        FiniteRangeReadService service = new FiniteRangeReadService(store);
+        try {
+            service.beginClose();
+            assertEquals(FiniteRangeReadService.Submission.CLOSED,
+                service.submit(UUID.randomUUID(), asset.id(), source.length, 0L, 128, ignored -> {}));
+            service.close();
+        } finally {
+            service.close();
+            store.close();
+        }
+    }
+
+    @Test
     void shutdownWaitCanBeRetriedAfterInitialTimeout() throws Exception {
         byte[] source = new byte[512];
         MediaAssetStore store = new MediaAssetStore(temp.resolve("shutdown-retry-store"), 1_000_000L, 2_000_000L);

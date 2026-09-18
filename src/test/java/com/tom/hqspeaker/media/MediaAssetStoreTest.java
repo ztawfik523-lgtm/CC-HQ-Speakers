@@ -230,6 +230,96 @@ class MediaAssetStoreTest {
         }
     }
 
+    @Test
+    void writeExactFailsAfterBoundedNoProgress() {
+        Path part = temp.resolve("no-progress.part");
+        ReadableByteChannel source = new ReadableByteChannel() {
+            private boolean open = true;
+            @Override public int read(ByteBuffer dst) { return 0; }
+            @Override public boolean isOpen() { return open; }
+            @Override public void close() { open = false; }
+        };
+
+        IOException failure = assertThrows(IOException.class,
+            () -> MediaAssetStore.writeExact(part, source, 1L));
+        assertTrue(failure.getMessage().contains("no progress"));
+    }
+
+    @Test
+    void writeExactAllowsTemporaryZeroReadsBeforeProgress() throws Exception {
+        Path part = temp.resolve("eventual-progress.part");
+        byte[] data = bytes(16);
+        ReadableByteChannel source = new ReadableByteChannel() {
+            private int zeroReads = MediaAssetStore.MAX_ZERO_READS;
+            private int position;
+            private boolean open = true;
+
+            @Override
+            public int read(ByteBuffer dst) {
+                if (zeroReads-- > 0) return 0;
+                if (position >= data.length) return -1;
+                int count = Math.min(dst.remaining(), data.length - position);
+                dst.put(data, position, count);
+                position += count;
+                return count;
+            }
+
+            @Override public boolean isOpen() { return open; }
+            @Override public void close() { open = false; }
+        };
+
+        MediaAssetStore.writeExact(part, source, data.length);
+        assertArrayEquals(data, Files.readAllBytes(part));
+    }
+
+    @Test
+    void publishFallsBackWhenAtomicMoveIsUnsupported() throws Exception {
+        Path part = temp.resolve("fallback.part");
+        Path media = temp.resolve("fallback.media");
+        Files.write(part, bytes(8));
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+
+        MediaAssetStore.publishPart(part, media, (source, target, options) -> {
+            if (attempts.getAndIncrement() == 0) {
+                throw new java.nio.file.AtomicMoveNotSupportedException(
+                    source.toString(), target.toString(), "test provider");
+            }
+            Files.move(source, target, options);
+        });
+
+        assertEquals(2, attempts.get());
+        assertFalse(Files.exists(part));
+        assertArrayEquals(bytes(8), Files.readAllBytes(media));
+    }
+
+    @Test
+    void closeKeepsFailedDeletionBookkeepingAndCanBeRetried() throws Exception {
+        MediaAssetStore store = new MediaAssetStore(temp, 1024, 4096);
+        MediaAsset asset = importBytes(store, "retry-close.mp3", bytes(12), 12);
+        Path media = temp.resolve(asset.id() + ".media");
+
+        Files.delete(media);
+        Files.createDirectory(media);
+        Path child = media.resolve("block-delete");
+        Files.write(child, new byte[] { 1 });
+
+        IOException first = assertThrows(IOException.class, store::close);
+        assertTrue(first.getMessage() != null);
+        assertEquals(1, store.assetCount(), "failed close must retain deletion bookkeeping");
+        assertEquals(12L, store.committedBytes(), "failed close must retain quota bookkeeping");
+        assertThrows(IOException.class, () -> new MediaAssetStore(temp, 1024, 4096),
+            "root lock must remain held while cleanup is incomplete");
+
+        Files.delete(child);
+        store.close();
+        assertEquals(0, store.assetCount());
+        assertEquals(0L, store.committedBytes());
+
+        try (MediaAssetStore reopened = new MediaAssetStore(temp, 1024, 4096)) {
+            assertEquals(0, reopened.assetCount());
+        }
+    }
+
     private static MediaAsset importBytes(MediaAssetStore store, String name, byte[] data, long declaredSize)
             throws IOException {
         try (var channel = Channels.newChannel(new java.io.ByteArrayInputStream(data))) {

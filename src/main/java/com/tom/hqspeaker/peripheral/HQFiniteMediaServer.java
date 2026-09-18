@@ -115,9 +115,31 @@ public final class HQFiniteMediaServer {
     public void attach(IComputerAccess computer) { attachedComputers.add(computer); }
     public void detach(IComputerAccess computer) { attachedComputers.remove(computer); }
 
-    /** Play one reusable analyzed media asset, retaining a playback reference until stop/end/error. */
-    public synchronized boolean playPrepared(String assetId, double volume) throws LuaException {
-        if (isActive()) return false;
+    static final class PreparedStart implements AutoCloseable {
+        private final HQFiniteMediaServer server;
+        private final Session next;
+        private final Map<String, Object> initialStatus;
+        private boolean finished;
+
+        private PreparedStart(HQFiniteMediaServer server, Session next, Map<String, Object> initialStatus) {
+            this.server = server;
+            this.next = next;
+            this.initialStatus = initialStatus;
+        }
+
+        @Override
+        public void close() {
+            if (finished) return;
+            finished = true;
+            MediaAssetReleaseQueue.Result release = next.releases.release(next.retainedAssetId);
+            if (release.deferred()) {
+                HQSpeakerMod.warn("uncommitted prepared start release queued for retry " + next.retainedAssetId
+                    + ": " + release.error());
+            }
+        }
+    }
+
+    synchronized PreparedStart preparePreparedStart(String assetId, double volume) throws LuaException {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
 
         UUID id = HQMediaStaging.parseAssetId(assetId);
@@ -141,14 +163,13 @@ public final class HQFiniteMediaServer {
         }
         if (!retained) throw new LuaException("unknown or released media asset");
 
-        final Session next;
-        final Map<String, Object> initialStatus;
         try {
-            long generation = ++generationCounter;
+            long generation = generationCounter + 1L;
+            if (generation <= 0L) throw new IllegalStateException("finite generation exhausted");
             long now = System.nanoTime();
-            next = new Session(id, generation, metadata, asset.sizeBytes(),
+            Session next = new Session(id, generation, metadata, asset.sizeBytes(),
                 mediaAssets.rangeReads(), mediaAssets.releases(), volume, now);
-            initialStatus = statusOf(next, now);
+            return new PreparedStart(this, next, statusOf(next, now));
         } catch (RuntimeException e) {
             MediaAssetReleaseQueue.Result release = mediaAssets.releases().release(id);
             if (release.deferred()) {
@@ -157,13 +178,33 @@ public final class HQFiniteMediaServer {
             }
             throw e;
         }
+    }
 
-        session = next;
+    synchronized boolean commitPreparedStart(PreparedStart prepared) {
+        if (prepared == null || prepared.server != this || prepared.finished) {
+            throw new IllegalArgumentException("invalid or consumed prepared start");
+        }
+        if (isActive()) return false;
+        if (prepared.next.generation != generationCounter + 1L) {
+            throw new IllegalStateException("prepared finite start became stale");
+        }
+
+        generationCounter = prepared.next.generation;
+        session = prepared.next;
         terminalStatus = null;
-        sendBeginToRelevant(next);
-        sendStateToRelevant(next);
-        queueStateEvent(initialStatus);
+        prepared.finished = true;
+        sendBeginToRelevant(prepared.next);
+        sendStateToRelevant(prepared.next);
+        queueStateEvent(prepared.initialStatus);
         return true;
+    }
+
+    /** Play without replacement. Composite replacement uses transactional prepare + commit. */
+    public synchronized boolean playPrepared(String assetId, double volume) throws LuaException {
+        if (isActive()) return false;
+        try (PreparedStart prepared = preparePreparedStart(assetId, volume)) {
+            return commitPreparedStart(prepared);
+        }
     }
 
     public synchronized boolean isActive() {

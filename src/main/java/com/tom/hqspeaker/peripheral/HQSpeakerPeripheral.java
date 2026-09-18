@@ -299,16 +299,28 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     
-    @LuaFunction
-    public final boolean speakPCM(IArguments args) throws LuaException {
+    static record PreparedPcm(byte[] data, float volume, int samples) {
+        PreparedPcm {
+            data = java.util.Arrays.copyOf(data, data.length);
+        }
+    }
+
+    PreparedPcm preparePcm(IArguments args) throws LuaException {
         Map<?, ?> table = args.getTable(0);
         float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-
         int len = 0;
         while ((table.containsKey((long)(len + 1)) || table.containsKey((double)(len + 1))) && len <= SPEAKER_MAX_PCM) len++;
+        byte[] data = audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16);
+        return new PreparedPcm(data, volume, len);
+    }
 
-        return enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE,
-            audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16), volume);
+    boolean enqueuePreparedPcm(PreparedPcm prepared) {
+        return prepared != null && enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume());
+    }
+
+    @LuaFunction
+    public final boolean speakPCM(IArguments args) throws LuaException {
+        return enqueuePreparedPcm(preparePcm(args));
     }
 
     @LuaFunction public final boolean speakOgg(IArguments args) throws LuaException { return speakAudioFile(args, HQSpeakerAudioPacket.AudioFormat.OGG_VORBIS, "speakOgg"); }
@@ -1078,6 +1090,17 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
 
     private boolean startStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method, long startTick, java.util.UUID syncGroupId, int syncGroupSize) throws LuaException {
         validateStreamUrl(url, method);
+        return startValidatedStreamAtTick(url, volume, format, method, startTick, syncGroupId, syncGroupSize);
+    }
+
+    boolean startValidatedStream(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
+                                 String method) throws LuaException {
+        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, 0);
+    }
+
+    private boolean startValidatedStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
+                                               String method, long startTick, java.util.UUID syncGroupId,
+                                               int syncGroupSize) throws LuaException {
         float vol = clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume");
         speakStop();
         clearIcyMeta();
@@ -1223,7 +1246,7 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         sendToNearby(sl, pkt, wp[0], wp[1], wp[2]);
     }
 
-    private static void validateStreamUrl(String url, String method) throws LuaException {
+    static void validateStreamUrl(String url, String method) throws LuaException {
         if (url == null || url.isBlank()) throw new LuaException(method + ": URL cannot be empty");
         if (url.length() > 512) throw new LuaException(method + ": URL too long (max 512 chars)");
 

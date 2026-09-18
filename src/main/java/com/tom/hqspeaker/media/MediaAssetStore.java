@@ -8,6 +8,8 @@ import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -38,7 +40,13 @@ import java.util.UUID;
  */
 public final class MediaAssetStore implements AutoCloseable {
     private static final int COPY_BUFFER_BYTES = 64 * 1024;
+    static final int MAX_ZERO_READS = 32;
     private static final String LOCK_NAME = ".asset-store.lock";
+
+    @FunctionalInterface
+    interface MoveOperation {
+        void move(Path source, Path target, CopyOption... options) throws IOException;
+    }
 
     private static final class Entry {
         final MediaAsset asset;
@@ -115,7 +123,7 @@ public final class MediaAssetStore implements AutoCloseable {
         boolean moved = false;
         try {
             writeExact(part, source, sizeBytes);
-            Files.move(part, media, StandardCopyOption.ATOMIC_MOVE);
+            publishPart(part, media);
             moved = true;
 
             MediaAsset asset = new MediaAsset(id, sizeBytes, sourceName);
@@ -252,9 +260,10 @@ public final class MediaAssetStore implements AutoCloseable {
         if (activeParts.remove(part)) reservedBytes -= sizeBytes;
     }
 
-    private static void writeExact(Path part, ReadableByteChannel source, long sizeBytes) throws IOException {
+    static void writeExact(Path part, ReadableByteChannel source, long sizeBytes) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocateDirect(COPY_BUFFER_BYTES);
         long remaining = sizeBytes;
+        int zeroReads = 0;
         try (FileChannel output = FileChannel.open(part,
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             while (remaining > 0L) {
@@ -263,18 +272,42 @@ public final class MediaAssetStore implements AutoCloseable {
                 int read = source.read(buffer);
                 if (read < 0) throw new EOFException("media source ended before declared size");
                 if (read == 0) {
+                    if (++zeroReads > MAX_ZERO_READS) throw new IOException("media source read made no progress");
                     Thread.onSpinWait();
                     continue;
                 }
+                zeroReads = 0;
                 remaining -= read;
                 buffer.flip();
                 while (buffer.hasRemaining()) output.write(buffer);
             }
 
             ByteBuffer extra = ByteBuffer.allocate(1);
-            int extraRead = source.read(extra);
-            if (extraRead > 0) throw new IOException("media source is larger than declared size");
+            zeroReads = 0;
+            while (true) {
+                int extraRead = source.read(extra);
+                if (extraRead > 0) throw new IOException("media source is larger than declared size");
+                if (extraRead < 0) break;
+                if (++zeroReads > MAX_ZERO_READS) {
+                    throw new IOException("media source read made no progress after declared size");
+                }
+                Thread.onSpinWait();
+            }
             output.force(true);
+        }
+    }
+
+    private static void publishPart(Path part, Path media) throws IOException {
+        publishPart(part, media, (source, target, options) -> Files.move(source, target, options));
+    }
+
+    static void publishPart(Path part, Path media, MoveOperation mover) throws IOException {
+        try {
+            mover.move(part, media, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            // Both paths live under the same store root. The asset is not published in entries until this completes,
+            // so a same-filesystem non-atomic rename is safe as a compatibility fallback.
+            mover.move(part, media);
         }
     }
 
@@ -339,29 +372,31 @@ public final class MediaAssetStore implements AutoCloseable {
      */
     @Override
     public void close() throws IOException {
-        ArrayList<Entry> toDelete = null;
+        ArrayList<Entry> toDelete;
         synchronized (this) {
-            if (!closed) {
-                closed = true;
-                toDelete = new ArrayList<>(entries.values());
-                entries.clear();
-                committedBytes = 0L;
-            }
+            if (!closed) closed = true;
+            toDelete = closeCleanupDone ? new ArrayList<>() : new ArrayList<>(entries.values());
         }
 
         IOException failure = null;
-        if (toDelete != null) {
-            for (Entry entry : toDelete) {
-                try {
-                    Files.deleteIfExists(entry.path);
-                } catch (IOException exception) {
-                    if (failure == null) failure = exception;
-                    else failure.addSuppressed(exception);
+        for (Entry entry : toDelete) {
+            try {
+                Files.deleteIfExists(entry.path);
+                synchronized (this) {
+                    Entry current = entries.get(entry.asset.id());
+                    if (current == entry) {
+                        entries.remove(entry.asset.id());
+                        committedBytes -= entry.asset.sizeBytes();
+                    }
                 }
+            } catch (IOException exception) {
+                if (failure == null) failure = exception;
+                else failure.addSuppressed(exception);
             }
-            synchronized (this) {
-                closeCleanupDone = true;
-            }
+        }
+
+        synchronized (this) {
+            closeCleanupDone = entries.isEmpty();
         }
 
         try {

@@ -1,5 +1,6 @@
 package com.tom.hqspeaker.peripheral;
 
+import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
 import dan200.computercraft.api.lua.IArguments;
 import dan200.computercraft.api.lua.ILuaContext;
 import dan200.computercraft.api.lua.LuaException;
@@ -43,6 +44,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     );
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
+    private static final Set<String> STREAM_DIRECT = Set.of(
+        "speakStreamAll", "speakHLSAll", "speakTSAll", "speakStreamAt", "speakHLSAt", "speakTSAt"
+    );
     private static final String[] SUPPORTED_FINITE_FILES = { "wav", "ogg", "mp3", "aiff", "aif", "au", "snd" };
 
     /** Exact inherited single-speaker RAW limits. */
@@ -186,10 +190,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction(mainThread = true)
     public final synchronized boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
-        beginReplacingHQ(Owner.STAGED_FINITE);
-        boolean started = finite.playPrepared(assetId, volume.orElse(1.0));
-        if (started) owner = Owner.STAGED_FINITE;
-        return started;
+        try (HQFiniteMediaServer.PreparedStart prepared =
+                 finite.preparePreparedStart(assetId, volume.orElse(1.0))) {
+            beginReplacingHQ(Owner.STAGED_FINITE);
+            if (!finite.commitPreparedStart(prepared)) {
+                throw new IllegalStateException("admitted prepared replacement could not be committed");
+            }
+            owner = Owner.STAGED_FINITE;
+            return true;
+        }
     }
 
     @LuaFunction
@@ -203,31 +212,46 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @Override
-    public synchronized MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
+    public MethodResult callMethod(IComputerAccess computer, ILuaContext context, int method, IArguments args) throws LuaException {
         if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
         String name = dynamicNames[method];
 
-        if (STANDARD.contains(name)) return callStandard(name, context, args);
-        if (FINITE_CONTROLS.contains(name)) return callFiniteControl(name, computer, context, args);
+        if (STANDARD.contains(name)) {
+            synchronized (this) { return callStandard(name, context, args); }
+        }
+        if (FINITE_CONTROLS.contains(name)) {
+            synchronized (this) { return callFiniteControl(name, computer, context, args); }
+        }
 
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
         if ("speakSupportedFiles".equals(name)) return MethodResult.of((Object) SUPPORTED_FINITE_FILES.clone());
 
         if ("speakStop".equals(name)) {
-            stopEverything();
+            synchronized (this) { stopEverything(); }
             return MethodResult.of();
         }
-        if ("speakIsPlaying".equals(name)) return MethodResult.of(isHQContinuousActive());
-
-        if ("setLooping".equals(name) && owner == Owner.STAGED_FINITE) {
-            return MethodResult.of(finite.setLooping(args.getBoolean(0)));
+        if ("speakIsPlaying".equals(name)) {
+            synchronized (this) { return MethodResult.of(isHQContinuousActive()); }
         }
 
-        if (RAW_START.contains(name)) return startRaw(computer, context, name, args);
-        if (FINITE_START.contains(name)) return startLegacyReplacing(Owner.LEGACY_FINITE, computer, context, name, args);
-        if (STREAM_START.contains(name)) return startLegacyReplacing(Owner.STREAM, computer, context, name, args);
+        if ("setLooping".equals(name)) {
+            synchronized (this) {
+                if (owner == Owner.STAGED_FINITE) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
+            }
+        }
 
-        return invokeLegacy(name, computer, context, args);
+        if (RAW_START.contains(name)) {
+            synchronized (this) { return startRaw(computer, context, name, args); }
+        }
+        if (FINITE_START.contains(name)) {
+            synchronized (this) { return startLegacyReplacing(Owner.LEGACY_FINITE, computer, context, name, args); }
+        }
+        if (STREAM_START.contains(name)) return startStreamReplacing(name, args);
+
+        // These inherited helpers may resolve DNS too. They must never run while holding the composite monitor.
+        if (STREAM_DIRECT.contains(name)) return invokeLegacy(name, computer, context, args);
+
+        synchronized (this) { return invokeLegacy(name, computer, context, args); }
     }
 
     private MethodResult callStandard(String name, ILuaContext context, IArguments args) throws LuaException {
@@ -254,25 +278,50 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult startRaw(IComputerAccess computer, ILuaContext context, String name, IArguments args) throws LuaException {
-        if (owner != Owner.RAW) beginReplacingHQ(Owner.RAW);
+        HQSpeakerPeripheral.PreparedPcm prepared = legacy.preparePcm(args);
+        int samples = prepared.samples();
+        if (samples <= 0 || samples > HQ_RAW_MAX_SAMPLES) throw new LuaException(name + ": table too large");
 
-        int samples = contiguousRawSamples(args);
-        boolean validSizedChunk = samples > 0 && samples <= HQ_RAW_MAX_SAMPLES;
-        if (validSizedChunk && (legacy.speakQueueSize() >= HQ_RAW_QUEUE_LIMIT
-                || !rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES))) {
-            rawCapacityWaiters.put(computer, samples);
+        if (owner == Owner.RAW) {
+            if (legacy.speakQueueSize() >= HQ_RAW_QUEUE_LIMIT
+                    || !rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES)) {
+                rawCapacityWaiters.put(computer, samples);
+                return MethodResult.of(false);
+            }
+        } else {
+            // All normal RAW rejection/validation has happened. Replacing now clears the old queue and lifetime.
+            beginReplacingHQ(Owner.RAW);
+        }
+
+        if (!legacy.enqueuePreparedPcm(prepared)) {
+            if (owner == Owner.RAW) rawCapacityWaiters.put(computer, samples);
             return MethodResult.of(false);
         }
 
-        MethodResult result = invokeLegacy(name, computer, context, args);
-        if (immediateTrue(result)) {
-            owner = Owner.RAW;
-            rawCapacityWaiters.remove(computer);
-            rawLifetime.acceptedSamples(samples);
-        } else if (validSizedChunk) {
-            rawCapacityWaiters.put(computer, samples);
+        owner = Owner.RAW;
+        rawCapacityWaiters.remove(computer);
+        rawLifetime.acceptedSamples(samples);
+        return MethodResult.of(true);
+    }
+
+    private MethodResult startStreamReplacing(String name, IArguments args) throws LuaException {
+        String url = args.getString(0);
+        Optional<Double> volume = args.optDouble(1);
+        HQSpeakerPeripheral.validateStreamUrl(url, name);
+
+        HQSpeakerAudioPacket.AudioFormat format = switch (name) {
+            case "speakStream" -> HQSpeakerAudioPacket.AudioFormat.MP3_STREAM;
+            case "speakHLS" -> HQSpeakerAudioPacket.AudioFormat.HLS_STREAM;
+            case "speakTS" -> HQSpeakerAudioPacket.AudioFormat.TS_STREAM;
+            default -> throw new LuaException("No such stream method " + name);
+        };
+
+        synchronized (this) {
+            beginReplacingHQ(Owner.STREAM);
+            boolean started = legacy.startValidatedStream(url, volume, format, name);
+            if (started) owner = Owner.STREAM;
+            return MethodResult.of(started);
         }
-        return result;
     }
 
     private MethodResult startLegacyReplacing(Owner requested, IComputerAccess computer, ILuaContext context,
