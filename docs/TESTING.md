@@ -79,9 +79,9 @@ The final re-audit confirms:
 
 ### Runtime evidence boundary
 
-Actual Minecraft SoundManager/OpenAL behavior is not proven by Gradle CI. The focused audible checklist below remains useful and KI-046 remains unrecorded.
+Actual Minecraft SoundManager/OpenAL behavior is not proven by Gradle CI. A separate focused **M1G audible/core runtime PASS was recorded on 2026-09-19** using NeoForge 21.1.247 integrated singleplayer, resolving KI-046. NeoForge 21.1.248 remains CI/package verified rather than manually runtime-verified.
 
-M1G is nevertheless closed as the engineering milestone, consistent with the project's separate tracking of source/component completion versus focused runtime evidence.
+The broader checklist below also contains post-M1G hardening and M1H-adjacent checks. Those remain useful release evidence but do not keep KI-046 or the M1G core milestone open.
 
 ## Cross-cutting safety/hardening tests
 
@@ -135,11 +135,13 @@ Do not treat every script in `scripts/` as a current M1G gate.
 - `m1_player_test.lua` and `p0_finite_regression.lua` primarily exercise inherited byte-taking finite APIs, not the modern `hq.playFile()` / prepared path.
 - `m0-smoke.lua` is broad legacy smoke coverage, not proof of M1G prepared playback.
 
-Until dedicated modern scripts exist, use the focused manual matrix below and record the exact branch/commit/JAR.
+A dedicated external runtime kit was used for the 2026-09-19 M1G pass. Keep the matrix below as the broader regression/release checklist and record exact branch/commit/JAR for future reruns.
 
 ## Focused Minecraft M1G acceptance
 
-Before calling M1G audibly proven, record at least:
+**Recorded core audible PASS (2026-09-19, NeoForge 21.1.247 integrated singleplayer):** modern WAV/MP3 audibility, pause/resume, repeated seek/reanchor, MP3 seek, prepared-asset lifetime, float32 WAV, natural EOF, ordinary loop replay, positional attenuation, fixed 32-block range behavior, volume >1 not extending range, stop, and loop-safe global-volume-zero hibernation/unmute. The focused mute/unmute retest kept the authoritative loop in `playing` state at volume 0 for more than five seconds, was manually confirmed silent, then returned to audible playback after unmute.
+
+The remaining matrix is broader than the core KI-046 gate and should still be used for future regression/release work:
 
 1. `hq.playFile()` MP3 becomes audible;
 2. supported common WAV becomes audible;
@@ -183,7 +185,7 @@ M1G real-MP3 progressive integration coverage: PASS
 M1G renderer-read policy coverage: PASS
 M1G staging cleanup: PASS
 M1G ordinary replay: implemented
-M1G audible runtime PASS: unrecorded (KI-046)
+M1G focused audible/core runtime PASS: recorded 2026-09-19 on NeoForge 21.1.247 (KI-046 resolved)
 ```
 
 
