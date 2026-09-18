@@ -1,6 +1,6 @@
 # CC:HQ Speakers — next-chat handoff
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
@@ -25,7 +25,7 @@ Artifacts:
 - 21.1.247: artifact `10527498657`, SHA-256 `3b873edd94a924cf3922a75cdd059c2b3963500787bd479ec8b386600ef055b1`;
 - 21.1.248: artifact `10528645404`, SHA-256 `3b9304a509d37bf2ef1c0797d4449fa2cb6c8cc705678e63a68ed8c2ef72f8b1`.
 
-Focused audible M1G Minecraft acceptance remains unrecorded under KI-046. Do not turn the green CI result into an audible-runtime PASS claim.
+A separate focused **M1G audible/core Minecraft runtime PASS was recorded on 2026-09-19** using NeoForge 21.1.247 integrated singleplayer, resolving KI-046. NeoForge 21.1.248 remains CI/package verified but was not manually runtime-tested in that session.
 
 ## Read first
 
@@ -98,6 +98,6 @@ Modern BEGIN carries initial world position and block coordinates. Modern STATE 
 - M1E source/test/CI: PASS; final focused Minecraft acceptance skipped/unrecorded.
 - M1F source/test/CI/package/component: PASS; focused Minecraft transport acceptance unrecorded.
 - M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`.
-- M1G audible Minecraft PASS: unrecorded (KI-046).
+- M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247 integrated singleplayer; KI-046 resolved.
 
 Historical Lua scripts are not substitutes for the modern prepared-path runtime checklist.
