@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `e0e98ae77335828f02f8e93825b27632de2b8ee6`, CI `35406123680`, also green on both targets with package verification/artifacts.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`, also green on both targets with package verification/artifacts.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historical option lists do not override it.
 
@@ -107,7 +107,7 @@ The direct Minecraft `AudioStream` interface itself is compile/package verified 
 
 ### KI-062 — blocking stream URL lookup held the ownership monitor
 
-**Resolved at source/test/CI level.** Blocking stream DNS validation runs outside both the ownership monitor used by `tickOwnership()`/`cleanup()` and the separate command-order lock. After validation, the normal single-speaker stream commit briefly rejoins command ordering and ownership locking. This matters because `audioPlayPrepared` is a CC:T main-thread method: it can no longer wait behind blocked DNS. A lifecycle epoch also rejects a DNS result which returns after detach/cleanup, so an old blocked command cannot revive a stale stream.
+**Resolved at source/test/CI level.** Blocking stream DNS validation runs outside both the ownership monitor used by `tickOwnership()`/`cleanup()` and the separate command-order lock. After validation, the normal single-speaker stream commit briefly rejoins command ordering and ownership locking. This matters because `audioPlayPrepared` is a CC:T main-thread method: it can no longer wait behind blocked DNS. A mutation revision rejects a normal stream start superseded by a newer playback/control command during DNS, and a lifecycle epoch rejects a result which returns after detach/cleanup.
 
 Inherited `speakStream` / HLS / TS helpers may still block their calling ComputerCraft thread during DNS; M3 owns redesigning live streams themselves. The server tick/cleanup lock coupling is removed.
 
@@ -191,7 +191,7 @@ Do not reopen KI-062/063/054/064 without a concrete regression. M1H now owns lat
 - M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
 - M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247; KI-046 resolved.
 - KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
-- KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `e0e98ae77335828f02f8e93825b27632de2b8ee6`.
+- KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `3d30ce4564de749f32171666df65de739b08ad77`.
 - Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
 
 
