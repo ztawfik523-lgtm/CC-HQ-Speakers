@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Both targets passed build, tests, packaged-mod verification, and artifact upload.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`, also green on both targets with package verification/artifacts.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historical option lists do not override it.
 
@@ -103,50 +103,41 @@ The direct Minecraft `AudioStream` interface itself is compile/package verified 
 
 **Resolved in source.** Whole-owner staging cleanup deletes all top-level persistent staging entries after computers are unmounted and owner references are released. One-computer detach does not clear the shared mount.
 
-## Active cross-cutting correctness / hardening
+## Resolved post-M1G correctness / hardening
 
-### KI-062 — blocking stream URL lookup can hold a monitor required by server tick and cleanup
+### KI-062 — blocking stream URL lookup held the ownership monitor
 
-**Confirmed by exact-source recheck. No fix has been applied.**
+**Resolved at source/test/CI level.** The composite no longer holds the monitor used by `tickOwnership()` and `cleanup()` while DNS validation runs. Lua audio commands use a separate command-order lock, while ownership mutation still uses the short ownership monitor.
 
-`HQSpeakerCompositePeripheral.callMethod(...)` is synchronized. Dynamic `speakStream` / `speakHLS` / `speakTS` dispatch can reach synchronous `InetAddress.getAllByName(host)` while that monitor is held.
+Inherited `speakStream` / HLS / TS helpers may still block their calling ComputerCraft thread during DNS; M3 owns redesigning live streams themselves. The server tick/cleanup lock coupling is removed.
 
-The server main thread calls synchronized `tickOwnership()` on the same composite every tick. Composite `cleanup()` is also synchronized and is reached by provider `forget`, `forgetLevel`, and `clearAll` during block removal, Level unload, and server stop.
+### KI-063 — replacement destroyed valid playback before admission
 
-A DNS-parked ComputerCraft thread can therefore make server tick ownership work or lifecycle cleanup wait on that composite monitor.
+**Resolved for the known RAW/prepared paths.**
 
-`audioPrepareStaged(...)` is **not** synchronized on this monitor; do not broaden the claim to all media operations.
+Prepared finite playback now performs validation, asset retain, media-service acquisition, descriptor/session construction, and initial-status construction before current ownership is stopped. An uncommitted prepared-start token releases its retained asset.
 
-Fix direction: preserve ownership ordering while moving/blocking DNS/I/O outside the shared monitor or otherwise eliminating server-thread dependence on it. Do not expand this into M3 stream redevelopment.
+RAW replacement now validates/converts the full sample table and volume before stopping the previous source. Fresh replacement then starts against a cleared queue/lifetime.
 
-### KI-063 — replacement can destroy valid current playback before admission succeeds
+### KI-054 — shutdown retry/root-lock hardening
 
-**Confirmed. No fix has been applied.**
+**Resolved at source/component level.**
 
-RAW replacement calls ownership transfer/stop before final capacity acceptance. Prepared replacement similarly transfers/stops current ownership before `finite.playPrepared(...)` has completed all rejection/failure paths.
+- range workers begin shutdown during `ServerStoppingEvent`;
+- final close waits/drains during `ServerStoppedEvent`;
+- a failed final close keeps the old server-assets entry reachable instead of dropping ownership;
+- a genuinely new server instance retries old closing entries before opening the media root;
+- the same stopping server cannot resurrect a new media service;
+- `MediaAssetStore.close()` keeps failed-deletion entries/quota bookkeeping and the root lock until a later retry actually succeeds.
 
-A retryable `false` or failed start should leave the current valid source alive unless destructive replacement is explicitly intended.
+### KI-064 — import no-progress / atomic-move fallback
 
-### KI-054 — shutdown cleanup can lose retry state or leave the media-store root lock held
+**Resolved at source/component level.**
 
-**Active shutdown correctness/hardening issue. No fix has been applied.**
-
-Two failure shapes exist:
-
-1. `MediaAssetStore.close()` clears completed-entry bookkeeping before deletion attempts, so failed deletion cannot be retried by another `close()`;
-2. `ServerMediaAssets.closeServer()` calls `FiniteRangeReadService.close()` before `MediaAssetStore.close()`. If range close throws, store close and registry removal are never reached, so the root file lock and stopped-server/assets entry can remain alive in the JVM.
-
-A later integrated-server/world start on the same root can then fail with “media asset store directory is already in use” while the old lock is still held. Next-start orphan pruning does not solve a still-held same-JVM lock.
-
-### KI-064 — MediaAsset import has an unbounded zero-read spin and no non-atomic move fallback
-
-**Confirmed storage hardening gap. No fix has been applied.**
-
-`MediaAssetStore.writeExact(...)` immediately retries zero-byte reads forever with `Thread.onSpinWait()` and no bounded no-progress policy.
-
-Import also uses `Files.move(..., ATOMIC_MOVE)` without falling back when the filesystem does not support atomic moves.
-
-Both are local storage/import fixes with deterministic test opportunities.
+- repeated zero-byte source reads are bounded and fail deterministically instead of spinning forever;
+- temporary zero reads are tolerated up to the bound;
+- unsupported `ATOMIC_MOVE` falls back to a same-root non-atomic move before the asset is published;
+- deterministic tests cover no-progress failure, eventual progress, move fallback, and retryable close bookkeeping.
 
 ## Active listener lifecycle — M1H
 
@@ -189,9 +180,9 @@ The repository audit is supporting evidence, not current authority. The followin
 
 ## Current working priority
 
-M1G is closed. Next engineering priority is no longer the M1G decoder cluster.
+The post-M1G Option A hardening pass is complete. The next active engineering milestone is **M1H listener/rejoin/movement lifecycle**.
 
-The still-open cross-cutting correctness/hardening issues are KI-062, KI-063, KI-054, and KI-064. M1H owns listener/rejoin/movement lifecycle. Keep those issues visible, but do not retroactively expand M1G to claim they were part of its core progressive finite-engine closeout.
+Do not reopen KI-062/063/054/064 without a concrete regression. M1H now owns late entry, proactive leave, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
 
 ## Reminders
 
@@ -200,7 +191,7 @@ The still-open cross-cutting correctness/hardening issues are KI-062, KI-063, KI
 - M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
 - M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247; KI-046 resolved.
 - KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
-- KI-054/062/063/064 remain open post-M1G.
+- KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`.
 - Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
 
 

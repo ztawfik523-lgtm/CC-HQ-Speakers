@@ -6,15 +6,18 @@ Build a better programmable ComputerCraft speaker peripheral. Lua owns applicati
 
 Do not add permanent music/effect/notification roles or a Java playlist manager.
 
-## Current sequencing note — updated 2026-09-18
+## Current sequencing note — updated 2026-09-19
 
-M1E, M1F, and M1G are complete at source/test/CI/package level.
+M1G is complete, including focused NeoForge 21.1.247 audible/core runtime acceptance.
 
-M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`, green on NeoForge 21.1.247 and 21.1.248 with packaged-mod verification and artifact upload.
+The selected Option A post-M1G hardening pass is also complete:
 
-Focused audible Minecraft M1G acceptance remains unrecorded under KI-046. That is an evidence boundary, not an open decoder-engine implementation item.
+- source checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`;
+- CI `35404136463`;
+- NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
+- KI-062, KI-063, KI-054, and KI-064 resolved.
 
-The next current work is the post-M1G cross-cutting hardening set KI-062/KI-063/KI-054/KI-064 and then/alongside M1H listener/recovery lifecycle according to patch cohesion.
+The next active milestone is **M1H — dynamic listener lifecycle/recovery**.
 
 ## Foundation
 
@@ -78,14 +81,14 @@ Focused real-Minecraft audible proof remains unrecorded under KI-046 and should 
 
 ### Post-M1G cross-cutting hardening
 
-Still open:
+**Complete.**
 
-- KI-062 — blocking legacy stream DNS while holding the composite monitor;
-- KI-063 — replacement-before-admission can destroy current valid playback;
-- KI-054 — shutdown deletion retry/root-lock hardening;
-- KI-064 — asset-import zero-read progress bound and non-atomic move fallback.
+- KI-062: DNS no longer holds the ownership monitor required by server tick/cleanup; a separate Lua-command lock preserves user-command ordering.
+- KI-063: RAW/prepared replacement admits the replacement before destructive ownership transfer.
+- KI-054: shutdown starts range-worker cancellation early, retains failed cleanup for retry, and can recover the media-root lock on a later integrated-server start.
+- KI-064: bounded zero-read handling and unsupported-atomic-move fallback are implemented and tested.
 
-These are real correctness/hardening items, but they are not retroactively part of the completed M1G core progressive finite-engine scope.
+Checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
 
 ## M1H — dynamic listener lifecycle/recovery
 
@@ -128,9 +131,9 @@ Final category/gain, reload lifecycle, stale-channel cleanup, remaining attenuat
 
 ## M1O/P/Q — hardening, package verification, consolidated runtime acceptance
 
-Includes shutdown/storage hardening such as KI-054/KI-064, practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
+Includes remaining practical malformed/extreme-media bounds, stress bounded queues/memory/network/lifecycle, keep both NeoForge targets green, then run final integrated Minecraft acceptance.
 
-KI-061 was closed in M1G. KI-054/KI-064 remain part of later storage/shutdown hardening.
+KI-061 was closed in M1G. KI-054/KI-064 were closed by the post-M1G Option A hardening pass.
 
 ## M2 — Sound Physics Remastered
 

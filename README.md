@@ -29,7 +29,7 @@ Final M1G source checkpoint on `codex/m1g-progressive-finite-decode`:
 
 Final M1G CI `35297026277` passed NeoForge 21.1.247 and 21.1.248 including build, deterministic tests, packaged-mod verification, and artifact upload.
 
-Focused real-Minecraft M1F transport acceptance remains unrecorded. Focused **M1G audible/core Minecraft acceptance is recorded PASS** on NeoForge 21.1.247 in an integrated singleplayer runtime on 2026-09-19. This does not claim a manual runtime PASS on 21.1.248 or cover post-M1G KI-062/063/054/064 and M1H lifecycle work.
+Focused real-Minecraft M1F transport acceptance remains unrecorded. Focused **M1G audible/core Minecraft acceptance is recorded PASS** on NeoForge 21.1.247 in integrated singleplayer. The separate post-M1G Option A hardening pass is now green on both supported NeoForge targets; M1H lifecycle work is next.
 
 Current finite implementation:
 
@@ -74,16 +74,18 @@ Resolved M1G issues: KI-051, KI-053, KI-055, KI-056, KI-057, KI-058, KI-060, KI-
 
 M1G intentionally does not include gapless MP3, permanent-source loop engineering, dynamic volume-aware listener membership, full M1H rejoin/movement lifecycle, or Sound Physics Remastered range/acoustic integration.
 
-## Open after M1G
+## Post-M1G hardening
 
-Rechecked repository-wide findings which remain real:
+The selected Option A hardening pass is complete at `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
 
-- KI-062: synchronized dynamic stream dispatch can hold the composite monitor across blocking DNS while server tick or synchronized lifecycle cleanup waits on that monitor;
-- KI-063: rejected/failed RAW or prepared replacement can destroy valid current playback before replacement admission succeeds;
-- KI-054: shutdown can lose deletion retry state or fail before media-store close, leaving the root lock/registry alive in the JVM;
-- KI-064: media import can spin indefinitely on repeated zero-byte reads and lacks an unsupported-atomic-move fallback.
+Closed:
 
-M1H owns dynamic listener/late-join/leave-return/resource recovery and final moving-source/VS2 lifecycle.
+- KI-062 — DNS/server-monitor coupling;
+- KI-063 — destructive replacement before admission;
+- KI-054 — shutdown cleanup/root-lock retry handling;
+- KI-064 — import no-progress and atomic-move fallback.
+
+The next active milestone is **M1H**, which owns dynamic listener entry/leave/rejoin, recovery, and final moving-source/VS2 lifecycle.
 
 ## Audit recheck notes
 

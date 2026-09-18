@@ -19,7 +19,7 @@ M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`, CI `34757923455
 
 M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`. Source/test/CI/package and deterministic/component acceptance are complete; focused Minecraft M1F transport acceptance is unrecorded.
 
-M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. NeoForge 21.1.247 and 21.1.248 both passed build, deterministic tests, packaged-mod verification, and artifact upload.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
 
 ## What is actually integrated now
 
@@ -85,45 +85,26 @@ The broader checklist below also contains post-M1G hardening and M1H-adjacent ch
 
 ## Cross-cutting safety/hardening tests
 
-### KI-062 — blocking DNS must not stall server tick/cleanup monitor
+### Post-M1G hardening evidence
 
-The confirmed defect is a synchronized dynamic stream path which may call blocking DNS while holding the same composite monitor used by `tickOwnership()` and synchronized `cleanup()`.
+KI-062/063/054/064 are resolved at source/component level at hardening checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`.
 
-A regression test should prove ownership ordering without holding the server-tick/lifecycle monitor across external DNS/I/O. Where direct resolver injection is practical, block the resolver deliberately and prove tick/cleanup progress does not depend on it.
+Deterministic coverage added/retained includes:
 
-Do **not** expand this test into an M3 live-stream functional rewrite. `audioPrepareStaged(...)` is not part of this synchronized monitor claim.
+- bounded media-import zero-read no-progress failure;
+- temporary zero-read recovery;
+- unsupported-`ATOMIC_MOVE` fallback;
+- failed close deletion retaining bookkeeping/quota/root-lock state until a later successful retry;
+- nonblocking range-service `beginClose()` immediately rejecting new work before final drain;
+- existing range shutdown retry tests.
 
-### KI-063 — replacement-before-admission
+Exact-source re-audit additionally verifies:
 
-Cover both main forms:
-
-- rejected RAW submission because capacity/admission fails must leave the existing valid HQ source alive;
-- failing `audioPlayPrepared(...)` validation/start must leave the previous source alive unless replacement was actually admitted.
-
-Also test successful replacement still performs the intended ownership transfer/stop exactly once.
-
-### KI-054 — shutdown lock/retry failure
-
-Add deterministic failure injection for both shutdown stages:
-
-- completed-file deletion failure during `MediaAssetStore.close()` must have a defined retry/cleanup outcome;
-- `FiniteRangeReadService.close()` failure before `store.close()` must not leave an unrecoverable root lock/registry entry across same-JVM integrated-server restart.
-
-Next-start orphan pruning is not sufficient proof while an old lock remains held.
-
-### KI-064 — MediaAsset import progress and rename fallback
-
-Add tests for:
-
-- a channel which returns zero repeatedly cannot spin forever;
-- eventual progress after a bounded number of zero reads is handled correctly if that behavior is supported;
-- pathological no-progress input fails deterministically;
-- `AtomicMoveNotSupportedException` falls back to an appropriate same-filesystem non-atomic move without publishing a partial asset;
-- failure cleanup still removes `.part`/unpublished files and preserves quota accounting.
-
-### Practical media-bound hardening
-
-The modern WAV parser currently accepts any positive `int` sample rate. Before release hardening, define and test a practical accepted sample-rate range so malformed/extreme WAV metadata cannot reach the Minecraft/OpenAL streaming path with absurd buffer/rate values. This is not the first M1G blocker.
+- URL DNS validation executes outside the ownership monitor required by `tickOwnership()`/cleanup while a separate command lock preserves Lua command ordering;
+- prepared finite replacement is fully admitted/retained/constructed before current ownership is stopped;
+- RAW replacement validates/converts before current ownership is stopped;
+- the same stopping server cannot reopen media services after shutdown begins;
+- a later server instance retries old failed closing services before opening the media-store root.
 
 ## Lua/runtime scripts: current versus historical
 

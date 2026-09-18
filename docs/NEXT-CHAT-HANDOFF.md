@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
-Current branch: `codex/m1g-progressive-finite-decode`
+Current branch: `codex/post-m1g-hardening`
 
 ## Current checkpoint
 
@@ -75,17 +75,24 @@ M1G implemented:
 
 Resolved M1G issues: KI-051, KI-053, KI-055, KI-056, KI-057, KI-058, KI-060, KI-061. KI-059 was already a resolved product decision.
 
+## Post-M1G hardening checkpoint
+
+Option A is complete.
+
+Source checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`.
+
+CI: `35404136463`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
+
+Resolved:
+
+- KI-062 — blocking DNS no longer holds the server tick/cleanup ownership monitor;
+- KI-063 — RAW/prepared replacement admits first, then destructively replaces;
+- KI-054 — shutdown cleanup/root-lock state remains retryable and starts draining earlier;
+- KI-064 — import no-progress is bounded and atomic-move fallback exists.
+
 ## Next engineering work
 
-M1G should not be reopened merely because these remain:
-
-- **KI-062:** legacy stream DNS can block while the composite monitor is held, making server tick/lifecycle cleanup wait.
-- **KI-063:** RAW/prepared replacement can stop valid current playback before replacement admission succeeds.
-- **KI-054:** shutdown can lose deletion retry state or leave media-store root lock/registry alive after an earlier close failure.
-- **KI-064:** `MediaAssetStore.writeExact()` can spin on repeated zero reads and import lacks an unsupported-`ATOMIC_MOVE` fallback.
-- **M1H:** late entry, proactive leave, return/rejoin, dimension/resource-reload recovery, general underrun recovery, and final VS2 moving-source lifecycle.
-
-There are meaningful sequencing tradeoffs among the post-M1G hardening items. Keep them explicit rather than silently folding all of them into one milestone.
+Start **M1H**: late entry, proactive leave, return/rejoin, dimension/resource-reload recovery, general underrun recovery, and final VS2 moving-source lifecycle.
 
 ## M1H / VS2 boundary
 

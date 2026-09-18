@@ -82,7 +82,7 @@ Active prepared/playback/range release paths preserve retry ownership when final
 
 `ServerMediaAssets.closeServer()` removes its static server entry only after close succeeds. It also calls `FiniteRangeReadService.close()` **before** `MediaAssetStore.close()`. If range close throws, store close and registry removal are never reached, so the store root file lock and stopped-server/assets entry can remain alive in the JVM.
 
-The current server-stop hook catches/logs the failure but does not schedule recovery. This is KI-054 and remains unfixed.
+Post-M1G hardening starts range shutdown at `ServerStoppingEvent`, keeps failed close ownership reachable, retries stale closing services before a new server opens the media root, and preserves failed-deletion bookkeeping/root-lock ownership until cleanup succeeds. KI-054 is resolved at source/component level.
 
 ### FACT-ASSET-004
 
@@ -90,7 +90,7 @@ Each `HQMediaStaging` instance creates a persistent ComputerCraft save-directory
 
 ### FACT-ASSET-005
 
-`MediaAssetStore.writeExact()` immediately retries repeated zero-byte reads with `Thread.onSpinWait()` and no bounded no-progress limit. `MediaAssetStore.importAsset()` also uses `Files.move(..., ATOMIC_MOVE)` without an unsupported-atomic-move fallback. This is KI-064 and remains unfixed.
+`MediaAssetStore.writeExact()` now bounds repeated zero-byte reads and fails deterministically after the no-progress limit while tolerating temporary zero reads. Import first attempts `ATOMIC_MOVE` and falls back to a same-root non-atomic move when unsupported. KI-064 is resolved with deterministic component tests.
 
 ## M1E facts
 
@@ -253,11 +253,11 @@ NeoForge 1.21.1 payload handlers execute on the main thread by default unless re
 
 Composite `cleanup()` is also synchronized. Provider `forget`, `forgetLevel`, and `clearAll` call cleanup during removal, Level unload, and server stop.
 
-A ComputerCraft thread blocked in DNS can therefore make server tick ownership work or lifecycle cleanup wait on that composite monitor. `audioPrepareStaged(...)` is not itself synchronized on this monitor. This is KI-062.
+Post-M1G hardening separates Lua-command ordering from the ownership monitor: DNS may block the calling ComputerCraft command, but it no longer holds the monitor used by server tick ownership or lifecycle cleanup. KI-062 is resolved.
 
 ### FACT-AUDIT-013 — replacement-before-admission
 
-RAW replacement transfers/stops HQ ownership before capacity acceptance is final. Prepared replacement transfers/stops ownership before `finite.playPrepared(...)` has completed all rejection/failure paths. A rejected/failed replacement can therefore destroy current valid playback. This is KI-063.
+RAW replacement now validates/converts the incoming PCM before ownership transfer. Prepared replacement uses a retained, fully constructed `PreparedStart` admission token and only stops current ownership before a no-normal-rejection commit. KI-063 is resolved for the known RAW/prepared paths.
 
 ### FACT-AUDIT-014 — inherited HLS progression
 
@@ -303,7 +303,7 @@ A separate focused audible/core Minecraft acceptance PASS was recorded on 2026-0
 
 ### FACT-POST-M1G-001
 
-KI-062, KI-063, KI-054, and KI-064 remain open cross-cutting correctness/hardening after M1G.
+KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
 
 ### FACT-M1H-NEXT-001
 

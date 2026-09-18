@@ -4,13 +4,24 @@ Updated: 2026-09-19
 
 ## Checkpoint
 
-Active branch: `codex/m1g-progressive-finite-decode`.
+Active branch: `codex/post-m1g-hardening`.
 
 M1E, M1F, and M1G are complete at source/test/CI/package level.
 
 Final M1G **source** checkpoint:
 
 `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
+
+Post-M1G hardening **source** checkpoint:
+
+`56dfb0107b08a193393acb669e044bb6b6fb0200`
+
+Hardening CI `35404136463` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
+
+Hardening artifacts:
+
+- NeoForge 21.1.247: artifact `10571139068`, SHA-256 `0116895135ff4a2ea2c9bbc150fffa653d75556742e7207f5f8c82879b00c38f`;
+- NeoForge 21.1.248: artifact `10571309004`, SHA-256 `2fd4bf08fb3fe1a447a5a201105008ad9c4ec4b11630de0c8dc39da98926b956`.
 
 CI `35297026277` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
 
@@ -133,24 +144,22 @@ Resolved in the M1G closeout:
 - KI-060 — renderer start + global-zero hibernation;
 - KI-061 — staging leftovers.
 
-KI-052's deterministic/source portion is satisfied by the final component suite and re-audit. KI-046 is now also satisfied by the recorded focused live Minecraft/SoundManager/OpenAL run on NeoForge 21.1.247. This does not absorb later M1H recovery/resource-reload work or post-M1G KI-062/063/054/064.
+KI-052's deterministic/source portion is satisfied by the final component suite and re-audit. KI-046 is now also satisfied by the recorded focused live Minecraft/SoundManager/OpenAL run on NeoForge 21.1.247. This does not absorb later M1H recovery/resource-reload work. The separate post-M1G KI-062/063/054/064 hardening pass is now complete.
 
-## Open after M1G
+## Post-M1G hardening complete
 
-These remain real but are **post-M1G** work:
+The Option A hardening pass is complete at source/test/CI/package level.
 
-- KI-062 — synchronized legacy stream dispatch can hold the composite monitor across blocking DNS;
-- KI-063 — replacement-before-admission can destroy current valid playback;
-- KI-054 — shutdown deletion retry/root-lock hardening;
-- KI-064 — asset-import no-progress and non-atomic-move fallback;
-- M1H — late entry, proactive leave, rejoin, resource/dimension recovery, general underrun recovery, and final VS2 movement lifecycle;
-- M1I — gated native FLAC;
-- M1J/K/L/N/O/P/Q — later synchronization, migration, sound-engine cleanup, hardening, package/release work;
-- M2 — Sound Physics Remastered;
-- M3 — live/open-ended stream rebuild;
-- M4 — public release cleanup.
+Resolved after M1G:
 
-KI-062/063/054/064 were deliberately not folded into M1G merely because the broad audit found them. They are cross-cutting ownership/storage hardening and remain explicitly visible rather than silently marked resolved.
+- KI-062 — blocking stream URL DNS no longer holds the ownership monitor used by server tick/cleanup. Lua audio command ordering is preserved with a separate command lock.
+- KI-063 — RAW and prepared replacement validate/admit the replacement before destructively stopping the current valid source.
+- KI-054 — range shutdown begins during `ServerStopping`; failed final cleanup remains retryable, old stopped-server ownership remains reachable, and a later server instance retries stale cleanup before reopening the media root.
+- KI-064 — media import has a bounded no-progress policy and falls back to a safe same-root non-atomic rename when `ATOMIC_MOVE` is unsupported.
+
+`MediaAssetStore.close()` now retains failed-deletion bookkeeping/quota state and keeps the root lock until cleanup actually succeeds.
+
+The next active milestone is **M1H**: listener entry/leave/rejoin, dimension/resource recovery, general underrun recovery, and final moving-source/VS2 lifecycle.
 
 ## Rechecked repository-audit corrections to preserve
 
@@ -184,10 +193,11 @@ M1G renderer-read policy coverage: PASS
 M1G staging lifecycle cleanup: PASS
 M1G ordinary replay: implemented
 M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247 integrated singleplayer (KI-046 resolved)
-Cross-cutting synchronized-DNS/main-thread stall: open KI-062
-Cross-source replacement-before-admission: open KI-063
-Storage import progress/rename hardening: open KI-064
-Shutdown lock/retry hardening: open KI-054
+Post-M1G KI-062 DNS/monitor hardening: PASS
+Post-M1G KI-063 replacement admission hardening: PASS
+Post-M1G KI-064 import progress/rename hardening: PASS
+Post-M1G KI-054 shutdown lock/retry hardening: PASS
+Next milestone: M1H listener/recovery lifecycle
 ```
 
 ## Read order
