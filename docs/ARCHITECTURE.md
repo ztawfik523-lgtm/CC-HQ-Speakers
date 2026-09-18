@@ -183,11 +183,9 @@ Do not silently choose between them before M1H design work.
 
 ## Cross-cutting ownership/threading safety
 
-KI-062 is resolved. Dynamic legacy stream calls may still block their calling ComputerCraft thread during DNS, but DNS no longer holds the ownership monitor used by `tickOwnership()`/cleanup. A separate command lock preserves Lua command ordering.
+KI-062 is resolved. Dynamic legacy stream calls may still block their calling ComputerCraft thread during DNS, but blocking URL validation now runs outside both the ownership monitor used by `tickOwnership()`/cleanup and the separate command-order lock. This also matters because `audioPlayPrepared` is a CC:T main-thread method: it cannot be forced to wait behind DNS through that lock.
 
-The same monitor is also acquired by synchronized `cleanup()`, which provider `forget`, `forgetLevel`, and `clearAll` paths can call during removal/unload/shutdown. A DNS-parked computer thread can therefore block both server tick ownership work and lifecycle cleanup waiting on that composite.
-
-The fix should preserve ownership ordering while moving blocking DNS/I/O outside the shared monitor or otherwise removing server-thread dependence on that monitor.
+After validation, the normal single-speaker stream path briefly reacquires command ordering and ownership locking for the actual commit. A lifecycle epoch rejects a result which returns after detach/cleanup, preventing a stale DNS completion from reviving a removed speaker.
 
 KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
 
