@@ -303,7 +303,7 @@ A separate focused audible/core Minecraft acceptance PASS was recorded on 2026-0
 
 ### FACT-POST-M1G-001
 
-KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
+KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`.
 
 ### FACT-M1H-NEXT-001
 

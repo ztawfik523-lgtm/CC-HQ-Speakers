@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`, also green on both targets with package verification/artifacts.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`, also green on both targets with package verification/artifacts.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historical option lists do not override it.
 
@@ -107,7 +107,7 @@ The direct Minecraft `AudioStream` interface itself is compile/package verified 
 
 ### KI-062 — blocking stream URL lookup held the ownership monitor
 
-**Resolved at source/test/CI level.** The composite no longer holds the monitor used by `tickOwnership()` and `cleanup()` while DNS validation runs. Lua audio commands use a separate command-order lock, while ownership mutation still uses the short ownership monitor.
+**Resolved at source/test/CI level.** The composite no longer holds the monitor used by `tickOwnership()` and `cleanup()` while DNS validation runs. Lua audio commands use a separate command-order lock, while ownership mutation still uses the short ownership monitor. A lifecycle epoch also rejects a DNS result which returns after detach/cleanup, so an old blocked command cannot revive a stale stream.
 
 Inherited `speakStream` / HLS / TS helpers may still block their calling ComputerCraft thread during DNS; M3 owns redesigning live streams themselves. The server tick/cleanup lock coupling is removed.
 
@@ -191,7 +191,7 @@ Do not reopen KI-062/063/054/064 without a concrete regression. M1H now owns lat
 - M1G source/test/CI/package/component: PASS at `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
 - M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247; KI-046 resolved.
 - KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
-- KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`.
+- KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `e836dfac702dcc438fa0366dc2fba2132b5140c1`.
 - Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
 
 

@@ -69,7 +69,7 @@ The modern path does not use the inherited complete-file JavaSound/mp3spi bridge
 
 ## Open after M1G
 
-- **Post-M1G hardening:** KI-062/063/054/064 resolved at `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
+- **Post-M1G hardening:** KI-062/063/054/064 resolved at `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`.
 - **M1H:** late-entry/leave/rejoin/resource recovery and final moving-source/VS2 lifecycle.
 
 Later milestones still own FLAC, multispeaker work, legacy migration, OpenAL cleanup, SPR, live streams, and release cleanup.

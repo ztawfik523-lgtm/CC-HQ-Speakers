@@ -14,14 +14,14 @@ Final M1G **source** checkpoint:
 
 Post-M1G hardening **source** checkpoint:
 
-`56dfb0107b08a193393acb669e044bb6b6fb0200`
+`e836dfac702dcc438fa0366dc2fba2132b5140c1`
 
-Hardening CI `35404136463` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
+Hardening CI `35404646105` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
 
 Hardening artifacts:
 
-- NeoForge 21.1.247: artifact `10571139068`, SHA-256 `0116895135ff4a2ea2c9bbc150fffa653d75556742e7207f5f8c82879b00c38f`;
-- NeoForge 21.1.248: artifact `10571309004`, SHA-256 `2fd4bf08fb3fe1a447a5a201105008ad9c4ec4b11630de0c8dc39da98926b956`.
+- NeoForge 21.1.247: artifact `10570964690`, SHA-256 `9b66788c11ccd1b3c4883a9b8c1480ae956870e314061845037186d078745249`;
+- NeoForge 21.1.248: artifact `10571424610`, SHA-256 `570cdde33d3d1435e74a87a95e7af92e0329c23bcc9672b3fbb88f8b770e8fb0`.
 
 CI `35297026277` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
 

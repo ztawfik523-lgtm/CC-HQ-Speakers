@@ -79,9 +79,9 @@ Resolved M1G issues: KI-051, KI-053, KI-055, KI-056, KI-057, KI-058, KI-060, KI-
 
 Option A is complete.
 
-Source checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`.
+Source checkpoint: `e836dfac702dcc438fa0366dc2fba2132b5140c1`.
 
-CI: `35404136463`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
+CI: `35404646105`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
 
 Resolved:
 

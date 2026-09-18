@@ -12,8 +12,8 @@ M1G is complete, including focused NeoForge 21.1.247 audible/core runtime accept
 
 The selected Option A post-M1G hardening pass is also complete:
 
-- source checkpoint `56dfb0107b08a193393acb669e044bb6b6fb0200`;
-- CI `35404136463`;
+- source checkpoint `e836dfac702dcc438fa0366dc2fba2132b5140c1`;
+- CI `35404646105`;
 - NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
 - KI-062, KI-063, KI-054, and KI-064 resolved.
 
@@ -88,7 +88,7 @@ Focused real-Minecraft audible proof remains unrecorded under KI-046 and should 
 - KI-054: shutdown starts range-worker cancellation early, retains failed cleanup for retry, and can recover the media-root lock on a later integrated-server start.
 - KI-064: bounded zero-read handling and unsupported-atomic-move fallback are implemented and tested.
 
-Checkpoint: `56dfb0107b08a193393acb669e044bb6b6fb0200`, CI `35404136463`.
+Checkpoint: `e836dfac702dcc438fa0366dc2fba2132b5140c1`, CI `35404646105`.
 
 ## M1H — dynamic listener lifecycle/recovery
 
