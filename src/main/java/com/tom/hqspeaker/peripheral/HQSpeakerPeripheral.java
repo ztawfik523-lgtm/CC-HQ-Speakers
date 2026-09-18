@@ -70,6 +70,8 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private volatile String icyTitle = "", icyArtist = "", icySong = "",
                             icyStationName = "", icyGenre = "", icyDescription = "";
     private volatile long   icyMetaSerial = 0;
+    /** Invalidates blocking stream admissions which outlive a detach/cleanup lifecycle boundary. */
+    private long lifecycleEpoch;
 
     private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume,
                                 long startTick, java.util.UUID syncGroupId, int syncGroupSize,
@@ -200,7 +202,8 @@ public class HQSpeakerPeripheral implements IPeripheral {
         return current || next;
     }
 
-    public void cleanup() {
+    public synchronized void cleanup() {
+        lifecycleEpoch++;
         ACTIVE_SPEAKERS.remove(this);
         speakerQueue.clear();
         speakerReadyPending.set(false);
@@ -1089,18 +1092,29 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
     }
 
     private boolean startStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method, long startTick, java.util.UUID syncGroupId, int syncGroupSize) throws LuaException {
+        long expectedLifecycle = lifecycleEpochSnapshot();
         validateStreamUrl(url, method);
-        return startValidatedStreamAtTick(url, volume, format, method, startTick, syncGroupId, syncGroupSize);
+        return startValidatedStreamAtTick(
+            url, volume, format, method, startTick, syncGroupId, syncGroupSize, expectedLifecycle);
+    }
+
+    synchronized long lifecycleEpochSnapshot() {
+        return lifecycleEpoch;
+    }
+
+    synchronized boolean lifecycleEpochMatches(long expected) {
+        return lifecycleEpoch == expected;
     }
 
     boolean startValidatedStream(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
-                                 String method) throws LuaException {
-        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, 0);
+                                 String method, long expectedLifecycle) throws LuaException {
+        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, 0, expectedLifecycle);
     }
 
-    private boolean startValidatedStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
-                                               String method, long startTick, java.util.UUID syncGroupId,
-                                               int syncGroupSize) throws LuaException {
+    private synchronized boolean startValidatedStreamAtTick(
+            String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method,
+            long startTick, java.util.UUID syncGroupId, int syncGroupSize, long expectedLifecycle) throws LuaException {
+        if (lifecycleEpoch != expectedLifecycle) return false;
         float vol = clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume");
         speakStop();
         clearIcyMeta();
