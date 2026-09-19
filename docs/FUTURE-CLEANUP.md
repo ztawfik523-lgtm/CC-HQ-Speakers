@@ -29,9 +29,9 @@ Current active engineering is M1H listener/rejoin/movement lifecycle; this file 
 
 ## Old complete-file decoder classes/dependencies
 
-`FileFiniteAudioStream` and `FiniteAudioTrack` were rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence. Their old test was removed with them.
+`FileFiniteAudioStream` was rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence.
 
-The remaining inherited complete-payload finite path is centered on `HQAudioStream`/`HQSpeakerClientHandler` and the old byte-taking APIs. That path is still live compatibility code and must not be deleted until its exposed callers are migrated or intentionally retired.
+`FiniteAudioTrack` remains live: `HQAudioStream` uses it for inherited complete-payload finite playback, so it and its focused test stay until that compatibility path is migrated or retired. The remaining inherited complete-payload finite path is centered on `HQAudioStream`/`HQSpeakerClientHandler` and the old byte-taking APIs.
 
 Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine uses JLayer progressively instead.
 
@@ -142,7 +142,7 @@ Target M4: remove it with world/registry migration consideration or explicitly j
 
 ## Dead/parallel implementation cleanup
 
-`FileFiniteAudioStream`, `FiniteAudioTrack`, and `HQSpeakerCluster` were rechecked against the current branch and removed as unreferenced dead code.
+`FileFiniteAudioStream` and `HQSpeakerCluster` were rechecked against the current branch and removed as unreferenced dead code. `FiniteAudioTrack` was rechecked separately and remains live through `HQAudioStream`.
 
 Remaining candidates include stale diagnostic helpers and parts of the separate `HQSpeakerBlockEntity` path. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
 

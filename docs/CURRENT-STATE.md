@@ -313,7 +313,7 @@ M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 
 ## Post-M1J dead-code recheck
 
-A branch-local source reference scan confirmed that `FileFiniteAudioStream`, `FiniteAudioTrack`, its isolated test, and `HQSpeakerCluster` had no live references outside their own definitions/tests. They were removed. `HQAudioStream` remains live through `HQSpeakerClientHandler` and therefore stays until inherited finite/live callers are migrated or retired.
+A branch-local source reference scan confirmed that `FileFiniteAudioStream` and `HQSpeakerCluster` had no live references and they were removed. A follow-up recheck caught that `FiniteAudioTrack` remains live through `HQAudioStream`, so `FiniteAudioTrack` and its focused test remain. `HQAudioStream` likewise stays until inherited finite/live callers are migrated or retired.
 
 ## Read order
 
