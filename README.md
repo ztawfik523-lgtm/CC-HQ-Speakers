@@ -21,34 +21,32 @@ One physical speaker remains one mono positional source.
 
 ## Current development status
 
-M1E, M1F, and M1G are complete at source/test/CI/package level.
+M1E through M1H are complete at source/test/CI/package level. Focused M1H Minecraft listener/recovery/movement checks are deferred for now.
 
-Final M1G source checkpoint on `codex/m1g-progressive-finite-decode`:
+**M1J modern finite multispeaker is active.** First implementation checkpoint:
 
-`fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
-
-Final M1G CI `35297026277` passed NeoForge 21.1.247 and 21.1.248 including build, deterministic tests, packaged-mod verification, and artifact upload.
-
-Focused real-Minecraft M1F transport acceptance remains unrecorded. Focused **M1G audible/core Minecraft acceptance is recorded PASS** on NeoForge 21.1.247 in integrated singleplayer. The separate post-M1G Option A hardening pass is now green on both supported NeoForge targets; M1H lifecycle work is next.
+- source: `b557773b9c6f6b8029aec132a1706f0d8da914bd`;
+- CI: `35466635285`;
+- NeoForge 21.1.247 and 21.1.248 both passed build, deterministic tests, packaged-mod verification, and artifact upload.
 
 Current finite implementation:
 
 ```text
 ComputerCraft file
 -> reusable server MediaAsset
--> server-authoritative finite playback state
--> protocol v7 STATE decodeRevision + codec-aware anchor
--> bounded client range requests / off-thread server reads
--> bounded sliding client encoded RAM
--> starvation-aware decoder-worker input
--> progressive MP3/common-WAV decoder
--> bounded mono S16 PCM at source rate
--> pure renderer-read policy
--> nonblocking Minecraft AudioStream
--> one positional BLOCKS SoundManager source
+-> one server-authoritative shared playback
+-> protocol v8 playbackId + stateRevision + decodeRevision + codec-aware anchor
+-> independent physical speaker endpoints
+-> bounded per-endpoint client range/decode/render path
+-> one shared client-projected timeline per playback
+-> one positional BLOCKS SoundManager source per physical speaker
 ```
 
-The inherited complete-file JavaSound/mp3spi finite bridge is not the modern prepared engine.
+A multispeaker start snapshots the speakers currently attached to the calling ComputerCraft computer. There is no expected-member barrier. Removing/replacing one endpoint does not stop the remaining endpoints.
+
+Shared controls are play/pause/resume/seek/loop/stop. Volume and mute are endpoint-local; explicit `*All` and `*At` controls apply them to selected endpoints.
+
+The inherited complete-file JavaSound/mp3spi finite bridge and inherited legacy multispeaker barrier are not the modern prepared engine.
 
 ## Completed M1G contract
 
@@ -85,7 +83,7 @@ Closed:
 - KI-054 — shutdown cleanup/root-lock retry handling;
 - KI-064 — import no-progress and atomic-move fallback.
 
-The next active milestone is **M1H**. Start with listener membership: detect players entering an already-playing speaker's 32-block radius, stop client sessions when they leave, and rebuild them at current authoritative time when they return. Recovery/resource-reload/long-underrun work follows; final moving-source/VS2 handling is a later M1H slice.
+M1H source work is complete. Its focused Minecraft listener/recovery/movement checks remain in the runtime backlog. M1J modern finite multispeaker is the active milestone.
 
 ## Audit recheck notes
 
@@ -132,12 +130,11 @@ See `docs/LUA-API.md`.
 
 ## Milestone sequence
 
-- **M1E:** server-authoritative finite timeline — source/test/CI complete; final focused Minecraft acceptance skipped/unrecorded.
-- **M1F:** bounded client-requested encoded transport — source/test/CI/package + component acceptance complete; focused Minecraft transport acceptance unrecorded.
-- **M1G:** progressive MP3/common-WAV decode + positional renderer — source/test/CI/package/component complete; focused audible/core Minecraft acceptance PASS recorded on NeoForge 21.1.247 (2026-09-19).
-- **M1H:** dynamic listener/late-join/leave-return/recovery and final moving-source/VS2 lifecycle.
-- **M1I:** optional gated native FLAC.
-- later milestones cover multispeaker sync/sharing, legacy migration, RAW/OpenAL hardening, final testing, SPR, live streams, and release cleanup.
+- **M1E–M1G:** modern bounded progressive finite engine — complete; focused M1G audible/core Minecraft PASS recorded on NeoForge 21.1.247.
+- **M1H:** listener lifecycle, recovery, and Sable/VS2 moving sources — source/test/CI/package complete; focused runtime backlog deferred.
+- **M1J:** modern finite multispeaker — active. Shared authority/endpoints, protocol v8 shared client timeline, group playback helpers, independent volume/mute, and modern indexed controls are implemented at the first source checkpoint.
+- **Next:** finish M1J lifecycle/component coverage, then profile multispeaker cost before deciding whether shared decode/network fan-out is worth implementing.
+- Later work: API/legacy convergence, optional codecs, integrated compatibility/stress, and release cleanup. Radio/ICY/HLS/TS and provider playback are future/optional features, not core blockers.
 
 ## Build
 

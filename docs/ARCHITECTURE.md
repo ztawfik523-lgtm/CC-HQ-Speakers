@@ -6,7 +6,7 @@ This file describes the current architecture and selected near-term direction. E
 
 Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 
-The source implements modern finite protocol **v7** with an explicit server-authoritative decoder/re-anchor revision.
+The source now implements modern finite protocol **v8**. It retains the server-authoritative decoder/re-anchor revision and adds shared playback identity/state revision for M1J.
 
 ## Product model
 
@@ -23,7 +23,7 @@ ComputerCraft file
 -> temporary per-speaker staging mount
 -> immutable server MediaAsset
 -> server-authoritative playback state
--> protocol v7 descriptor + STATE decodeRevision + codec-aware anchor
+-> protocol v8 playbackId + STATE stateRevision/decodeRevision + codec-aware anchor
 -> bounded client-requested encoded ranges
 -> fixed-size sliding encoded window
 -> progressive decoder worker
@@ -122,7 +122,7 @@ WAV layout is normalized server-side and progressively converted to mono S16 wit
 
 ## Decoder/re-anchor semantics
 
-Protocol v7 separates timeline snapshots from codec restart intent.
+Protocol v8 preserves the v7 separation between timeline snapshots and codec restart intent, while adding `playbackId` and `stateRevision` for a shared client timeline.
 
 - new media => new generation;
 - semantic seek => `decodeRevision` increments;
@@ -184,7 +184,7 @@ The client latches renderer start only after `SoundManager.play(...)` returns, o
 
 M1H-1 now tracks which players actually own the active modern finite client session. The server checks the fixed 32-block relevance set every tick, sends BEGIN + current STATE when a player enters, sends targeted STOP when they leave, and prunes disconnect/dimension changes. READY and range traffic require current membership.
 
-M1H-2 keeps local playback recoverable without changing protocol v7. Unexpected renderer/SoundEngine close or renderer loss requests a fresh authoritative STATE. READY is retried until STATE arrives. Five seconds of continuous renderer starvation also discards the stale local decoder and rejoins current server time. Ordinary STATE snapshots do not reset that starvation timer.
+M1H-2 recovery semantics remain intact under protocol v8. Unexpected renderer/SoundEngine close or renderer loss requests a fresh authoritative STATE. READY is retried until STATE arrives. Five seconds of continuous renderer starvation also discards the stale local decoder and rejoins current server time. Ordinary STATE snapshots do not reset that starvation timer.
 
 Focused Minecraft listener/reload/starvation checks are deferred to the runtime backlog.
 
@@ -198,7 +198,7 @@ For each active modern finite speaker:
 2. otherwise the existing VS2 ship transform is used when applicable;
 3. otherwise the block center is already the world position.
 
-The client updates the existing positional sound from that result. The server uses the same resolved position for fixed-radius listener membership. BEGIN's existing block coordinates are sufficient, so protocol v7 needs no x/y/z update packet.
+The client updates the existing positional sound from that result. The server uses the same resolved position for fixed-radius listener membership. BEGIN's existing block coordinates remain sufficient, so protocol v8 adds no continuous x/y/z update packet.
 
 This is intentionally not a universal movement abstraction. Native ordinary Create contraption assembly/disassembly has different lifecycle semantics and is outside M1H-3 unless a later concrete requirement justifies that work.
 
@@ -224,11 +224,11 @@ Removing/replacing one endpoint detaches it from the authority without stopping 
 
 Single-speaker prepared playback is the same architecture with one endpoint; do not maintain a second semantic engine for the one-speaker case.
 
-Server-side authority alone is not sufficient for tight client synchronization. A later M1J protocol slice will add shared playback identity/state revision so multiple endpoint renderers on one client project the same local authoritative timeline while retaining separate positional SoundManager sources.
+Protocol v8 now carries shared `playbackId` and `stateRevision`. Clients keep one `FinitePlaybackProjection` per playback, so equivalent STATE packets arriving later from another endpoint do not create a new packet-arrival clock. Each physical endpoint still owns its decoder/window/renderer and only adopts a newer shared revision after receiving its own matching STATE/codec anchor.
+
+Endpoint volume and mute are independent. Shared pause/resume/seek/loop/stop acts on the canonical playback. Modern prepared `*All` and `*At` controls are routed onto this model; inherited byte-taking/note/sound multispeaker helpers remain legacy.
 
 Encoded-range/decode sharing is deliberately not part of the correctness model. Measure duplicate work after M1J and add fan-out only if profiling justifies it.
-
-Inherited `*All` / `*At` helpers are legacy and are not the target architecture.
 
 ## Raw and optional external/live sources
 

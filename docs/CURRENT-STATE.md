@@ -8,6 +8,26 @@ Active branch: `codex/m1j-multispeaker`.
 
 M1E, M1F, and M1G are complete. M1H-1 listener membership, M1H-2 recovery, and M1H-3 moving-source support are complete at source/test/CI/package level. Focused M1H Minecraft runtime checks remain deferred to the backlog for now. M1J modern finite multispeaker is the active source milestone.
 
+First M1J implementation checkpoint:
+
+`b557773b9c6f6b8029aec132a1706f0d8da914bd`
+
+CI `35466635285` passed NeoForge 21.1.247 and 21.1.248 with build, deterministic tests, packaged-mod verification, and artifact upload.
+
+Implemented in this checkpoint:
+
+- one thread-safe `FinitePlaybackAuthority` for canonical state/time;
+- one shared playback/media reference across N physical endpoints;
+- transaction-style multispeaker prepared start with no expected-member barrier;
+- endpoint detach/replacement without killing remaining members;
+- shared pause/resume/seek/loop/stop semantics;
+- endpoint-local volume and mute, including all/indexed controls;
+- `hqspeaker.playPreparedAll` / `playFileAll` and mute helpers;
+- protocol v8 `playbackId` + `stateRevision` + existing `decodeRevision`;
+- one client `FinitePlaybackProjection` per shared playback, with deterministic same-revision/no-reanchor coverage.
+
+M1J is not closed yet. Broader group lifecycle/component coverage and focused Minecraft multispeaker acceptance remain outstanding.
+
 M1H-1 **source** checkpoint:
 
 `84e7bab99009e5871934a960908945ceb00a10a9`
@@ -66,7 +86,7 @@ Green CI by itself is still not Minecraft runtime proof. A separate focused **M1
 ```text
 server MediaAsset
 -> server-authoritative finite timeline
--> protocol v7 descriptor + STATE decodeRevision + codec-aware anchor
+-> protocol v8 playbackId + STATE stateRevision/decodeRevision + codec-aware anchor
 -> bounded client-requested encoded ranges
 -> bounded sliding encoded RAM
 -> starvation-aware decoder-worker input
@@ -94,7 +114,7 @@ One physical speaker remains one mono positional source. Lua owns application me
 
 ### Decoder/re-anchor authority
 
-Protocol v7 now carries an explicit server-authoritative `decodeRevision`.
+Current protocol v8 retains the server-authoritative `decodeRevision` introduced in v7 and adds shared `playbackId` + `stateRevision` for multispeaker projection.
 
 - new media playback uses a new generation;
 - semantic seek increments the revision;
@@ -284,6 +304,10 @@ M1H-2 focused Minecraft reload/loss/starvation acceptance: deferred to backlog
 M1H-3 Sable/VS2 moving-source source/CI/package: PASS at 5cd6d6ddcad4b5b4887b903f471de0f2f812795c / CI 35451236630
 M1H-3 focused Minecraft Sable/VS2 movement acceptance: deferred to backlog
 M1H source slices 1-3: complete; focused runtime checks deferred; M1J modern finite multispeaker active
+M1J first implementation checkpoint source/test/CI/package: PASS at b557773b9c6f6b8029aec132a1706f0d8da914bd / CI 35466635285
+M1J protocol: v8
+M1J shared playback/client projection deterministic coverage: PASS
+M1J focused Minecraft multispeaker acceptance: not yet recorded
 ```
 
 ## Read order
