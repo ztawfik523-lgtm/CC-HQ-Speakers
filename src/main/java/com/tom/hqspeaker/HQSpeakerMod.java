@@ -33,7 +33,6 @@ public class HQSpeakerMod {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public HQSpeakerMod(IEventBus modEventBus, ModContainer modContainer) {
-        HQSpeakerRegistry.register(modEventBus);
         modEventBus.addListener(this::setup);
         modEventBus.addListener(HQSpeakerNetwork::register);
         modContainer.registerConfig(ModConfig.Type.SERVER, HQSpeakerServerConfig.SPEC);

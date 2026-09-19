@@ -153,17 +153,15 @@ If a residual chunk-unload/cache-lifetime issue is investigated later, verify ac
 
 ## Product/registry cleanup
 
-The repo still registers a separate `hqspeaker:hq_speaker` even though product direction upgrades normal CC speakers.
+Resolved: the inherited standalone `hqspeaker:hq_speaker` block, item, block entity, registry, blockstate, and item model are removed. The product surface is only the normal `computercraft:speaker` upgraded through the composite mixin.
 
-The separate block surface is incomplete as a standalone in-game product: no `data/hqspeaker` recipe/loot-table content and no block model under `assets/hqspeaker/models/block/`, while the blockstate references such a model.
-
-Target M4: remove it with world/registry migration consideration or explicitly justify and finish it. Do not spend M1G effort making this second block into a product unless the owner changes direction.
+The `hqspeaker:hq_speaker` resource ID still exists as a sound event used by the custom AudioStream renderers; that sound resource is unrelated to the deleted block.
 
 ## Dead/parallel implementation cleanup
 
 `FileFiniteAudioStream`, `HQSpeakerCluster`, and—after finite convergence—`FiniteAudioTrack` were removed. `HQAudioStream` now has only RAW/live responsibilities.
 
-Remaining candidates include stale diagnostic helpers and parts of the separate `HQSpeakerBlockEntity` path. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
+Remaining candidates include stale diagnostic helpers. The separate `HQSpeakerBlockEntity` path has been removed with the inherited standalone block. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
 
 The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, without churning the completed modern finite engine unnecessarily.
 

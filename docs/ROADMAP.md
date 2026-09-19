@@ -141,8 +141,8 @@ SPR should use the normal Minecraft SoundManager path unless a concrete runtime 
 
 Before public release:
 
-- resolve license provenance mismatch;
-- decide whether the separate `hqspeaker:hq_speaker` block remains;
+- license provenance resolved: inherited MPL-2.0 retained and mod metadata corrected;
+- inherited standalone `hqspeaker:hq_speaker` block removed; normal CC:T speaker is the sole block surface;
 - remove dead/replaced code;
 - freeze truthful public API/docs/capabilities;
 - verify packaging and dependency boundaries;

@@ -315,6 +315,14 @@ M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 
 Legacy-name MP3/WAV compatibility calls now route through the modern finite engine, including `*All` and `*At`. Their byte payloads use transient MediaAssets and the same analyzer/decoder path as prepared files; `*All` therefore uses the shared M1J playback authority instead of the inherited expected-member barrier. OGG/generic/live paths remain legacy pending separate decisions.
 
+## Standalone block and license cleanup
+
+The inherited standalone `hqspeaker:hq_speaker` Minecraft block has been removed. It was present in the original upstream source and was never part of the current product direction. The normal `computercraft:speaker` upgraded by the mixin/composite remains the only block surface.
+
+The `hqspeaker:hq_speaker` sound event/resource remains because RAW/live and modern finite renderers use that ResourceLocation for custom AudioStream playback; it is not a block registration.
+
+License provenance is now explicit: this fork descends from `tiktop101/CC-HQ-Speakers` via `jvrcruzGAMES/CC-HQ-Speakers`, whose repository license is MPL-2.0. NeoForge metadata has been corrected from the inherited LGPL-3.0 label to MPL-2.0.
+
 ## Shipping description truthfulness
 
 NeoForge metadata now advertises the actual supported core surface: modern MP3/common-WAV finite playback, multispeaker control, RAW PCM, and optional stream/ICY helpers. Historical OGG/generic whole-file support is no longer advertised.

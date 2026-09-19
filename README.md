@@ -9,13 +9,17 @@ Target stack:
 - CC:Tweaked 1.120.0
 - NeoForge 21.1.247 baseline / 21.1.248 compatibility
 
+## Fork provenance
+
+This repository is a fork of `tiktop101/CC-HQ-Speakers`, via `jvrcruzGAMES/CC-HQ-Speakers`. The inherited source is distributed under the Mozilla Public License 2.0; this fork keeps MPL-2.0. The old LGPL-3.0 value in the mod metadata was inherited from upstream and has been corrected to match the repository's MPL-2.0 license.
+
 ## Product direction
 
 This mod is a **programmable audio peripheral**, not a built-in music player.
 
 Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java distinguishes sources only where technical capabilities differ.
 
-The normal `computercraft:speaker` remains the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
+The normal `computercraft:speaker` is the only block product surface. The inherited standalone `hqspeaker:hq_speaker` block has been removed; the same resource ID remains only as an internal sound event for custom audio playback. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
 
 One physical speaker remains one mono positional source.
 
