@@ -56,12 +56,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private final ArrayBlockingQueue<SpeakerChunk> speakerQueue = new ArrayBlockingQueue<>(SPEAKER_MAX_QUEUE);
     private final AtomicBoolean speakerReadyPending = new AtomicBoolean(false);
     private volatile float speakerDefaultVolume = 1.0f;
-    private volatile boolean looping = false;                     
-
-    private final Object playerLock = new Object();
-    private final ArrayDeque<FiniteServerTrack> finiteTracks = new ArrayDeque<>();
-    private long generationCounter;
-    private FiniteServerTrack terminalTrack;
 
     private final AtomicBoolean streamActive = new AtomicBoolean(false);
     private volatile String     streamUrl    = null;
@@ -73,46 +67,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private long lifecycleEpoch;
 
     private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume,
-                                long startTick, java.util.UUID syncGroupId, int syncGroupSize,
-                                long generation) {}
-
-    private enum PlayerState { LOADING, PLAYING, PAUSED, ENDED, ERROR }
-
-    private static final class FiniteServerTrack {
-        final long generation;
-        final HQSpeakerAudioPacket.AudioFormat format;
-        final Set<UUID> successfulRenderers = new HashSet<>();
-        float volume;
-        boolean looping;
-        boolean desiredPaused;
-        boolean observed;
-        PlayerState state = PlayerState.LOADING;
-        double duration;
-        double basePosition;
-        long anchorNanos;
-        UUID anchorRenderer;
-        String error = "";
-
-        FiniteServerTrack(long generation, HQSpeakerAudioPacket.AudioFormat format,
-                          float volume, boolean looping) {
-            this.generation = generation;
-            this.format = format;
-            this.volume = volume;
-            this.looping = looping;
-        }
-
-        double position(long now) {
-            double position = basePosition;
-            if (state == PlayerState.PLAYING && observed) {
-                position += Math.max(0L, now - anchorNanos) / 1_000_000_000.0;
-            }
-            if (duration > 0.0) {
-                if (looping) position %= duration;
-                else position = Math.min(position, duration);
-            }
-            return Math.max(0.0, position);
-        }
-    }
+                                long startTick, java.util.UUID syncGroupId, int syncGroupSize) {}
 
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
@@ -210,7 +165,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
         SOURCE_SPEAKERS.remove(speakerSource, this);
-        clearFiniteState(true);
         broadcastStopPacket();
     }
 
@@ -238,24 +192,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
                 HQSpeakerMod.warn("HQSpeaker: VS2 conversion failed: " + e.getMessage());
             }
 
-            float packetVolume = chunk.volume();
-            boolean packetLooping = false;
-            boolean packetPaused = false;
-            if (chunk.generation() > 0L) {
-                synchronized (playerLock) {
-                    FiniteServerTrack finite = findFiniteTrackLocked(chunk.generation());
-                    if (finite != null) {
-                        packetVolume = finite.volume;
-                        packetLooping = finite.looping;
-                        packetPaused = finite.desiredPaused;
-                    }
-                }
-            }
             var pkt = new HQSpeakerAudioPacket(
-                speakerSource, chunk.format(), packetVolume,
+                speakerSource, chunk.format(), chunk.volume(),
                 wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(),
-                chunk.startTick(), chunk.syncGroupId(), chunk.syncGroupSize(),
-                chunk.generation(), packetLooping, packetPaused
+                chunk.startTick(), chunk.syncGroupId(), chunk.syncGroupSize()
             );
 
             final float fwx = wx, fwy = wy, fwz = wz;
@@ -349,7 +289,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
-        clearFiniteState(true);
         broadcastStopPacket();
         HQSpeakerMod.log("HQSpeaker: stopped at " + pos);
     }
@@ -471,15 +410,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public void acceptPlaybackStatus(ServerPlayer sender, HQSpeakerStatusPacket packet) {
         // No-op: the legacy finite player is no longer admitted.
     }
-
-    private void clearFiniteState(boolean invalidateGeneration) {
-        synchronized (playerLock) {
-            finiteTracks.clear();
-            terminalTrack = null;
-            if (invalidateGeneration) generationCounter++;
-        }
-    }
-
 
 @LuaFunction
 public final Map<String, Object> getPos() {
@@ -951,15 +881,9 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
 
         byte[] safe = java.util.Arrays.copyOf(data, data.length);
         boolean offered = speakerQueue.offer(new SpeakerChunk(
-            fmt, safe, volume, startTick, syncGroupId, syncGroupSize, 0L));
+            fmt, safe, volume, startTick, syncGroupId, syncGroupSize));
         if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return offered;
-    }
-
-    private static boolean isFiniteFormat(HQSpeakerAudioPacket.AudioFormat format) {
-        return format == HQSpeakerAudioPacket.AudioFormat.OGG_VORBIS
-            || format == HQSpeakerAudioPacket.AudioFormat.MP3
-            || format == HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE;
     }
 
     private static float clampVol(double v) {
