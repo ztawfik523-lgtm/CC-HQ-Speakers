@@ -84,7 +84,14 @@ Still open before M1J closeout: broader lifecycle/component coverage where it ca
 
 M1J source/test/package correctness is now implemented; focused Minecraft multispeaker acceptance is deferred for now. The next non-runtime task is to measure/estimate the duplicate-work surface and prepare realistic 2/4/8+ speaker profiling without precommitting to shared decode/network machinery.
 
-Only add shared encoded-range/decode fan-out if duplicate work is materially expensive. Do not pre-build shared decoder/window machinery merely because speakers share semantic playback.
+Current static cost model:
+
+- per audible endpoint, client encoded RAM is bounded at 512 KiB;
+- per endpoint PCM queue is bounded at 32–256 KiB;
+- server range transport is already bounded per player to 4 outstanding requests / 512 KiB total, regardless of endpoint count;
+- the main duplicated cost that can still grow with speaker count is client codec work and endpoint-local PCM/render state.
+
+Decision for now: do **not** add shared encoded/decode fan-out without runtime profiling. The server-side bounds already prevent unbounded range amplification, while shared decode would add multi-reader PCM lifetime, lagging-reader, endpoint-leave, seek/recovery, and renderer-pacing complexity. Revisit only if realistic 4/8+ speaker testing shows decoder CPU or memory is materially expensive.
 
 ## Engine/API convergence
 

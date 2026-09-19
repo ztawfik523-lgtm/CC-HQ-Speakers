@@ -230,6 +230,8 @@ Endpoint volume and mute are independent. Shared pause/resume/seek/loop/stop act
 
 Encoded-range/decode sharing is deliberately not part of the correctness model. Measure duplicate work after M1J and add fan-out only if profiling justifies it.
 
+Current performance gate notes: every endpoint retains its own 512 KiB encoded window and bounded 32–256 KiB PCM queue. Server range IO is nevertheless capped per player at four requests / 512 KiB outstanding across all endpoints, so the remaining scaling concern is primarily repeated client decode work. No shared decoder/fan-out layer is selected without runtime evidence.
+
 ## Raw and optional external/live sources
 
 Standard `playAudio` remains CC:T signed-8 producer-fed audio. HQ `speakPCM` remains open-ended signed-16 producer-fed audio with bounded backpressure; neither is a finite song.
