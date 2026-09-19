@@ -778,7 +778,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             };
         }
 
-        if (owner == Owner.LEGACY_FINITE) return invokeLegacy(name, computer, context, args);
         return MethodResult.of(false);
     }
 
