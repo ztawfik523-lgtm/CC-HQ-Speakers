@@ -30,6 +30,7 @@ import net.minecraft.server.level.ServerPlayer;
 import org.joml.Vector3d;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -72,6 +73,30 @@ public final class HQFiniteMediaServer {
             this.retainedAssetId = mediaId;
             this.playback = new FinitePlaybackAuthority(metadata.durationSeconds(), nowNanos);
             FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0);
+        }
+
+        private final Set<HQFiniteMediaServer> endpoints = ConcurrentHashMap.newKeySet();
+
+        void attachEndpoint(HQFiniteMediaServer endpoint) {
+            endpoints.add(endpoint);
+        }
+
+        void detachEndpoint(HQFiniteMediaServer endpoint) {
+            endpoints.remove(endpoint);
+            if (endpoints.isEmpty()) logReleaseResult(releaseAssetReference(), retainedAssetId,
+                "empty shared finite playback");
+        }
+
+        void notifyEndpoints(long nowNanos) {
+            for (HQFiniteMediaServer endpoint : new ArrayList<>(endpoints)) {
+                endpoint.notifySharedState(this, nowNanos);
+            }
+        }
+
+        void stopAllEndpoints() {
+            for (HQFiniteMediaServer endpoint : new ArrayList<>(endpoints)) {
+                endpoint.stopSharedEndpoint(this);
+            }
         }
 
         synchronized MediaAssetReleaseQueue.Result releaseAssetReference() {
@@ -231,6 +256,7 @@ public final class HQFiniteMediaServer {
         generationCounter = prepared.next.generation;
         session = prepared.next;
         terminalStatus = null;
+        prepared.next.shared.attachEndpoint(this);
         prepared.finished = true;
         refreshListeners(prepared.next);
         queueStateEvent(prepared.initialStatus);
@@ -254,11 +280,11 @@ public final class HQFiniteMediaServer {
         if (s == null) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return false;
         }
         if (!s.playback.pause(now)) return false;
-        notifyState(s, now);
+        s.shared.notifyEndpoints(now);
         return true;
     }
 
@@ -267,7 +293,7 @@ public final class HQFiniteMediaServer {
         if (s == null) return false;
         long now = System.nanoTime();
         if (!s.playback.resume(now)) return false;
-        notifyState(s, now);
+        s.shared.notifyEndpoints(now);
         return true;
     }
 
@@ -277,7 +303,7 @@ public final class HQFiniteMediaServer {
         if (s == null || s.playback.terminal() || s.playback.duration() <= 0.0) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return false;
         }
 
@@ -285,19 +311,17 @@ public final class HQFiniteMediaServer {
         if (!result.accepted()) {
             if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
                 releaseAssetReference(s);
-                terminalStatus = statusOf(s, now);
-                notifyState(s, now);
+                s.shared.notifyEndpoints(now);
             }
             return false;
         }
         if (result.ended()) {
             releaseAssetReference(s);
-            terminalStatus = statusOf(s, now);
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return true;
         }
 
-        notifyState(s, now);
+        s.shared.notifyEndpoints(now);
         return true;
     }
 
@@ -307,7 +331,7 @@ public final class HQFiniteMediaServer {
         if (s == null || s.playback.terminal()) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return false;
         }
         s.volume = clampVolume(volume);
@@ -320,24 +344,53 @@ public final class HQFiniteMediaServer {
         if (s == null || s.playback.terminal()) return false;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return false;
         }
         if (!s.playback.setLooping(looping, now)) return false;
-        notifyState(s, now);
+        s.shared.notifyEndpoints(now);
         return true;
     }
 
+    /** Detach only this physical endpoint. Used by physical replacement/removal. */
     public synchronized void stop() {
         Session s = session;
         if (s == null) return;
 
         sendStopToAdmitted(s);
         s.listeners.clear();
-        releaseAssetReference(s);
         terminalStatus = null;
         session = null;
+        s.shared.detachEndpoint(this);
         queueStateEvent(idleStatus());
+    }
+
+    /** Stop the whole shared playback, including every currently attached physical endpoint. */
+    public void stopPlayback() {
+        SharedPlayback shared;
+        synchronized (this) {
+            Session s = session;
+            if (s == null) return;
+            shared = s.shared;
+        }
+        shared.stopAllEndpoints();
+    }
+
+    private synchronized void stopSharedEndpoint(SharedPlayback shared) {
+        Session s = session;
+        if (s == null || s.shared != shared) return;
+        sendStopToAdmitted(s);
+        s.listeners.clear();
+        terminalStatus = null;
+        session = null;
+        shared.detachEndpoint(this);
+        queueStateEvent(idleStatus());
+    }
+
+    private synchronized void notifySharedState(SharedPlayback shared, long nowNanos) {
+        Session s = session;
+        if (s == null || s.shared != shared) return;
+        notifyState(s, nowNanos);
     }
 
     public synchronized Map<String, Object> status() {
@@ -347,7 +400,7 @@ public final class HQFiniteMediaServer {
             return idleStatus();
         }
         long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) notifyState(s, now);
+        if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
         return statusOf(s, now);
     }
 
@@ -371,7 +424,7 @@ public final class HQFiniteMediaServer {
             }
             return;
         }
-        if (finalizeNaturalEnd(s, now)) notifyState(s, now);
+        if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
         else refreshListeners(s);
     }
 
@@ -438,7 +491,7 @@ public final class HQFiniteMediaServer {
 
         if (packet.transition() == HQFiniteMediaStatusPacket.Transition.READY) {
             long now = System.nanoTime();
-            if (finalizeNaturalEnd(s, now)) notifyState(s, now);
+            if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
             else sendState(s, player);
             return;
         }
@@ -454,13 +507,12 @@ public final class HQFiniteMediaServer {
         if (session != s || s.playback.terminal()) return;
         long now = System.nanoTime();
         if (finalizeNaturalEnd(s, now)) {
-            notifyState(s, now);
+            s.shared.notifyEndpoints(now);
             return;
         }
         if (!s.playback.fail(error, now)) return;
         releaseAssetReference(s);
-        terminalStatus = statusOf(s, now);
-        notifyState(s, now);
+        s.shared.notifyEndpoints(now);
     }
 
     private void refreshListeners(Session s) {
@@ -543,9 +595,11 @@ public final class HQFiniteMediaServer {
 
     private void notifyState(Session s, long now) {
         boolean terminal = s.playback.terminal();
+        Map<String, Object> status = statusOf(s, now);
+        if (terminal) terminalStatus = new HashMap<>(status);
         sendStateToAdmitted(s, now, !terminal);
         if (terminal) s.listeners.clear();
-        queueStateEvent(statusOf(s, now));
+        queueStateEvent(status);
     }
 
     private boolean sendPacketToPlayer(String what, CustomPacketPayload packet, ServerPlayer player) {
@@ -639,13 +693,15 @@ public final class HQFiniteMediaServer {
     }
 
     private void releaseAssetReference(Session s) {
-        MediaAssetReleaseQueue.Result result = s.shared.releaseAssetReference();
+        logReleaseResult(s.shared.releaseAssetReference(), s.retainedAssetId, "playback media asset");
+    }
+
+    private static void logReleaseResult(MediaAssetReleaseQueue.Result result, UUID assetId, String context) {
         if (result == null) return;
         if (result.status() == MediaAssetReleaseQueue.Status.MISSING) {
-            HQSpeakerMod.warn("playback media asset reference was already missing " + s.retainedAssetId);
+            HQSpeakerMod.warn(context + " reference was already missing " + assetId);
         } else if (result.deferred()) {
-            HQSpeakerMod.warn("playback media asset release queued for retry " + s.retainedAssetId
-                + ": " + result.error());
+            HQSpeakerMod.warn(context + " release queued for retry " + assetId + ": " + result.error());
         }
     }
 
