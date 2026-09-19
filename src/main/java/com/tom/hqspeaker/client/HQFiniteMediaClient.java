@@ -20,6 +20,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.joml.Vector3d;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -209,13 +210,12 @@ public final class HQFiniteMediaClient {
                 || !session.begin.playbackId().equals(packet.playbackId())) return;
 
         long now = System.nanoTime();
-        if (!session.timeline.observe(
-                packet.stateRevision(), packet.position(), packet.duration(),
-                packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED,
-                packet.looping(), now)) return;
-
         if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
                 || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
+            if (!session.timeline.observe(
+                    packet.stateRevision(), packet.position(), packet.duration(),
+                    packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED,
+                    packet.looping(), now)) return;
             stopTerminalPlayback(packet.playbackId());
             return;
         }
@@ -224,6 +224,11 @@ public final class HQFiniteMediaClient {
             fail(session, "server supplied encoded anchor outside asset");
             return;
         }
+
+        if (!session.timeline.observe(
+                packet.stateRevision(), packet.position(), packet.duration(),
+                packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED,
+                packet.looping(), now)) return;
 
         boolean decoderUsable = session.encodedInput != null && session.pcmQueue != null;
         boolean exhaustedBlocksRestart = session.localExhausted && !packet.looping();
@@ -583,7 +588,7 @@ public final class HQFiniteMediaClient {
     }
 
     private static void stopTerminalPlayback(UUID playbackId) {
-        for (Session candidate : SESSIONS.values()) {
+        for (Session candidate : new ArrayList<>(SESSIONS.values())) {
             if (!candidate.begin.playbackId().equals(playbackId)) continue;
             candidate.terminal = true;
             candidate.cancelAll();
