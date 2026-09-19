@@ -82,7 +82,7 @@ Still open before M1J closeout: broader lifecycle/component coverage where it ca
 
 ## Decision gate — multispeaker performance sharing
 
-After M1J correctness, measure realistic 2/4/8+ speaker cases.
+M1J source/test/package correctness is now implemented; focused Minecraft multispeaker acceptance is deferred for now. The next non-runtime task is to measure/estimate the duplicate-work surface and prepare realistic 2/4/8+ speaker profiling without precommitting to shared decode/network machinery.
 
 Only add shared encoded-range/decode fan-out if duplicate work is materially expensive. Do not pre-build shared decoder/window machinery merely because speakers share semantic playback.
 

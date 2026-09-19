@@ -390,7 +390,7 @@ Focused real-Minecraft Sable/Aeronautics and VS2 movement testing is not recorde
 
 ## Later milestone facts
 
-M1H-1 membership, M1H-2 reload/loss/starvation recovery, and M1H-3 Sable/VS2 moving-source support are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. Native FLAC remains gated M1I. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
+M1H-1 membership, M1H-2 reload/loss/starvation recovery, and M1H-3 Sable/VS2 moving-source support are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. M1J modern finite multispeaker is implemented at source/test/CI/package level but still awaits focused Minecraft multispeaker acceptance. Optional codecs such as FLAC remain future decision-gate work. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later integrated compatibility work.
 
 ## License
 

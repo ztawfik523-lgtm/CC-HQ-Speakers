@@ -26,7 +26,7 @@ Implemented in this checkpoint:
 - protocol v8 `playbackId` + `stateRevision` + existing `decodeRevision`;
 - one client `FinitePlaybackProjection` per shared playback, with deterministic same-revision/no-reanchor coverage.
 
-M1J is not closed yet. Broader group lifecycle/component coverage and focused Minecraft multispeaker acceptance remain outstanding.
+M1J source work is functionally complete at the current branch head after the initial checkpoint plus subsequent client-timeline, indexed-control, documentation, and endpoint-detach hardening commits. Focused Minecraft multispeaker acceptance remains deferred/not yet recorded, so M1J is not claimed runtime-complete.
 
 M1H-1 **source** checkpoint:
 
@@ -305,9 +305,10 @@ M1H-3 Sable/VS2 moving-source source/CI/package: PASS at 5cd6d6ddcad4b5b4887b903
 M1H-3 focused Minecraft Sable/VS2 movement acceptance: deferred to backlog
 M1H source slices 1-3: complete; focused runtime checks deferred; M1J modern finite multispeaker active
 M1J first implementation checkpoint source/test/CI/package: PASS at b557773b9c6f6b8029aec132a1706f0d8da914bd / CI 35466635285
+M1J current hardened head before this docs cleanup: cfea9664f2a8d7df1e8efe457795811bd14d3f6d / CI 35466946934
 M1J protocol: v8
 M1J shared playback/client projection deterministic coverage: PASS
-M1J focused Minecraft multispeaker acceptance: not yet recorded
+M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 ```
 
 ## Read order

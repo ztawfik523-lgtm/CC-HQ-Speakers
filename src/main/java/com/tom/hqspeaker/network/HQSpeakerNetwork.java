@@ -27,7 +27,7 @@ public class HQSpeakerNetwork {
         registrar.playToServer(HQFiniteMediaRangeRequestPacket.TYPE, HQFiniteMediaRangeRequestPacket.STREAM_CODEC, HQFiniteMediaRangeRequestPacket::handle);
         registrar.playToClient(HQFiniteMediaRangeDataPacket.TYPE, HQFiniteMediaRangeDataPacket.STREAM_CODEC, HQFiniteMediaRangeDataPacket::handle);
 
-        HQSpeakerMod.log("Network registered with M1G protocol v7 and 11 payloads.");
+        HQSpeakerMod.log("Network registered with protocol v8 and 11 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {
