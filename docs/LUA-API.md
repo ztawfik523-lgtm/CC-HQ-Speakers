@@ -296,7 +296,7 @@ They are not the model for modern large local finite-file playback. Legacy finit
 Important inherited caveats:
 
 - legacy capability lists advertise formats broader than modern prepared support and should not be used as the modern contract;
-- legacy `playNoteAll`/`playSoundAll` do not preserve requested normal note/sound semantics;
+- composite `playNoteAll`/`playSoundAll` and indexed note/sound calls are now intercepted and delegated to each real CC:T speaker, so requested instruments/sound IDs are preserved; the obsolete legacy synthesis implementation remains only as dead/compatibility code pending cleanup;
 - inherited live HLS has a confirmed refreshed-playlist index progression bug;
 - KI-062 is resolved: blocking DNS may still occupy the calling ComputerCraft command, but it no longer holds the ownership monitor needed by server tick/lifecycle cleanup.
 

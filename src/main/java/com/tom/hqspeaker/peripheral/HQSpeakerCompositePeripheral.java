@@ -39,6 +39,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final MethodSupplier<PeripheralMethod> METHOD_SUPPLIER = PeripheralMethodSupplier.create(List.of());
     private static final Set<String> STANDARD = Set.of("playNote", "playSound", "playAudio", "stop");
+    private static final Set<String> STANDARD_ALL = Set.of("playNoteAll", "playSoundAll");
+    private static final Set<String> STANDARD_AT = Set.of("playNoteAt", "playSoundAt");
     private static final Set<String> FINITE_CONTROLS = Set.of(
         "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetLooping", "audioStop"
     );
@@ -394,6 +396,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (STANDARD.contains(name)) {
             synchronized (this) { return callStandard(name, context, args); }
         }
+        if (STANDARD_ALL.contains(name)) {
+            return callStandardAll(name, computer, context, args);
+        }
+        if (STANDARD_AT.contains(name)) {
+            return callStandardAt(name, computer, context, args);
+        }
         if (FINITE_CONTROLS.contains(name)) {
             synchronized (this) { return callFiniteControl(name, computer, context, args); }
         }
@@ -451,6 +459,52 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             default -> throw new LuaException("No such method " + name);
         };
+    }
+
+    private MethodResult callStandardAll(String name, IComputerAccess computer, ILuaContext context,
+                                         IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
+        if (members.isEmpty()) members = List.of(this);
+
+        boolean accepted = false;
+        for (HQSpeakerCompositePeripheral member : members) {
+            synchronized (member) {
+                accepted = switch (name) {
+                    case "playNoteAll" -> member.vanilla.playNote(
+                        context, args.getString(0), args.optDouble(1), args.optDouble(2)) || accepted;
+                    case "playSoundAll" -> {
+                        if (member.isHQContinuousActive()) yield accepted;
+                        boolean one = member.vanilla.playSound(
+                            context, args.getString(0), args.optDouble(1), args.optDouble(2));
+                        if (one) member.clearTerminalOwnership();
+                        yield one || accepted;
+                    }
+                    default -> throw new LuaException("No such standard all-speaker method " + name);
+                };
+            }
+        }
+        return MethodResult.of(accepted);
+    }
+
+    private MethodResult callStandardAt(String name, IComputerAccess computer, ILuaContext context,
+                                        IArguments args) throws LuaException {
+        int index = args.getInt(0);
+        HQSpeakerCompositePeripheral member = memberAt(computer, index);
+
+        synchronized (member) {
+            return switch (name) {
+                case "playNoteAt" -> MethodResult.of(member.vanilla.playNote(
+                    context, args.getString(1), args.optDouble(2), args.optDouble(3)));
+                case "playSoundAt" -> {
+                    if (member.isHQContinuousActive()) yield MethodResult.of(false);
+                    boolean accepted = member.vanilla.playSound(
+                        context, args.getString(1), args.optDouble(2), args.optDouble(3));
+                    if (accepted) member.clearTerminalOwnership();
+                    yield MethodResult.of(accepted);
+                }
+                default -> throw new LuaException("No such indexed standard speaker method " + name);
+            };
+        }
     }
 
     private MethodResult startRaw(IComputerAccess computer, ILuaContext context, String name, IArguments args) throws LuaException {
