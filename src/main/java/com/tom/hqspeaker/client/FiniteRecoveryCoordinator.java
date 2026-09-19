@@ -37,9 +37,12 @@ final class FiniteRecoveryCoordinator {
     }
 
     synchronized void stateReceived() {
-        starving = false;
         awaitingState = false;
         readyAttempted = false;
+    }
+
+    synchronized void clearStarvation() {
+        starving = false;
     }
 
     synchronized boolean awaitingState() {

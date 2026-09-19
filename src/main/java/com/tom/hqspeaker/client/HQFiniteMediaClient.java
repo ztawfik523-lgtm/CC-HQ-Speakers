@@ -212,6 +212,9 @@ public final class HQFiniteMediaClient {
         session.recovery.stateReceived();
         long now = System.nanoTime();
         session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
+        if (session.desiredPaused || decision != FiniteDecodeCoordinator.StateDecision.KEEP) {
+            session.recovery.clearStarvation();
+        }
         session.looping = packet.looping();
         session.duration = packet.duration();
         session.statePosition = packet.position();

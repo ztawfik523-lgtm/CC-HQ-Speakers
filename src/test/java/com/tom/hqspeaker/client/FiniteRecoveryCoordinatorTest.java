@@ -78,5 +78,18 @@ class FiniteRecoveryCoordinatorTest {
         assertTrue(recovery.readyDue(Long.MIN_VALUE + 200L, 250L));
     }
 
+    @Test
+    void ordinaryStateReceiptDoesNotHideOngoingStarvation() {
+        FiniteRecoveryCoordinator recovery = new FiniteRecoveryCoordinator();
+        recovery.observeRead(FinitePcmReadAdapter.State.SILENCE, 100L);
+
+        recovery.stateReceived();
+
+        assertTrue(recovery.longStarved(600L, 500L));
+        recovery.clearStarvation();
+        assertFalse(recovery.longStarved(10_000L, 500L));
+    }
+
 }
+
 
