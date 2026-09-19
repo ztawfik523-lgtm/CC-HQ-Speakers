@@ -104,18 +104,18 @@ public final class FinitePlaybackAuthority {
         if (!Double.isFinite(seconds)) throw new IllegalArgumentException("seconds must be finite");
         if (terminal()) return SeekResult.rejected(clock.position(nowNanos), state == State.ENDED);
 
-        // A semantic seek needs a fresh codec epoch unless it lands at terminal non-looping EOF.
-        if (decodeRevision == Long.MAX_VALUE) {
-            failInternal("finite decoder revision exhausted", nowNanos);
-            return SeekResult.rejected(clock.position(nowNanos), false);
-        }
-
         double target = clock.seek(seconds, nowNanos);
         if (!clock.looping() && target >= clock.duration()) {
             clock.finish(nowNanos);
             state = State.ENDED;
             bumpStateRevision();
             return new SeekResult(true, clock.duration(), true);
+        }
+
+        // A nonterminal semantic seek needs a fresh codec epoch.
+        if (decodeRevision == Long.MAX_VALUE) {
+            failInternal("finite decoder revision exhausted", nowNanos);
+            return SeekResult.rejected(clock.position(nowNanos), false);
         }
 
         decodeRevision++;

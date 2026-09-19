@@ -494,12 +494,13 @@ public final class HQFiniteMediaServer {
     }
 
     private HQFiniteMediaStatePacket statePacket(Session s, long now) {
-        double position = s.playback.position(now);
-        FiniteDecodeAnchorSelector.Anchor anchor = FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, position);
+        FinitePlaybackAuthority.Snapshot playback = s.playback.snapshot(now);
+        FiniteDecodeAnchorSelector.Anchor anchor =
+            FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, playback.position());
         return new HQFiniteMediaStatePacket(
-            source, s.mediaId, s.generation, s.playback.decodeRevision(), wireState(s.playback.state()),
-            position, s.playback.duration(), s.volume, s.playback.looping(),
-            anchor.offset(), anchor.seconds(), s.playback.error()
+            source, s.mediaId, s.generation, playback.decodeRevision(), wireState(playback.state()),
+            playback.position(), playback.duration(), s.volume, playback.looping(),
+            anchor.offset(), anchor.seconds(), playback.error()
         );
     }
 
@@ -534,24 +535,30 @@ public final class HQFiniteMediaServer {
     }
 
     private Map<String, Object> statusOf(Session s, long now) {
+        FinitePlaybackAuthority.Snapshot playback = s.playback.snapshot(now);
+        boolean terminal = playback.state() == FinitePlaybackAuthority.State.ENDED
+            || playback.state() == FinitePlaybackAuthority.State.ERROR;
+
         Map<String, Object> out = new HashMap<>();
         out.put("generation", s.generation);
-        out.put("state", s.playback.state().name().toLowerCase(Locale.ROOT));
+        out.put("playbackId", playback.playbackId().toString());
+        out.put("stateRevision", playback.stateRevision());
+        out.put("state", playback.state().name().toLowerCase(Locale.ROOT));
         out.put("kind", "finite");
         out.put("format", s.metadata.format().id());
-        out.put("position", s.playback.position(now));
-        out.put("duration", s.metadata.durationSeconds());
+        out.put("position", playback.position());
+        out.put("duration", playback.duration());
         out.put("sampleRate", s.metadata.sampleRate());
         out.put("channels", s.metadata.channels());
         out.put("bitsPerSample", s.metadata.bitsPerSample());
         out.put("volume", (double) s.volume);
-        out.put("looping", s.playback.looping());
+        out.put("looping", playback.looping());
         out.put("totalBytes", s.totalBytes);
         out.put("assetId", s.retainedAssetId.toString());
-        out.put("canPause", !s.playback.terminal());
-        out.put("canSeek", !s.playback.terminal());
-        out.put("canLoop", !s.playback.terminal());
-        if (!s.playback.error().isBlank()) out.put("error", s.playback.error());
+        out.put("canPause", !terminal);
+        out.put("canSeek", !terminal);
+        out.put("canLoop", !terminal);
+        if (!playback.error().isBlank()) out.put("error", playback.error());
         return out;
     }
 
