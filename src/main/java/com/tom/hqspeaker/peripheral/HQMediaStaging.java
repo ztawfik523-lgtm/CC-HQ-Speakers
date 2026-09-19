@@ -20,6 +20,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
 import java.io.IOException;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -108,23 +109,12 @@ public final class HQMediaStaging {
     public String prepareAsset(IComputerAccess computer, String path, boolean consume) throws LuaException {
         int computerId = computer.getID();
         StagedFile staged = openStaged(computer, path);
-        MediaAssetStore store = assetStore();
         MediaAsset asset;
 
         // Commit the exact staged bytes first. Analysis then runs against the immutable store copy, so a ComputerCraft
         // program modifying the writable staging file cannot race metadata for one version against bytes from another.
         try (SeekableByteChannel channel = staged.channel()) {
-            asset = store.importAsset(staged.path(), staged.sizeBytes(), channel);
-        } catch (IOException | RuntimeException e) {
-            throw new LuaException("cannot prepare staged media: " + safeMessage(e));
-        }
-
-        try (SeekableByteChannel committed = store.openRead(asset.id())) {
-            MediaMetadata metadata = ModernFiniteMediaAnalyzer.analyze(committed);
-            asset.attachMetadata(metadata);
-        } catch (IOException | RuntimeException e) {
-            releaseReferenceBestEffort(asset.id(), "rejected media asset");
-            throw new LuaException("cannot prepare staged media: " + safeMessage(e));
+            asset = importAnalyzedAsset(staged.path(), staged.sizeBytes(), channel);
         }
 
         // The shared asset is already valid at this point. A temporary staging-delete failure must not destroy or hide
@@ -146,6 +136,33 @@ public final class HQMediaStaging {
             preparedByComputerId.computeIfAbsent(computerId, ignored -> new HashSet<>()).add(asset.id());
         }
         return asset.id().toString();
+    }
+
+    /**
+     * Import exact encoded bytes and attach modern finite metadata.
+     *
+     * <p>The source remains caller-owned. This is the single admission primitive for modern finite bytes: import
+     * first, analyze the immutable committed copy second, and release the import-owner reference if analysis rejects
+     * the bytes. File staging uses it today; legacy MP3/WAV compatibility may reuse it later without inventing a
+     * separate storage path.</p>
+     */
+    MediaAsset importAnalyzedAsset(String sourceName, long sizeBytes, ReadableByteChannel source) throws LuaException {
+        MediaAssetStore store = assetStore();
+        MediaAsset asset;
+        try {
+            asset = store.importAsset(sourceName, sizeBytes, source);
+        } catch (IOException | RuntimeException e) {
+            throw new LuaException("cannot prepare media: " + safeMessage(e));
+        }
+
+        try (SeekableByteChannel committed = store.openRead(asset.id())) {
+            MediaMetadata metadata = ModernFiniteMediaAnalyzer.analyze(committed);
+            asset.attachMetadata(metadata);
+            return asset;
+        } catch (IOException | RuntimeException e) {
+            releaseReferenceBestEffort(asset.id(), "rejected media asset");
+            throw new LuaException("cannot prepare media: " + safeMessage(e));
+        }
     }
 
     /** Return server-derived format/duration facts for a prepared asset. */
