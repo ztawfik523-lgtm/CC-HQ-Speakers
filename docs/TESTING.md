@@ -44,13 +44,26 @@ M1H-3 artifacts:
 
 Package verification explicitly checks that Sable Companion 1.6.0 is embedded in the candidate JAR.
 
+M1J first implementation checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd`, CI `35466635285`. Both NeoForge 21.1.247 and 21.1.248 passed build, deterministic tests, packaged-mod verification, and artifact upload.
+
+M1J deterministic coverage includes:
+
+- canonical shared authority timing/state/revision behavior;
+- semantic seek advancing both state and decode revisions;
+- ordinary pause/resume/loop changes not inventing decoder restarts;
+- shared client timeline same-revision packets not re-anchoring to later endpoint arrival;
+- newer state revision re-anchor and stale revision rejection;
+- paused and looping shared projection behavior.
+
+The M1J server/client integration compiles/packages on both targets. Focused Minecraft multispeaker audibility/synchronization/removal/mute acceptance is not yet recorded.
+
 ## What is actually integrated now
 
 M1G is complete at source/test/CI/package/component level.
 
 Current source wires:
 
-- protocol v7 MP3/common-WAV decode descriptor plus authoritative `decodeRevision`;
+- protocol v8 MP3/common-WAV descriptor plus shared `playbackId`, `stateRevision`, and authoritative `decodeRevision`;
 - STATE-only nonterminal transition authority; explicit STOP remains distinct;
 - exact WAV and E1 MP3 anchors;
 - starvation-aware `FiniteEncodedInputStream` and bounded sliding `FiniteRangeWindow`;

@@ -10,7 +10,7 @@ Facts only. Recommendations and unresolved choices belong elsewhere.
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`.
 
-Current active M1H branch: `codex/m1h-listener-lifecycle`.
+Current active branch: `codex/m1j-multispeaker`.
 
 Important source checkpoints:
 
@@ -21,11 +21,34 @@ Important source checkpoints:
 - post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`;
 - M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`;
 - M1H-2 recovery source/test checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`;
-- M1H-3 moving-source source/package checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
+- M1H-3 moving-source source/package checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`;
+- M1J first implementation checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd`, CI `35466635285`.
 
 ### FACT-PLATFORM-001
 
 Target stack: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.247 baseline and 21.1.248 compatibility.
+
+## M1J multispeaker facts
+
+### FACT-M1J-001
+
+Modern prepared multispeaker uses one shared `FinitePlaybackAuthority` and one playback asset reference across independently positional physical speaker endpoints. The member set is snapshotted at start; there is no expected-member barrier.
+
+### FACT-M1J-002
+
+Protocol v8 adds `playbackId` and `stateRevision` while retaining `decodeRevision`. A client keeps one `FinitePlaybackProjection` per shared playback. Equivalent same-revision STATE packets arriving later from another endpoint do not re-anchor the shared local clock.
+
+### FACT-M1J-003
+
+Modern prepared pause/resume/seek/loop/stop are shared-playback semantics. Endpoint volume and mute are independent. Muting uses effective volume zero without overwriting the configured endpoint volume, so unmute rejoins current playback time.
+
+### FACT-M1J-004
+
+Encoded range windows, decoders, PCM queues, and Minecraft renderers remain per physical endpoint. Sharing those resources is a later profiling decision, not part of M1J correctness.
+
+### FACT-M1J-005
+
+CI `35466635285` passed both supported NeoForge targets for checkpoint `b557773b9c6f6b8029aec132a1706f0d8da914bd`. This is source/test/package evidence, not focused Minecraft multispeaker runtime proof.
 
 ## CI / package facts
 

@@ -8,9 +8,7 @@ Active branch: `codex/m1j-multispeaker`.
 
 M1E through M1H are complete at source/test/CI/package level. M1H-1 listener membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented. Focused M1H Minecraft runtime checks remain deferred to the runtime backlog for now; the owner did not reject later runtime validation. M1J modern finite multispeaker is the active source milestone.
 
-Current source checkpoint for M1H-3: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
-
-Current branch head may contain documentation-only commits after that source checkpoint. Verify exact source and CI before claiming runtime behavior.
+Current M1J source checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd`, CI `35466635285`, green on both supported NeoForge targets. Focused Minecraft multispeaker acceptance is not yet recorded.
 
 ## How to make design decisions
 
@@ -46,7 +44,7 @@ Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native 
 
 One physical speaker remains one mono positional source.
 
-Modern prepared finite playback is server-authoritative, bounded, progressive, and currently supports MP3 plus supported common WAV. Protocol v7 uses STATE as the nonterminal authority and explicit STOP for removal.
+Modern prepared finite playback is server-authoritative, bounded, progressive, and currently supports MP3 plus supported common WAV. Protocol v8 uses shared `playbackId`/`stateRevision` plus `decodeRevision`; STATE remains the nonterminal authority and explicit STOP remains endpoint removal.
 
 The fixed modern core radius is 32 blocks. HQ volume changes gain, not that core radius. Sound Physics Remastered work may intentionally extend acoustics/range later.
 
@@ -74,7 +72,7 @@ Green CI is not Minecraft runtime proof. Keep source/CI/package evidence separat
 
 ## Current architecture boundaries
 
-Current protocol-v7 source owns finite playback generation, timeline, controls, seek/reanchor revision, natural EOF, and terminal errors per speaker. M1J is refactoring canonical playback facts into one thread-safe shared playback authority referenced by independent physical speaker endpoints.
+Current protocol-v8 source owns one canonical playback authority across independent physical speaker endpoints. Shared state/time/seek/loop/terminal truth belongs to the authority; endpoint gain/mute/listeners/transport/renderer/recovery remain independent.
 
 Client owns bounded encoded-window consumption, progressive decode, PCM buffering, SoundManager rendering, and local recovery/rejoin.
 
