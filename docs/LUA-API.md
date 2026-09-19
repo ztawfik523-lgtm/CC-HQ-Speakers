@@ -261,6 +261,12 @@ Post-M1G hardening also resolves the RAW side of KI-063: the PCM table/volume ar
 
 Returns `131072`.
 
+### `speaker.speakPCMAll(samples [, volume]) -> boolean`
+
+Broadcast one validated signed-16 PCM chunk to the speakers attached to the calling computer. Multi-speaker RAW uses one shared future server game tick for startup, but deliberately has **no expected-global-member barrier**. A Minecraft client which hears only some endpoints starts the endpoints it actually received.
+
+RAW remains producer-fed rather than a shared finite timeline, so this is start alignment rather than modern finite catch-up/rejoin semantics.
+
 ### `hqspeaker_audio_empty`
 
 HQ RAW capacity event. Do not confuse it with native `speaker_audio_empty`, which belongs to standard CC:T `playAudio`.
@@ -287,11 +293,11 @@ Whole-owner staging cleanup now removes arbitrary/interrupted leftovers after un
 
 Removed as of M1F. Use `hq.playFile(...)` or prepare -> play -> release.
 
-## Inherited legacy HQ APIs
+## Compatibility and optional live APIs
 
-Older functions such as `speakMp3`, `speakWav`, `speakOgg`, `speakAudio`, `speakFile`, `speakPacked`, `speakStream`, `speakHLS`, `speakTS`, metadata helpers, and older multi-speaker helpers still exist in inherited code.
+Legacy-name `speakMp3`/`speakWav` singular/all/indexed calls now route through the modern finite engine. Historical OGG/generic whole-file aliases are removed from the normal upgraded CC:T speaker.
 
-They are not the model for modern large local finite-file playback. Legacy finite compatibility will be reviewed during engine/API convergence. Direct radio/ICY/HLS/TS is not a core roadmap requirement.
+`speakStream`, `speakHLS`, `speakTS`, and their metadata helpers remain optional inherited live-stream functionality. They are not part of the core finite-file contract and may be cleaned up or retired separately.
 
 Important inherited caveats:
 

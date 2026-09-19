@@ -508,8 +508,14 @@ public final boolean speakPCMAll(IComputerAccess computer, IArguments args) thro
     boolean ok = false;
     byte[] pcm = audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16);
     java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
+
+    // RAW has no canonical finite timeline to coordinate. Give all endpoints the same future game tick,
+    // but do not publish a global expected-member count: a listener who receives only a subset must still start.
+    long startTick = members.size() > 1 ? nextSyncedStartTick() : 0L;
+    for (HQSpeakerPeripheral member : members) {
+        ok = anyTrue(ok, member.enqueueAudioAtTick(
+            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, startTick, null, 0));
+    }
     return ok;
 }
 
