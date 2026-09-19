@@ -4,7 +4,7 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeAnchorSelector;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
-import com.tom.hqspeaker.media.FinitePlaybackStateMachine;
+import com.tom.hqspeaker.media.FinitePlaybackAuthority;
 import com.tom.hqspeaker.media.FiniteListenerMembership;
 import com.tom.hqspeaker.media.FiniteRangeReadService;
 import com.tom.hqspeaker.media.FiniteRangeValidation;
@@ -50,11 +50,11 @@ public final class HQFiniteMediaServer {
         final FiniteDecodeDescriptor descriptor;
         final MediaMetadata metadata;
         final long totalBytes;
-        final FinitePlaybackStateMachine playback;
+        final FinitePlaybackAuthority playback;
+        float volume;
         final FiniteRangeReadService rangeReads;
         final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
-        long decodeRevision = 1L;
         boolean assetReferenceHeld = true;
         final FiniteListenerMembership listeners = new FiniteListenerMembership();
 
@@ -69,7 +69,8 @@ public final class HQFiniteMediaServer {
             this.rangeReads = rangeReads;
             this.releases = releases;
             this.retainedAssetId = mediaId;
-            this.playback = new FinitePlaybackStateMachine(metadata.durationSeconds(), volume, nowNanos);
+            this.playback = new FinitePlaybackAuthority(metadata.durationSeconds(), nowNanos);
+            this.volume = clampVolume(volume);
             FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0);
         }
     }
@@ -243,7 +244,7 @@ public final class HQFiniteMediaServer {
             return false;
         }
 
-        FinitePlaybackStateMachine.SeekResult result = s.playback.seek(seconds, now);
+        FinitePlaybackAuthority.SeekResult result = s.playback.seek(seconds, now);
         if (!result.accepted()) return false;
         if (result.ended()) {
             releaseAssetReference(s);
@@ -252,11 +253,10 @@ public final class HQFiniteMediaServer {
             return true;
         }
 
-        if (s.decodeRevision == Long.MAX_VALUE) {
-            failServerSession(s, "finite decoder revision exhausted");
-            return false;
+        if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
+            releaseAssetReference(s);
+            terminalStatus = statusOf(s, now);
         }
-        s.decodeRevision++;
         notifyState(s, now);
         return true;
     }
@@ -270,7 +270,7 @@ public final class HQFiniteMediaServer {
             notifyState(s, now);
             return false;
         }
-        if (!s.playback.setVolume(volume)) return false;
+        s.volume = clampVolume(volume);
         notifyState(s, now);
         return true;
     }
@@ -344,7 +344,7 @@ public final class HQFiniteMediaServer {
 
     private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
         Session s = session;
-        if (s == null || player == null || s.playback.terminal() || s.playback.volume() <= 0.0f) return;
+        if (s == null || player == null || s.playback.terminal() || s.volume <= 0.0f) return;
         if (!FiniteRangeValidation.requestMatches(
                 source, s.mediaId, s.generation, s.totalBytes,
                 packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
@@ -371,7 +371,7 @@ public final class HQFiniteMediaServer {
     private synchronized void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
                                             FiniteRangeReadService.ReadResult result) {
         Session s = session;
-        if (s == null || s.playback.terminal() || s.playback.volume() <= 0.0f) return;
+        if (s == null || s.playback.terminal() || s.volume <= 0.0f) return;
         if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
@@ -456,8 +456,8 @@ public final class HQFiniteMediaServer {
 
     private HQFiniteMediaBeginPacket beginPacket(Session s, float[] world) {
         return new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.descriptor,
-            s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
-            s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
+            s.volume, world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+            s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackAuthority.State.PAUSED);
     }
 
     private boolean sendStop(Session s, ServerPlayer player) {
@@ -494,8 +494,8 @@ public final class HQFiniteMediaServer {
         double position = s.playback.position(now);
         FiniteDecodeAnchorSelector.Anchor anchor = FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, position);
         return new HQFiniteMediaStatePacket(
-            source, s.mediaId, s.generation, s.decodeRevision, wireState(s.playback.state()),
-            position, s.playback.duration(), s.playback.volume(), s.playback.looping(),
+            source, s.mediaId, s.generation, s.playback.decodeRevision(), wireState(s.playback.state()),
+            position, s.playback.duration(), s.volume, s.playback.looping(),
             anchor.offset(), anchor.seconds(), s.playback.error()
         );
     }
@@ -541,7 +541,7 @@ public final class HQFiniteMediaServer {
         out.put("sampleRate", s.metadata.sampleRate());
         out.put("channels", s.metadata.channels());
         out.put("bitsPerSample", s.metadata.bitsPerSample());
-        out.put("volume", (double) s.playback.volume());
+        out.put("volume", (double) s.volume);
         out.put("looping", s.playback.looping());
         out.put("totalBytes", s.totalBytes);
         out.put("assetId", s.retainedAssetId.toString());
@@ -550,6 +550,10 @@ public final class HQFiniteMediaServer {
         out.put("canLoop", !s.playback.terminal());
         if (!s.playback.error().isBlank()) out.put("error", s.playback.error());
         return out;
+    }
+
+    private static float clampVolume(double volume) {
+        return (float) Math.max(0.0, Math.min(3.0, volume));
     }
 
     private static Map<String, Object> idleStatus() {
@@ -573,7 +577,7 @@ public final class HQFiniteMediaServer {
             + safeMessage(failure)));
     }
 
-    private static HQFiniteMediaStatePacket.PlaybackState wireState(FinitePlaybackStateMachine.State state) {
+    private static HQFiniteMediaStatePacket.PlaybackState wireState(FinitePlaybackAuthority.State state) {
         return switch (state) {
             case PLAYING -> HQFiniteMediaStatePacket.PlaybackState.PLAYING;
             case PAUSED -> HQFiniteMediaStatePacket.PlaybackState.PAUSED;

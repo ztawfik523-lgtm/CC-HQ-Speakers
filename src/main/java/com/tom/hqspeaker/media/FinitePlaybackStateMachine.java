@@ -1,10 +1,10 @@
 package com.tom.hqspeaker.media;
 
 /**
- * Deterministic server-side semantic state machine for one finite playback.
+ * Compatibility wrapper around {@link FinitePlaybackAuthority} for the existing single-playback component tests.
  *
- * <p>This owns only canonical playback truth: state, position, pause/resume, seek, loop, volume, EOF and terminal
- * error freeze. Networking, asset ownership and rendering remain separate concerns.</p>
+ * <p>M1J moves canonical timeline/state into {@code FinitePlaybackAuthority}. Volume remains endpoint-local so a
+ * future multispeaker playback can share one clock without forcing every physical speaker to share gain.</p>
  */
 public final class FinitePlaybackStateMachine {
     public enum State { PLAYING, PAUSED, ENDED, ERROR }
@@ -15,72 +15,35 @@ public final class FinitePlaybackStateMachine {
         }
     }
 
-    private final FinitePlaybackClock clock;
-    private State state;
+    private final FinitePlaybackAuthority authority;
     private float volume;
-    private String error = "";
 
     public FinitePlaybackStateMachine(double durationSeconds, double initialVolume, long nowNanos) {
-        if (!Double.isFinite(durationSeconds) || durationSeconds <= 0.0) {
-            throw new IllegalArgumentException("durationSeconds must be finite and positive");
-        }
         if (!Double.isFinite(initialVolume)) throw new IllegalArgumentException("initialVolume must be finite");
-
-        clock = new FinitePlaybackClock(false);
-        clock.setDuration(durationSeconds, nowNanos);
-        clock.start(nowNanos);
+        authority = new FinitePlaybackAuthority(durationSeconds, nowNanos);
         volume = clampVolume(initialVolume);
-        state = State.PLAYING;
     }
 
-    public State state() { return state; }
-    public double duration() { return clock.duration(); }
-    public double position(long nowNanos) { return clock.position(nowNanos); }
-    public boolean looping() { return clock.looping(); }
+    public State state() { return map(authority.state()); }
+    public double duration() { return authority.duration(); }
+    public double position(long nowNanos) { return authority.position(nowNanos); }
+    public boolean looping() { return authority.looping(); }
     public float volume() { return volume; }
-    public String error() { return error; }
+    public String error() { return authority.error(); }
 
-    public boolean active() {
-        return state == State.PLAYING || state == State.PAUSED;
-    }
+    public boolean active() { return authority.active(); }
+    public boolean terminal() { return authority.terminal(); }
 
-    public boolean terminal() {
-        return state == State.ENDED || state == State.ERROR;
-    }
-
-    /** Finalize non-looping natural EOF from the canonical server clock. */
     public boolean finalizeNaturalEnd(long nowNanos) {
-        if (state != State.PLAYING || !clock.reachedEnd(nowNanos)) return false;
-        clock.finish(nowNanos);
-        state = State.ENDED;
-        return true;
+        return authority.finalizeNaturalEnd(nowNanos);
     }
 
-    public boolean pause(long nowNanos) {
-        if (state != State.PLAYING) return false;
-        clock.pause(nowNanos);
-        state = State.PAUSED;
-        return true;
-    }
-
-    public boolean resume(long nowNanos) {
-        if (state != State.PAUSED) return false;
-        clock.resume(nowNanos);
-        state = State.PLAYING;
-        return true;
-    }
+    public boolean pause(long nowNanos) { return authority.pause(nowNanos); }
+    public boolean resume(long nowNanos) { return authority.resume(nowNanos); }
 
     public SeekResult seek(double seconds, long nowNanos) {
-        if (!Double.isFinite(seconds)) throw new IllegalArgumentException("seconds must be finite");
-        if (terminal()) return SeekResult.rejected(clock.position(nowNanos), state == State.ENDED);
-
-        double target = clock.seek(seconds, nowNanos);
-        if (!clock.looping() && target >= clock.duration()) {
-            clock.finish(nowNanos);
-            state = State.ENDED;
-            return new SeekResult(true, clock.duration(), true);
-        }
-        return new SeekResult(true, target, false);
+        FinitePlaybackAuthority.SeekResult result = authority.seek(seconds, nowNanos);
+        return new SeekResult(result.accepted(), result.position(), result.ended());
     }
 
     public boolean setVolume(double volume) {
@@ -91,20 +54,20 @@ public final class FinitePlaybackStateMachine {
     }
 
     public boolean setLooping(boolean looping, long nowNanos) {
-        if (terminal()) return false;
-        clock.setLooping(looping, nowNanos);
-        return true;
+        return authority.setLooping(looping, nowNanos);
     }
 
-    /**
-     * Enter terminal ERROR and freeze the canonical position at the failure instant.
-     */
     public boolean fail(String detail, long nowNanos) {
-        if (terminal()) return false;
-        if (state == State.PLAYING) clock.pause(nowNanos);
-        state = State.ERROR;
-        error = detail == null ? "" : detail;
-        return true;
+        return authority.fail(detail, nowNanos);
+    }
+
+    private static State map(FinitePlaybackAuthority.State state) {
+        return switch (state) {
+            case PLAYING -> State.PLAYING;
+            case PAUSED -> State.PAUSED;
+            case ENDED -> State.ENDED;
+            case ERROR -> State.ERROR;
+        };
     }
 
     private static float clampVolume(double volume) {
