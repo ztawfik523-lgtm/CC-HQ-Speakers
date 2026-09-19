@@ -4,6 +4,7 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.media.FiniteDecodeAnchorSelector;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
 import com.tom.hqspeaker.media.FinitePlaybackStateMachine;
+import com.tom.hqspeaker.media.FiniteListenerMembership;
 import com.tom.hqspeaker.media.FiniteRangeReadService;
 import com.tom.hqspeaker.media.FiniteRangeValidation;
 import com.tom.hqspeaker.media.MediaAsset;
@@ -56,6 +57,7 @@ public final class HQFiniteMediaServer {
         final UUID retainedAssetId;
         long decodeRevision = 1L;
         boolean assetReferenceHeld = true;
+        final FiniteListenerMembership listeners = new FiniteListenerMembership();
 
         Session(UUID mediaId, long generation, MediaMetadata metadata, long totalBytes,
                 FiniteRangeReadService rangeReads, MediaAssetReleaseQueue releases,
@@ -193,8 +195,7 @@ public final class HQFiniteMediaServer {
         session = prepared.next;
         terminalStatus = null;
         prepared.finished = true;
-        sendBeginToRelevant(prepared.next);
-        sendStateToRelevant(prepared.next);
+        refreshListeners(prepared.next);
         queueStateEvent(prepared.initialStatus);
         return true;
     }
@@ -292,11 +293,12 @@ public final class HQFiniteMediaServer {
         Session s = session;
         if (s == null) return;
 
+        sendStopToAdmitted(s);
+        s.listeners.clear();
         releaseAssetReference(s);
         terminalStatus = null;
         session = null;
         queueStateEvent(idleStatus());
-        sendControlToRelevant(s, HQFiniteMediaControlPacket.Action.STOP, 0.0);
     }
 
     public synchronized Map<String, Object> status() {
@@ -321,9 +323,17 @@ public final class HQFiniteMediaServer {
 
     private synchronized void tick() {
         Session s = session;
-        if (s == null || s.playback.terminal()) return;
+        if (s == null) return;
         long now = System.nanoTime();
+        if (s.playback.terminal()) {
+            if (!s.listeners.isEmpty()) {
+                sendStateToAdmitted(s, now, false);
+                s.listeners.clear();
+            }
+            return;
+        }
         if (finalizeNaturalEnd(s, now)) notifyState(s, now);
+        else refreshListeners(s);
     }
 
     private boolean finalizeNaturalEnd(Session s, long now) {
@@ -339,7 +349,7 @@ public final class HQFiniteMediaServer {
         if (!FiniteRangeValidation.requestMatches(
                 source, s.mediaId, s.generation, s.totalBytes,
                 packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
-        if (!isRelevant(player)) return;
+        if (!s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
 
         UUID playerId = player.getUUID();
         UUID assetId = s.mediaId;
@@ -366,7 +376,7 @@ public final class HQFiniteMediaServer {
         if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-        if (player == null || !isRelevant(player)) return;
+        if (player == null || !s.listeners.contains(playerId) || !isRelevant(player)) return;
         if (!result.success()) {
             failServerSession(s, "media range read failed: " + result.error());
             return;
@@ -384,7 +394,8 @@ public final class HQFiniteMediaServer {
 
     private synchronized void acceptStatus0(ServerPlayer player, HQFiniteMediaStatusPacket packet) {
         Session s = session;
-        if (s == null || player == null || packet.generation() != s.generation || !isRelevant(player)) return;
+        if (s == null || player == null || packet.generation() != s.generation
+                || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
 
         if (packet.transition() == HQFiniteMediaStatusPacket.Transition.READY) {
             long now = System.nanoTime();
@@ -413,31 +424,71 @@ public final class HQFiniteMediaServer {
         notifyState(s, now);
     }
 
-    private void sendBeginToRelevant(Session s) {
-        projectToClients("BEGIN", () -> {
-            float[] world = computeWorldPos();
-            HQFiniteMediaBeginPacket packet = new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.descriptor,
-                s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
-                s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
-            sendToRelevantUnchecked(packet);
-        });
+    private void refreshListeners(Session s) {
+        if (session != s || s.playback.terminal()) return;
+
+        float[] world = computeWorldPos();
+        Map<UUID, ServerPlayer> relevantPlayers = new HashMap<>();
+        for (ServerPlayer player : level.players()) {
+            if (isRelevant(player, world)) relevantPlayers.put(player.getUUID(), player);
+        }
+
+        FiniteListenerMembership.Delta delta = s.listeners.plan(relevantPlayers.keySet());
+
+        for (UUID playerId : delta.left()) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if (player == null) {
+                s.listeners.remove(playerId);
+                continue;
+            }
+            if (isRelevant(player, world)) continue;
+            if (sendStop(s, player)) s.listeners.remove(playerId);
+        }
+
+        HQFiniteMediaBeginPacket begin = delta.joined().isEmpty() ? null : beginPacket(s, world);
+        for (UUID playerId : delta.joined()) {
+            ServerPlayer player = relevantPlayers.get(playerId);
+            if (player == null || !isRelevant(player, world)) continue;
+            if (!sendPacketToPlayer("BEGIN", begin, player)) continue;
+            s.listeners.admit(playerId);
+            sendState(s, player);
+        }
     }
 
-    private void sendControlToRelevant(Session s, HQFiniteMediaControlPacket.Action action, double value) {
-        projectToClients("CONTROL " + action, () ->
-            sendToRelevantUnchecked(new HQFiniteMediaControlPacket(source, s.generation, action, value)));
+    private HQFiniteMediaBeginPacket beginPacket(Session s, float[] world) {
+        return new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.descriptor,
+            s.playback.volume(), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+            s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackStateMachine.State.PAUSED);
     }
 
-    private void sendStateToRelevant(Session s) {
-        projectToClients("STATE", () -> sendToRelevantUnchecked(statePacket(s, System.nanoTime())));
+    private boolean sendStop(Session s, ServerPlayer player) {
+        return sendPacketToPlayer("STOP",
+            new HQFiniteMediaControlPacket(source, s.generation, HQFiniteMediaControlPacket.Action.STOP, 0.0), player);
+    }
+
+    private void sendStopToAdmitted(Session s) {
+        for (UUID playerId : s.listeners.snapshot()) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if (player != null) sendStop(s, player);
+        }
+    }
+
+    private void sendStateToAdmitted(Session s, long now, boolean relevantOnly) {
+        HQFiniteMediaStatePacket packet = statePacket(s, now);
+        for (UUID playerId : s.listeners.snapshot()) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if (player == null) {
+                s.listeners.remove(playerId);
+                continue;
+            }
+            if (relevantOnly && !isRelevant(player)) continue;
+            sendPacketToPlayer("STATE", packet, player);
+        }
     }
 
     private void sendState(Session s, ServerPlayer player) {
-        projectToClients("STATE", () -> {
-            if (player != null && isRelevant(player)) {
-                HQSpeakerNetwork.sendToPlayer(statePacket(s, System.nanoTime()), player);
-            }
-        });
+        if (player == null || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+        sendPacketToPlayer("STATE", statePacket(s, System.nanoTime()), player);
     }
 
     private HQFiniteMediaStatePacket statePacket(Session s, long now) {
@@ -451,28 +502,31 @@ public final class HQFiniteMediaServer {
     }
 
     private void notifyState(Session s, long now) {
-        sendStateToRelevant(s);
+        boolean terminal = s.playback.terminal();
+        sendStateToAdmitted(s, now, !terminal);
+        if (terminal) s.listeners.clear();
         queueStateEvent(statusOf(s, now));
     }
 
-    private void sendToRelevantUnchecked(CustomPacketPayload packet) {
-        for (ServerPlayer player : level.players()) {
-            if (!isRelevant(player)) continue;
-            projectToClients(packet.getClass().getSimpleName() + " player=" + player.getUUID(), () ->
-                HQSpeakerNetwork.sendToPlayer(packet, player));
-        }
+    private boolean sendPacketToPlayer(String what, CustomPacketPayload packet, ServerPlayer player) {
+        if (packet == null || player == null) return false;
+        return projectToClients(what + " player=" + player.getUUID(), () ->
+            HQSpeakerNetwork.sendToPlayer(packet, player));
     }
 
-    private void projectToClients(String what, Runnable projection) {
-        BestEffortProjection.run(projection, failure ->
+    private boolean projectToClients(String what, Runnable projection) {
+        return BestEffortProjection.run(projection, failure ->
             HQSpeakerMod.warn("finite media client projection failed source=" + source + " " + what + ": "
                 + safeMessage(failure)));
     }
 
     private boolean isRelevant(ServerPlayer player) {
-        if (player == null) return false;
-        float[] p = computeWorldPos();
-        double dx = player.getX() - p[0], dy = player.getY() - p[1], dz = player.getZ() - p[2];
+        return isRelevant(player, computeWorldPos());
+    }
+
+    private boolean isRelevant(ServerPlayer player, float[] world) {
+        if (player == null || world == null || world.length < 3) return false;
+        double dx = player.getX() - world[0], dy = player.getY() - world[1], dz = player.getZ() - world[2];
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         return FiniteRangeValidation.listenerRelevant(
             player.level() == level, player.isRemoved(), distanceSquared, SPEAKER_RADIUS);
