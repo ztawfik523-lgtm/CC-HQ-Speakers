@@ -256,23 +256,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         return enqueuePreparedPcm(preparePcm(args));
     }
 
-    @LuaFunction public final boolean speakOgg(IArguments args) throws LuaException { return speakAudioFile(args, HQSpeakerAudioPacket.AudioFormat.OGG_VORBIS, "speakOgg"); }
-    @LuaFunction public final boolean speakMp3(IArguments args) throws LuaException { return speakAudioFile(args, HQSpeakerAudioPacket.AudioFormat.MP3, "speakMp3"); }
-    @LuaFunction public final boolean speakAudio(IArguments args) throws LuaException { return speakAudioFile(args, HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE, "speakAudio"); }
-    @LuaFunction public final boolean speakFile(IArguments args) throws LuaException { return speakAudio(args); }
-    @LuaFunction public final boolean speakPacked(IArguments args) throws LuaException { return speakAudio(args); }
-
-    @LuaFunction
-    public final boolean speakWav(IArguments args) throws LuaException {
-        ByteBuffer dataBuf = args.getBytes(0);
-        byte[] data = new byte[dataBuf.remaining()];
-        dataBuf.duplicate().get(data);
-        float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-        if (data.length == 0) throw new LuaException("speakWav: data is empty");
-        if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException("speakWav: file too large");
-        return enqueue(HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE, data, volume);
-    }
-
     @LuaFunction
     public final void speakStop() {
         speakerQueue.clear();
@@ -332,8 +315,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @LuaFunction public final int speakSampleRate() { return SPEAKER_SAMPLE_RATE; }
     @LuaFunction public final int speakMaxSamples() { return SPEAKER_MAX_PCM; }
     @LuaFunction public final int speakMaxAudioBytes() { return SPEAKER_MAX_AUDIO; }
-    @LuaFunction public final int speakMaxOggBytes() { return SPEAKER_MAX_AUDIO; }
-    @LuaFunction public final int speakMaxFileBytes() { return SPEAKER_MAX_AUDIO; }
     @LuaFunction public final String[] speakSupportedFiles() { return new String[]{"mp3", "wav"}; }
 
     @LuaFunction public final boolean speakStream(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream"); }
@@ -533,70 +514,6 @@ public final boolean speakPCMAll(IComputerAccess computer, IArguments args) thro
 }
 
 @LuaFunction
-public final boolean speakOggAll(IComputerAccess computer, IArguments args) throws LuaException {
-    ByteBuffer dataBuf = args.getBytes(0);
-    byte[] data = new byte[dataBuf.remaining()];
-    dataBuf.duplicate().get(data);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    if (data.length == 0) throw new LuaException("speakOgg: data is empty");
-    if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException("speakOgg: file too large (max " + (SPEAKER_MAX_AUDIO / 1024 / 1024) + " MB)");
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.OGG_VORBIS, data, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean speakMp3All(IComputerAccess computer, IArguments args) throws LuaException {
-    ByteBuffer dataBuf = args.getBytes(0);
-    byte[] data = new byte[dataBuf.remaining()];
-    dataBuf.duplicate().get(data);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    if (data.length == 0) throw new LuaException("speakMp3: data is empty");
-    if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException("speakMp3: file too large (max " + (SPEAKER_MAX_AUDIO / 1024 / 1024) + " MB)");
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.MP3, data, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean speakAudioAll(IComputerAccess computer, IArguments args) throws LuaException {
-    ByteBuffer dataBuf = args.getBytes(0);
-    byte[] data = new byte[dataBuf.remaining()];
-    dataBuf.duplicate().get(data);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    if (data.length == 0) throw new LuaException("speakAudio: data is empty");
-    if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException("speakAudio: file too large (max " + (SPEAKER_MAX_AUDIO / 1024 / 1024) + " MB)");
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE, data, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction public final boolean speakFileAll(IComputerAccess computer, IArguments args) throws LuaException { return speakAudioAll(computer, args); }
-@LuaFunction public final boolean speakPackedAll(IComputerAccess computer, IArguments args) throws LuaException { return speakAudioAll(computer, args); }
-
-
-@LuaFunction
-public final boolean speakWavAll(IComputerAccess computer, IArguments args) throws LuaException {
-    ByteBuffer dataBuf = args.getBytes(0);
-    byte[] data = new byte[dataBuf.remaining()];
-    dataBuf.duplicate().get(data);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    if (data.length == 0) throw new LuaException("speakWav: data is empty");
-    if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException("speakWav: file too large");
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.AUDIO_FILE, data, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
 public final void speakStopAll(IComputerAccess computer) {
     for (HQSpeakerPeripheral p : membersFor(computer)) p.speakStop();
 }
@@ -723,30 +640,6 @@ public final boolean speakTSAt(IComputerAccess computer, int index, String url, 
 }
 
 @LuaFunction
-public final boolean speakMp3At(IComputerAccess computer, int index, IArguments args) throws LuaException {
-    return byIndexFor(computer, index).speakMp3(args);
-}
-
-@LuaFunction
-public final boolean speakOggAt(IComputerAccess computer, int index, IArguments args) throws LuaException {
-    return byIndexFor(computer, index).speakOgg(args);
-}
-
-@LuaFunction
-public final boolean speakAudioAt(IComputerAccess computer, int index, IArguments args) throws LuaException {
-    return byIndexFor(computer, index).speakAudio(args);
-}
-
-@LuaFunction public final boolean speakFileAt(IComputerAccess computer, int index, IArguments args) throws LuaException { return speakAudioAt(computer, index, args); }
-@LuaFunction public final boolean speakPackedAt(IComputerAccess computer, int index, IArguments args) throws LuaException { return speakAudioAt(computer, index, args); }
-
-
-@LuaFunction
-public final boolean speakWavAt(IComputerAccess computer, int index, IArguments args) throws LuaException {
-    return byIndexFor(computer, index).speakWav(args);
-}
-
-@LuaFunction
 public final void speakStopAt(IComputerAccess computer, int index) throws LuaException {
     byIndexFor(computer, index).speakStop();
 }
@@ -830,18 +723,6 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         IcyMetaPacket.SPEAKER_REGISTRY.put(speakerSource, this);
         HQSpeakerMod.log("HQSpeaker: started stream (" + method + ") from " + url);
         return true;
-    }
-
-    private boolean speakAudioFile(IArguments args, HQSpeakerAudioPacket.AudioFormat fmt, String fnName) throws LuaException {
-        ByteBuffer dataBuf = args.getBytes(0);
-        byte[] data = new byte[dataBuf.remaining()];
-        dataBuf.duplicate().get(data);
-        float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-
-        if (data.length == 0) throw new LuaException(fnName + ": data is empty");
-        if (data.length > SPEAKER_MAX_AUDIO) throw new LuaException(fnName + ": file too large (max " + (SPEAKER_MAX_AUDIO / 1024 / 1024) + " MB)");
-
-        return enqueue(fmt, data, volume);
     }
 
     private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume) {
