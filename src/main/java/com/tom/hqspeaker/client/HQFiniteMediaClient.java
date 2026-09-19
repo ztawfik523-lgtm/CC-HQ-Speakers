@@ -3,6 +3,7 @@ package com.tom.hqspeaker.client;
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
+import com.tom.hqspeaker.media.FinitePlaybackProjection;
 import com.tom.hqspeaker.media.FiniteRangeLimits;
 import com.tom.hqspeaker.media.FiniteRangeWindow;
 import com.tom.hqspeaker.network.HQFiniteMediaBeginPacket;
@@ -29,7 +30,7 @@ import java.util.concurrent.Future;
 @OnlyIn(Dist.CLIENT)
 public final class HQFiniteMediaClient {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<UUID, SharedTimeline> TIMELINES = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, FinitePlaybackProjection> TIMELINES = new ConcurrentHashMap<>();
     private static final int MAX_SESSIONS = 128;
     private static final int MAX_IN_FLIGHT_REQUESTS = 2;
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
@@ -44,60 +45,9 @@ public final class HQFiniteMediaClient {
 
     private HQFiniteMediaClient() {}
 
-    /**
-     * One client-projected clock per server playback. STATE packets for multiple physical endpoints with the same
-     * revision do not re-anchor this clock to their individual arrival times.
-     */
-    private static final class SharedTimeline {
-        final UUID playbackId;
-        long stateRevision;
-        double position;
-        double duration;
-        long snapshotNanos;
-        boolean paused;
-        boolean looping;
-
-        SharedTimeline(UUID playbackId) {
-            this.playbackId = playbackId;
-        }
-
-        synchronized boolean observe(HQFiniteMediaStatePacket packet, long nowNanos) {
-            if (packet.stateRevision() < stateRevision) return false;
-            if (stateRevision == 0L || packet.stateRevision() > stateRevision) {
-                stateRevision = packet.stateRevision();
-                position = packet.position();
-                duration = packet.duration();
-                paused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
-                looping = packet.looping();
-                snapshotNanos = nowNanos;
-            }
-            return true;
-        }
-
-        synchronized long revision() {
-            return stateRevision;
-        }
-
-        synchronized double projected(long nowNanos) {
-            double result = position;
-            if (!paused && snapshotNanos > 0L) {
-                result += Math.max(0L, nowNanos - snapshotNanos) / 1_000_000_000.0;
-            }
-            if (duration > 0.0) {
-                if (looping) {
-                    result %= duration;
-                    if (result < 0.0) result += duration;
-                } else {
-                    result = Math.min(result, duration);
-                }
-            }
-            return Math.max(0.0, result);
-        }
-    }
-
     private static final class Session {
         final HQFiniteMediaBeginPacket begin;
-        final SharedTimeline timeline;
+        final FinitePlaybackProjection timeline;
         final FiniteRangeWindow window;
         final BlockPos blockPos;
         final Vector3d movingPosition = new Vector3d();
@@ -131,7 +81,7 @@ public final class HQFiniteMediaClient {
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
-            this.timeline = TIMELINES.computeIfAbsent(begin.playbackId(), SharedTimeline::new);
+            this.timeline = TIMELINES.computeIfAbsent(begin.playbackId(), ignored -> new FinitePlaybackProjection());
             this.window = new FiniteRangeWindow(begin.totalBytes(), FiniteRangeLimits.CLIENT_WINDOW_BYTES);
             this.blockPos = new BlockPos(begin.blockX(), begin.blockY(), begin.blockZ());
             this.desiredPaused = begin.paused();
@@ -259,7 +209,10 @@ public final class HQFiniteMediaClient {
                 || !session.begin.playbackId().equals(packet.playbackId())) return;
 
         long now = System.nanoTime();
-        if (!session.timeline.observe(packet, now)) return;
+        if (!session.timeline.observe(
+                packet.stateRevision(), packet.position(), packet.duration(),
+                packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED,
+                packet.looping(), now)) return;
 
         if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
                 || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
