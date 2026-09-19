@@ -9,7 +9,7 @@ displayName="CC:HQ Speakers"
 authors="tom"
 description='''
 High-quality upgrade layer for CC:Tweaked speaker blocks.
-Uses the normal computercraft:speaker block, adding MP3/OGG/WAV, streams, ICY metadata.
+Uses the normal computercraft:speaker block, adding modern MP3/WAV playback, multispeaker control, RAW PCM, and optional stream/ICY helpers.
 '''
 
 [[mixins]]

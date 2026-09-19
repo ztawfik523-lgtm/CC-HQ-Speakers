@@ -315,6 +315,10 @@ M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 
 Legacy-name MP3/WAV compatibility calls now route through the modern finite engine, including `*All` and `*At`. Their byte payloads use transient MediaAssets and the same analyzer/decoder path as prepared files; `*All` therefore uses the shared M1J playback authority instead of the inherited expected-member barrier. OGG/generic/live paths remain legacy pending separate decisions.
 
+## Shipping description truthfulness
+
+NeoForge metadata now advertises the actual supported core surface: modern MP3/common-WAV finite playback, multispeaker control, RAW PCM, and optional stream/ICY helpers. Historical OGG/generic whole-file support is no longer advertised.
+
 ## Retired finite surface cleanup
 
 The old OGG/generic whole-file methods are physically absent from `HQSpeakerPeripheral`. The composite no longer carries a redundant blacklist for methods that cannot be reflected in the first place.

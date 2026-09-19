@@ -104,7 +104,7 @@ Return the truthful modern prepared-format capability set. Current result is equ
 { mp3 = true, wav = true }
 ```
 
-This is deliberately separate from inherited `speakSupportedFiles()`, whose broader result describes legacy compatibility paths and must not be interpreted as the modern prepared engine contract.
+`speakSupportedFiles()` now reports the same finite format set (`mp3`, `wav`) for compatibility. `hq.preparedFormats(...)` remains the structured modern capability helper.
 
 ### `hq.preparedInfo(speaker, assetId) -> table`
 
@@ -301,7 +301,6 @@ Legacy-name `speakMp3`/`speakWav` singular/all/indexed calls now route through t
 
 Important inherited caveats:
 
-- legacy capability lists advertise formats broader than modern prepared support and should not be used as the modern contract;
 - composite `playNoteAll`/`playSoundAll`/`playAudioAll` and indexed variants are now intercepted and delegated to each real CC:T speaker, so requested instruments, sound IDs, and native DFPWM/backpressure semantics are preserved; obsolete legacy synthesis implementations remain only as compatibility/dead code pending cleanup;
 - inherited live HLS has a confirmed refreshed-playlist index progression bug;
 - KI-062 is resolved: blocking DNS may still occupy the calling ComputerCraft command, but it no longer holds the ownership monitor needed by server tick/lifecycle cleanup.
@@ -328,7 +327,7 @@ server MediaAsset
 -> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-M1G is complete and has a recorded focused audible/core Minecraft PASS on NeoForge 21.1.247. Current source uses protocol v8 for M1J; green CI/package evidence is not a substitute for the still-unrecorded focused Minecraft multispeaker acceptance.
+M1G is complete and has a recorded focused audible/core Minecraft PASS on NeoForge 21.1.247. Current source uses protocol v9 after the legacy finite payload teardown; green CI/package evidence is not a substitute for the still-unrecorded focused Minecraft multispeaker acceptance.
 
 See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, and `TESTING.md` for the current engineering boundary.
 
@@ -336,7 +335,7 @@ See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, 
 
 `speakMp3`, `speakWav`, `speakMp3All`, `speakWavAll`, `speakMp3At`, and `speakWavAt` now use the modern MediaAsset + progressive finite engine. The names remain for Lua compatibility, but they no longer use the inherited whole-file finite decoder or expected-member multispeaker barrier.
 
-These wrappers are intentionally strict: `speakMp3` expects modern-supported MP3 data and `speakWav` expects modern-supported common WAV data. OGG and generic packed-file aliases remain legacy for now.
+These wrappers are intentionally strict: `speakMp3` expects modern-supported MP3 data and `speakWav` expects modern-supported common WAV data. OGG and generic packed-file aliases have been removed from the normal upgraded CC:T speaker.
 
 
 

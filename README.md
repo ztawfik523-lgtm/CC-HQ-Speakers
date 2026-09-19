@@ -83,7 +83,7 @@ Closed:
 - KI-054 — shutdown cleanup/root-lock retry handling;
 - KI-064 — import no-progress and atomic-move fallback.
 
-M1H source work and M1J modern finite multispeaker source work are complete. Their focused Minecraft checks remain in the runtime backlog. Current non-runtime work is API/engine convergence and cleanup.
+M1H source work, M1J modern finite multispeaker, and finite API/engine convergence are complete at source/test/CI/package level. Their focused Minecraft checks remain in the runtime backlog. Current non-runtime work is release-oriented API/dependency cleanup and hardening.
 
 ## Audit recheck notes
 
