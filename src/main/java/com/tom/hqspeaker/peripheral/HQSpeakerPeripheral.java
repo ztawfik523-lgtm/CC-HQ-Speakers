@@ -491,7 +491,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @LuaFunction public final int speakMaxAudioBytes() { return SPEAKER_MAX_AUDIO; }
     @LuaFunction public final int speakMaxOggBytes() { return SPEAKER_MAX_AUDIO; }
     @LuaFunction public final int speakMaxFileBytes() { return SPEAKER_MAX_AUDIO; }
-    @LuaFunction public final String[] speakSupportedFiles() { return new String[]{"wav", "ogg", "mp3", "aiff", "aif", "au", "snd", "mp2", "mp4", "m4a", "aac"}; }
+    @LuaFunction public final String[] speakSupportedFiles() { return new String[]{"mp3", "wav"}; }
 
     @LuaFunction public final boolean speakStream(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream"); }
     @LuaFunction public final boolean speakHLS(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.HLS_STREAM, "speakHLS"); }
@@ -1160,43 +1160,22 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         return enqueue(fmt, data, volume, startTick, null, 0);
     }
 
-    private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume, long startTick, java.util.UUID syncGroupId, int syncGroupSize) {
-        if (fmt == null) return false;
-        if (data == null || data.length == 0) return false;
-        if (data.length > SPEAKER_MAX_AUDIO) return false;
+    private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume,
+                            long startTick, java.util.UUID syncGroupId, int syncGroupSize) {
+        // The legacy queue is now RAW-only. Finite MP3/WAV uses HQFiniteMediaServer; retired packed formats
+        // must not recreate a second whole-file playback engine through this queue.
+        if (fmt != HQSpeakerAudioPacket.AudioFormat.PCM_S16LE) return false;
+        if (data == null || data.length == 0 || data.length > SPEAKER_MAX_AUDIO) return false;
         if (!Float.isFinite(volume)) volume = 1.0f;
         volume = Math.max(0.0f, Math.min(3.0f, volume));
         if (startTick < SPEAKER_MIN_START_DELAY) startTick = 0L;
         if (syncGroupId == null) syncGroupSize = 0;
         else syncGroupSize = Math.max(1, Math.min(SPEAKER_MAX_SYNC_GROUP, syncGroupSize));
         if (speakerQueue.size() >= SPEAKER_MAX_QUEUE) return false;
-        if (isFiniteFormat(fmt)) {
-            synchronized (playerLock) {
-                if (finiteTracks.size() >= SPEAKER_MAX_QUEUE) return false;
-            }
-        }
-        
+
         byte[] safe = java.util.Arrays.copyOf(data, data.length);
-        long generation = 0L;
-        FiniteServerTrack finite = null;
-        if (isFiniteFormat(fmt)) {
-            synchronized (playerLock) {
-                generation = ++generationCounter;
-                finite = new FiniteServerTrack(generation, fmt, volume, looping);
-            }
-        }
-        boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume,
-            startTick, syncGroupId, syncGroupSize, generation));
-        if (offered && finite != null) {
-            synchronized (playerLock) {
-                if (finiteTracks.size() == 1
-                        && finiteTracks.peekFirst().state == PlayerState.ERROR) {
-                    finiteTracks.clear();
-                }
-                finiteTracks.addLast(finite);
-                terminalTrack = null;
-            }
-        }
+        boolean offered = speakerQueue.offer(new SpeakerChunk(
+            fmt, safe, volume, startTick, syncGroupId, syncGroupSize, 0L));
         if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return offered;
     }
