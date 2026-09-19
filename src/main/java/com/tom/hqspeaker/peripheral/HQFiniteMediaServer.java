@@ -506,37 +506,37 @@ public final class HQFiniteMediaServer {
     public boolean setVolumeAll(double volume) throws LuaException {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
         SharedPlayback shared;
+        boolean ended;
         long now = System.nanoTime();
         synchronized (this) {
             Session s = session;
             if (s == null || s.playback.terminal()) return false;
             shared = s.shared;
-            if (finalizeNaturalEnd(s, now)) {
-                // Notify after leaving this endpoint monitor so other endpoints can update independently.
-            } else {
-                return shared.setAllEndpointVolumes(volume, now);
-            }
+            ended = finalizeNaturalEnd(s, now);
         }
-        shared.notifyEndpoints(now);
-        return false;
+        if (ended) {
+            shared.notifyEndpoints(now);
+            return false;
+        }
+        return shared.setAllEndpointVolumes(volume, now);
     }
 
     /** Apply mute to the complete start-time playback snapshot, not current computer attachments. */
     public boolean setMutedAll(boolean muted) {
         SharedPlayback shared;
+        boolean ended;
         long now = System.nanoTime();
         synchronized (this) {
             Session s = session;
             if (s == null || s.playback.terminal()) return false;
             shared = s.shared;
-            if (finalizeNaturalEnd(s, now)) {
-                // Notify after leaving this endpoint monitor so other endpoints can update independently.
-            } else {
-                return shared.setAllEndpointMuted(muted, now);
-            }
+            ended = finalizeNaturalEnd(s, now);
         }
-        shared.notifyEndpoints(now);
-        return false;
+        if (ended) {
+            shared.notifyEndpoints(now);
+            return false;
+        }
+        return shared.setAllEndpointMuted(muted, now);
     }
 
     private synchronized boolean setSharedEndpointVolume(SharedPlayback shared, double volume, long nowNanos) {
