@@ -4,9 +4,9 @@ Updated: 2026-09-19
 
 ## Checkpoint
 
-Active branch: `codex/m1h-recovery`.
+Active branch: `codex/m1h-moving-source`.
 
-M1E, M1F, and M1G are complete. M1H-1 listener membership and M1H-2 recovery are complete at source/test/CI/package level. Their focused Minecraft runtime checks are deferred to the backlog.
+M1E, M1F, and M1G are complete. M1H-1 listener membership, M1H-2 recovery, and M1H-3 moving-source support are complete at source/test/CI/package level. Focused Minecraft runtime checks remain deferred to the backlog.
 
 M1H-1 **source** checkpoint:
 
@@ -25,6 +25,15 @@ M1H-2 CI `35411480844` passed NeoForge 21.1.247 and 21.1.248 with deterministic 
 
 - NeoForge 21.1.247: artifact `10574298203`, SHA-256 `536399fbb03f1b8009f4abc0c1260a116e5376234f125d4ccd43a25c3263e370`;
 - NeoForge 21.1.248: artifact `10573757634`, SHA-256 `c496b3871cb7dae32d323dbdc3d10dd44efb8f9c012d18043a5a075285293790`.
+
+M1H-3 **source/package checkpoint**:
+
+`5cd6d6ddcad4b5b4887b903f471de0f2f812795c`
+
+M1H-3 CI `35451236630` passed NeoForge 21.1.247 and 21.1.248 with the existing deterministic suite, packaged-mod verification, and artifact upload.
+
+- NeoForge 21.1.247: artifact `10586971196`, SHA-256 `ad336ca13f243aa19251f5e4649ab59066e60c91c40a4de6aeab49f5ca4d8a5c`;
+- NeoForge 21.1.248: artifact `10587375399`, SHA-256 `31e553d2ed35380958bceb23ecf2479d46b03ad5bcdf8eed82440477b5b760f8`.
 
 Final M1G **source** checkpoint:
 
@@ -227,11 +236,24 @@ Current behavior:
 
 Focused Minecraft resource-reload/renderer-loss/long-starvation recovery testing is deferred to the runtime backlog. CI does not prove SoundEngine behavior.
 
-## M1H / VS2 movement boundary
+## M1H-3 moving-source support implemented
 
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live position updates. `FiniteSpeakerSound.updatePosition(...)` exists but M1G does not drive it after renderer creation.
+M1H-3 is implemented at source/CI/package level at `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
 
-M1H may either mirror the inherited client-side VS2 transform path from BEGIN block coordinates or add explicit authoritative position updates if later lifecycle requirements justify that. No M1G wire expansion is required merely to settle that future choice.
+Selected design: **local position resolution, no movement packets**.
+
+Current behavior:
+
+- Sable Companion 1.6.0 is embedded as a lightweight optional compatibility library;
+- Sable/Aeronautics-style sublevel speaker positions are projected into current world space locally;
+- existing VS2 ship transforms remain the fallback moving-world path;
+- static speakers keep their normal block-center position;
+- the client updates the existing positional sound from BEGIN block coordinates each client tick;
+- the server uses the same resolved speaker position for the fixed 32-block listener/range check;
+- protocol v7 is unchanged and no continuous x/y/z traffic was added;
+- native ordinary Create contraption assembly/disassembly support is intentionally outside this slice rather than forcing a broader compatibility framework.
+
+Focused Minecraft Sable/Aeronautics and VS2 movement testing is not recorded and remains in the runtime backlog.
 
 ## Evidence boundaries
 
@@ -257,7 +279,9 @@ M1H-1 listener membership source/test/CI/package: PASS at 84e7bab99009e5871934a9
 M1H-1 focused Minecraft walk-in/walk-out/re-entry acceptance: deferred to backlog
 M1H-2 recovery source/test/CI/package: PASS at aa72f0d2fc9f8cde53cd956389beca1743d06165 / CI 35411480844
 M1H-2 focused Minecraft reload/loss/starvation acceptance: deferred to backlog
-Next slice: M1H-3 moving source / VS2
+M1H-3 Sable/VS2 moving-source source/CI/package: PASS at 5cd6d6ddcad4b5b4887b903f471de0f2f812795c / CI 35451236630
+M1H-3 focused Minecraft Sable/VS2 movement acceptance: deferred to backlog
+M1H source slices 1-3: complete; next roadmap milestone is M1I (gated native FLAC)
 ```
 
 ## Read order

@@ -20,7 +20,8 @@ Important source checkpoints:
 - final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`;
 - post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`;
 - M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`;
-- M1H-2 recovery source/test checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`.
+- M1H-2 recovery source/test checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`;
+- M1H-3 moving-source source/package checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
 
 ### FACT-PLATFORM-001
 
@@ -200,7 +201,7 @@ Whole-owner `HQMediaStaging.cleanup()` deletes remaining top-level entries from 
 
 ### FACT-M1G-015
 
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry x/y/z. The current modern client still does not call `FiniteSpeakerSound.updatePosition(...)` after renderer creation, so moving-source/VS2 lifecycle remains M1H.
+Modern BEGIN carries initial world position and block coordinates. Modern STATE still does not carry x/y/z. M1H-3 now uses BEGIN block coordinates to recompute moving-source world position locally and calls `FiniteSpeakerSound.updatePosition(...)` while the renderer is active.
 
 ## Rechecked client/protocol facts
 
@@ -344,13 +345,29 @@ Five seconds of continuous renderer PCM starvation triggers current-time recover
 
 Focused Minecraft resource-reload, renderer-loss, and long-starvation recovery testing is not recorded and is deferred to the runtime backlog.
 
-### FACT-M1H-NEXT-001
+### FACT-M1H-MOVING-001
 
-Modern moving-source/VS2 handling remains M1H. Two source-compatible approaches remain plausible: mirror the existing client-side block-coordinate transform path, or add explicit authoritative position updates. No choice has been made.
+M1H-3 source/package checkpoint `5cd6d6ddcad4b5b4887b903f471de0f2f812795c` passed CI `35451236630` on NeoForge 21.1.247 and 21.1.248, including the existing deterministic suite, packaged-mod verification, and artifact upload.
+
+### FACT-M1H-MOVING-002
+
+Sable Companion 1.6.0 is embedded in the packaged mod. Modern finite speaker position resolution first handles Sable sublevels, then the existing VS2 ship transform path, otherwise keeping the static block-center position.
+
+### FACT-M1H-MOVING-003
+
+The client updates the existing finite positional sound locally each client tick. The server resolves the moving speaker position locally for the fixed 32-block membership/range check. Protocol v7 has no moving-position packet and no continuous x/y/z network traffic.
+
+### FACT-M1H-MOVING-004
+
+Native ordinary Create contraption assembly/disassembly behavior is not part of M1H-3. The selected scope is Sable-based moving worlds (including Aeronautics-style sublevels) plus VS2 rather than a universal movement-provider framework.
+
+### FACT-M1H-MOVING-005
+
+Focused real-Minecraft Sable/Aeronautics and VS2 movement testing is not recorded and remains in the runtime backlog.
 
 ## Later milestone facts
 
-M1H-1 membership and M1H-2 reload/loss/starvation recovery are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. Final VS2 moving-source behavior remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
+M1H-1 membership, M1H-2 reload/loss/starvation recovery, and M1H-3 Sable/VS2 moving-source support are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. Native FLAC remains gated M1I. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
 
 ## License
 

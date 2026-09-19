@@ -172,16 +172,21 @@ M1H-2 keeps local playback recoverable without changing protocol v7. Unexpected 
 
 Focused Minecraft listener/reload/starvation checks are deferred to the runtime backlog.
 
-### VS2 moving-source note
+### Moving-source handling
 
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does **not** carry x/y/z updates. `FiniteSpeakerSound.updatePosition(...)` exists but currently has no modern M1G call site after renderer creation.
+M1H-3 uses local position resolution rather than streaming coordinates over the network.
 
-M1H therefore needs moving-source work, but a new wire position packet is **not automatically required**. The inherited client already resolves VS2 movement locally from block coordinates each tick. Two valid later approaches remain:
+For each active modern finite speaker:
 
-1. mirror that client-side transform logic for modern finite playback using BEGIN's block coordinates;
-2. add an explicit authoritative position-update mechanism if later lifecycle/network requirements justify it.
+1. Sable Companion projects Sable/Aeronautics-style sublevel block coordinates into current world space when applicable;
+2. otherwise the existing VS2 ship transform is used when applicable;
+3. otherwise the block center is already the world position.
 
-Do not silently choose between them before M1H design work.
+The client updates the existing positional sound from that result. The server uses the same resolved position for fixed-radius listener membership. BEGIN's existing block coordinates are sufficient, so protocol v7 needs no x/y/z update packet.
+
+This is intentionally not a universal movement abstraction. Native ordinary Create contraption assembly/disassembly has different lifecycle semantics and is outside M1H-3 unless a later concrete requirement justifies that work.
+
+Focused moving-source Minecraft testing remains in the runtime backlog.
 
 ## Cross-cutting ownership/threading safety
 

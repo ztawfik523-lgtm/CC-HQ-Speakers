@@ -35,6 +35,15 @@ M1H-2 artifacts:
 - 21.1.247 artifact `10574298203`, SHA-256 `536399fbb03f1b8009f4abc0c1260a116e5376234f125d4ccd43a25c3263e370`;
 - 21.1.248 artifact `10573757634`, SHA-256 `c496b3871cb7dae32d323dbdc3d10dd44efb8f9c012d18043a5a075285293790`.
 
+M1H-3 moving-source checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`. Both NeoForge targets passed the existing deterministic suite, source compilation, packaged-mod verification, and artifact upload.
+
+M1H-3 artifacts:
+
+- 21.1.247 artifact `10586971196`, SHA-256 `ad336ca13f243aa19251f5e4649ab59066e60c91c40a4de6aeab49f5ca4d8a5c`;
+- 21.1.248 artifact `10587375399`, SHA-256 `31e553d2ed35380958bceb23ecf2479d46b03ad5bcdf8eed82440477b5b760f8`.
+
+Package verification explicitly checks that Sable Companion 1.6.0 is embedded in the candidate JAR.
+
 ## What is actually integrated now
 
 M1G is complete at source/test/CI/package/component level.
@@ -222,9 +231,22 @@ Exact-source review additionally verifies the SoundEngine-close race: an externa
 
 Focused Minecraft resource reload, renderer-loss, and long-starvation recovery remain in the runtime backlog.
 
-### M1H-3 — VS2 movement
+### M1H-3 — moving source
 
-Modern STATE does not carry live x/y/z. Test whichever design is selected: client-side transform from BEGIN block coordinates or explicit authoritative position updates. Do not assume one before implementation.
+**Source/CI/package PASS at `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.**
+
+The chosen implementation deliberately stays small:
+
+- Sable Companion resolves Sable/Aeronautics sublevel block positions into world space;
+- existing VS2 transform support remains as the other moving-world path;
+- the modern finite client updates the sound position locally every client tick;
+- the server resolves the same position for listener membership;
+- no position packet or protocol change exists;
+- the packaged JAR is checked for the embedded Sable Companion dependency.
+
+A plain JUnit test that tried to load the jar-in-jar service provider was removed because the plain test runtime does not reproduce NeoForge's jar-in-jar loading. The correct deterministic evidence here is normal source compilation plus explicit package-content verification; no extra test-only dependency setup was added just to make that artificial test work.
+
+Focused real-Minecraft Sable/Aeronautics and VS2 movement acceptance is deferred to the runtime backlog.
 
 ## Current evidence language
 
@@ -243,6 +265,7 @@ M1G ordinary replay: implemented
 M1G focused audible/core runtime PASS: recorded 2026-09-19 on NeoForge 21.1.247 (KI-046 resolved)
 M1H-1 listener membership source/test/CI/package: PASS; focused Minecraft test deferred to backlog
 M1H-2 recovery source/test/CI/package: PASS; focused Minecraft reload/loss/starvation test deferred to backlog
+M1H-3 Sable/VS2 moving-source source/CI/package: PASS; focused Minecraft movement test deferred to backlog
 ```
 
 

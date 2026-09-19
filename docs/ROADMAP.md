@@ -17,7 +17,7 @@ The selected Option A post-M1G hardening pass is also complete:
 - NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
 - KI-062, KI-063, KI-054, and KI-064 resolved.
 
-The active milestone is **M1H — dynamic listener lifecycle/recovery**. M1H-1 membership and M1H-2 recovery are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the backlog. M1H-3 moving-source/VS2 is next.
+The M1H source slices are complete at source/test/CI/package level. M1H-1 membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented; focused Minecraft checks remain in the backlog. The next roadmap milestone is the gated M1I native-FLAC decision/work.
 
 ## Foundation
 
@@ -131,9 +131,22 @@ Implemented behavior:
 
 Remaining evidence: focused Minecraft reload/lost-renderer/long-starvation acceptance, deferred to the runtime backlog.
 
-### M1H-3 — moving source / VS2
+### M1H-3 — moving source
 
-Two viable approaches remain: mirror the inherited client-side ship transform from BEGIN block coordinates, or add explicit authoritative position updates. Do not silently choose between them.
+**Implemented at source/CI/package level. Focused Minecraft acceptance deferred to backlog.**
+
+Checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
+
+Selected Option A, kept intentionally narrow:
+
+- embed Sable Companion 1.6.0 for Sable/Aeronautics-style sublevel position projection;
+- retain the existing VS2 transform path;
+- update modern finite sound position locally on the client;
+- use the resolved moving position for server listener relevance;
+- no continuous server position packets and no protocol change;
+- do not build a generic provider framework or pull native Create contraption lifecycle into this slice.
+
+Remaining evidence: focused Sable/Aeronautics and VS2 movement runtime testing, deferred to the backlog.
 
 The fixed M1G radius means dynamic volume-aware listener membership is **not** pulled forward.
 

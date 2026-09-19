@@ -109,17 +109,27 @@ Implemented:
 
 Focused Minecraft reload/loss/starvation testing is deferred to the runtime backlog.
 
-## M1H-3 — moving source / VS2
+## M1H-3 — moving-source status
 
-Modern BEGIN contains initial world coordinates and block coordinates. Modern STATE does not carry live x/y/z. `FiniteSpeakerSound.updatePosition(...)` exists but is unused after creation.
+M1H-3 is implemented at source/CI/package level.
 
-Two viable approaches remain:
+Checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`
 
-**A.** mirror the inherited client-side ship transform from BEGIN block coordinates;
+CI: `35451236630`
 
-**B.** explicit authoritative server position updates.
+- NeoForge 21.1.247: PASS, artifact `10586971196`, SHA-256 `ad336ca13f243aa19251f5e4649ab59066e60c91c40a4de6aeab49f5ca4d8a5c`;
+- NeoForge 21.1.248: PASS, artifact `10587375399`, SHA-256 `31e553d2ed35380958bceb23ecf2479d46b03ad5bcdf8eed82440477b5b760f8`.
 
-Do not silently choose this while implementing M1H-1.
+Selected design: **local movement resolution, no position streaming**.
+
+- Sable Companion 1.6.0 is embedded for Sable/Aeronautics-style sublevels;
+- existing VS2 movement support remains;
+- client finite sound position is refreshed locally from BEGIN block coordinates;
+- server membership uses the same resolved moving position;
+- protocol v7 is unchanged;
+- ordinary native Create contraption lifecycle is intentionally not pulled into this slice.
+
+Focused Sable/Aeronautics and VS2 movement testing remains in the runtime backlog.
 
 ## Architecture that must remain
 
@@ -169,4 +179,6 @@ Do not explain things in abstract architecture language by default. Prefer plain
 
 For meaningful tradeoffs, present the main options and consequences and let the owner choose. Handle minor implementation details without asking.
 
-When source work is requested: implement fully, add deterministic tests, run both supported NeoForge CI targets, then adversarially re-read the changed lifecycle paths before calling the slice complete.
+Do not treat a more general or abstract design as inherently better. Give simple and complex approaches equal consideration. Prefer the simplest solution that reliably covers the actual supported cases; add framework or compatibility machinery only when it buys concrete value.
+
+When source work is requested: implement fully, add meaningful deterministic tests where they genuinely test the behavior, run both supported NeoForge CI targets, then adversarially re-read the changed lifecycle paths before calling the slice complete.

@@ -141,17 +141,16 @@ RAW replacement now validates/converts the full sample table and volume before s
 
 ## Active listener lifecycle — M1H
 
-### KI-004 — complete leave/re-enter and moving-source lifecycle is not final
+### KI-004 — dynamic listener/recovery/moving-source lifecycle
 
-M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
+**Resolved at source/test/CI/package level by M1H-1 through M1H-3. Focused runtime evidence remains deferred.**
 
-Exact current-source gap: BEGIN/STATE projection occurs only to currently relevant players; `HQFiniteMediaServer.tick()` does not maintain admitted listeners. A player entering range after playback starts has no BEGIN-created client session, and leaving range does not proactively remove an existing one. Solve membership transition before broader recovery.
+- M1H-1 handles late entry, leave/re-entry, disconnect/dimension pruning, and coherent terminal cleanup;
+- M1H-2 handles renderer/resource loss and sustained starvation recovery;
+- M1H-3 handles Sable/Aeronautics-style sublevel movement and VS2 movement without position packets;
+- focused Minecraft listener/recovery/movement checks remain in the runtime backlog and must not be claimed as passed.
 
-The fixed M1G radius intentionally does **not** pull dynamic volume-aware listener membership forward.
-
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry x/y/z. `FiniteSpeakerSound.updatePosition(...)` exists but the current modern client does not call it after renderer creation.
-
-A new position packet is not automatically required: the inherited client already recomputes VS2 ship-transformed position from block coordinates each tick. M1H may mirror that client-side pattern using BEGIN block coordinates, or add explicit authoritative position updates if later requirements justify it. Do not silently choose now.
+Native ordinary Create contraption assembly/disassembly is outside this resolved M1H scope; add support later only if there is a concrete use case worth its separate lifecycle work.
 
 ## Gated/later work
 
