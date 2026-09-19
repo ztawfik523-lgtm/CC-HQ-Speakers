@@ -1,6 +1,6 @@
 # Future cleanup inventory
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 This is a parking lot for obsolete/legacy code, later milestones, and release cleanup. M1G is complete; this file is not permission to reopen it without a concrete regression.
 
@@ -98,7 +98,7 @@ M1I may add native FLAC only if fully proven.
 
 After the progressive renderer is runtime-proven, remove/downgrade noisy development diagnostics while retaining concise operational failures.
 
-During M1G hardening, add enough once-per-condition diagnostics to make renderer-start/session-cap failures debuggable, then tune verbosity before release.
+Before release/M1O, keep diagnostics useful for renderer/session failures while removing or downgrading development-only noise.
 
 ## Live/HLS/TS inherited code — M3
 

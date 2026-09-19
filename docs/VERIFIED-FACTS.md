@@ -10,14 +10,15 @@ Facts only. Recommendations and unresolved choices belong elsewhere.
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`.
 
-Current implementation branch: `codex/m1g-progressive-finite-decode`.
+Current completed-hardening branch: `codex/post-m1g-hardening`.
 
 Important source checkpoints:
 
 - M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`;
 - M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`;
 - M1G preparation base: `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`;
-- final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`.
+- final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`;
+- post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 
 ### FACT-PLATFORM-001
 
@@ -303,7 +304,15 @@ A separate focused audible/core Minecraft acceptance PASS was recorded on 2026-0
 
 ### FACT-POST-M1G-001
 
-KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`.
+KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406595856`.
+
+### FACT-M1H-LISTENER-001
+
+Current modern finite server source has no admitted-listener membership set. BEGIN is projected to players relevant when playback starts, while the normal server tick only handles natural EOF. A player entering range after playback starts therefore cannot bootstrap a client session on its own.
+
+### FACT-M1H-LISTENER-002
+
+READY/STATE and range requests already check current relevance. Missing behavior is proactive server admission/removal: late-entry bootstrap and proactive leave cleanup.
 
 ### FACT-M1H-NEXT-001
 

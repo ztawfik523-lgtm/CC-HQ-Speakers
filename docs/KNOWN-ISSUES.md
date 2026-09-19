@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 Severity here is project priority, not a security claim. Green source/CI is not Minecraft runtime proof.
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`, also green on both targets with package verification/artifacts.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277` on NeoForge 21.1.247 and 21.1.248. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406595856`, also green on both targets with package verification/artifacts.
 
 Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historical option lists do not override it.
 
@@ -22,7 +22,7 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 **Resolved as focused M1G runtime evidence on 2026-09-19.** NeoForge 21.1.247 integrated singleplayer recorded audible modern WAV/MP3 playback, pause/resume, seek/reanchor, float32 WAV, natural EOF, ordinary looping, positional attenuation/fixed 32-block range behavior, prepared-asset lifetime, stop, and a dedicated loop-safe global-volume-zero hibernation/unmute PASS. No HQSpeaker WARN/ERROR lines were present during the focused mute/unmute run.
 
-This is not a claim that NeoForge 21.1.248 was manually runtime-tested, nor does it subsume later KI-062/063/054/064 or M1H recovery/resource-reload work.
+This is not a claim that NeoForge 21.1.248 was manually runtime-tested. KI-062/063/054/064 were subsequently closed by the separate post-M1G hardening pass; M1H recovery/resource-reload/listener lifecycle remains later work.
 
 ## Resolved by M1E/M1F
 
@@ -145,6 +145,8 @@ RAW replacement now validates/converts the full sample table and volume before s
 
 M1H owns proactive out-of-range cleanup, late-entry discovery, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
 
+Exact current-source gap: BEGIN/STATE projection occurs only to currently relevant players; `HQFiniteMediaServer.tick()` does not maintain admitted listeners. A player entering range after playback starts has no BEGIN-created client session, and leaving range does not proactively remove an existing one. Solve membership transition before broader recovery.
+
 The fixed M1G radius intentionally does **not** pull dynamic volume-aware listener membership forward.
 
 Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry x/y/z. `FiniteSpeakerSound.updatePosition(...)` exists but the current modern client does not call it after renderer creation.
@@ -192,6 +194,6 @@ Do not reopen KI-062/063/054/064 without a concrete regression. M1H now owns lat
 - M1G focused audible/core Minecraft PASS: recorded 2026-09-19 on NeoForge 21.1.247; KI-046 resolved.
 - KI-051/053/055/056/057/058/060/061 are resolved at source/component level.
 - KI-054/062/063/064 are resolved by post-M1G hardening checkpoint `3d30ce4564de749f32171666df65de739b08ad77`.
-- Current authority: `CURRENT-STATE.md`, `HANDOFF-2026-09-18-M1G-COMPLETE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
+- Current authority: `HANDOFF-2026-09-19-M1H-START.md`, `CURRENT-STATE.md`, this file, `TESTING.md`, `VERIFIED-FACTS.md`, and exact source.
 
 

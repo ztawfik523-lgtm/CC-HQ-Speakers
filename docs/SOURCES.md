@@ -1,6 +1,6 @@
 # Sources and provenance
 
-Updated: 2026-09-17
+Updated: 2026-09-19
 
 ## Exact target dependencies
 
@@ -57,7 +57,13 @@ Final M1G source checkpoint:
 
 `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
 
-Final source CI: `35297026277`, green on NeoForge 21.1.247 and 21.1.248. Closeout commits after that checkpoint are documentation-only.
+Final M1G source CI: `35297026277`, green on NeoForge 21.1.247 and 21.1.248.
+
+Post-M1G hardening source checkpoint:
+
+`3d30ce4564de749f32171666df65de739b08ad77`
+
+Latest full verification on that source tree: CI `35406595856`, green on NeoForge 21.1.247 and 21.1.248. Current completed-hardening branch is `codex/post-m1g-hardening`.
 
 ## Codec dependencies
 

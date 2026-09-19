@@ -16,12 +16,12 @@ Post-M1G hardening **source** checkpoint:
 
 `3d30ce4564de749f32171666df65de739b08ad77`
 
-Hardening CI `35406434097` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
+Latest full hardening verification CI `35406595856` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload. Source after `3d30ce4564de749f32171666df65de739b08ad77` is documentation-only through that run.
 
-Hardening artifacts:
+Hardening artifacts from CI `35406595856`:
 
-- NeoForge 21.1.247: artifact `10570964690`, SHA-256 `9b66788c11ccd1b3c4883a9b8c1480ae956870e314061845037186d078745249`;
-- NeoForge 21.1.248: artifact `10571424610`, SHA-256 `570cdde33d3d1435e74a87a95e7af92e0329c23bcc9672b3fbb88f8b770e8fb0`.
+- NeoForge 21.1.247: artifact `10572925494`, SHA-256 `ad0d02119ad3a4a29de00220e195ad117214316b8739f8faca223ac4900f409c`;
+- NeoForge 21.1.248: artifact `10573000385`, SHA-256 `aff2eaaccb56b04c12d25bc6774f27c52f45fae90212b0b5e771f90828e6012e`.
 
 CI `35297026277` passed NeoForge 21.1.247 and 21.1.248, including build, deterministic tests, packaged-mod verification, and artifact upload.
 
@@ -171,6 +171,22 @@ The next active milestone is **M1H**: listener entry/leave/rejoin, dimension/res
 - inherited HTTP stream paths do close their streams;
 - pending release retries are driven by `ServerMediaAssets.tickPendingReleases()`.
 
+## M1H concrete starting gap
+
+The next active milestone is M1H. Exact source currently has no server-side admitted-listener set for modern finite playback.
+
+- `commitPreparedStart()` sends BEGIN and STATE only to players relevant at playback start;
+- `HQFiniteMediaServer.tick()` only handles natural EOF and does not discover newly relevant players;
+- a player entering range later never received BEGIN, so the client cannot bootstrap itself;
+- players leaving the fixed 32-block radius are not proactively sent targeted STOP/removal;
+- return/rejoin has no explicit current-time re-admission path;
+- `FiniteSpeakerSound.updatePosition(...)` exists but modern finite playback does not drive it after renderer creation.
+
+First M1H slice: late entry, proactive leave, return/rejoin, disconnect/dimension pruning, and deterministic transition tests. Recovery/resource reload/general underrun follows. VS2 movement is a later M1H slice.
+
+Late-entry bootstrap has a meaningful choice: proactive BEGIN+current STATE, or BEGIN followed by existing READY->STATE. Do not silently choose if the tradeoff matters.
+
+
 ## M1H / VS2 movement boundary
 
 Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live position updates. `FiniteSpeakerSound.updatePosition(...)` exists but M1G does not drive it after renderer creation.
@@ -202,8 +218,8 @@ Next milestone: M1H listener/recovery lifecycle
 
 ## Read order
 
-1. `CURRENT-STATE.md`
-2. `HANDOFF-2026-09-18-M1G-COMPLETE.md`
+1. `HANDOFF-2026-09-19-M1H-START.md`
+2. `CURRENT-STATE.md`
 3. `KNOWN-ISSUES.md`
 4. `TESTING.md`
 5. `VERIFIED-FACTS.md`

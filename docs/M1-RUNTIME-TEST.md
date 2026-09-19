@@ -43,7 +43,7 @@ The dedicated mute retest used the 2-second looping WAV so EOF could not invalid
 
 Environment: Minecraft 1.21.1, Java 21, CC:T 1.120.0, NeoForge 21.1.247, final M1G jar/source family. NeoForge 21.1.248 was not manually runtime-tested in this session.
 
-This resolves KI-046. The separate post-M1G hardening pass also closed KI-062/063/054/064; M1H lifecycle/recovery remains separate.
+This resolves KI-046. The separate post-M1G hardening pass also closed KI-062/063/054/064 at source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`; M1H listener/recovery/movement lifecycle remains separate.
 
 ## Test environment
 

@@ -1,6 +1,6 @@
 # CC:Tweaked 1.120.0 speaker compatibility contract
 
-Updated: 2026-09-17
+Updated: 2026-09-19
 
 ## Why this is mandatory
 
@@ -201,9 +201,7 @@ Accepted single-speaker rule:
 
 The intended “new HQ start replaces old HQ source” rule does **not** mean a failed/rejected start should destroy valid current playback.
 
-Current source transfers/stops ownership too early in some RAW and prepared replacement paths. A capacity rejection or `audioPlayPrepared` failure can therefore stop the previous valid HQ source before the new source is admitted.
-
-Post-M1G hardening fixes KI-063 for the known RAW/prepared replacement paths: admission/validation happens before destructive ownership transfer. Preserve that behavior in future compatibility work.
+Pre-hardening source transferred/stopped ownership too early in some RAW and prepared replacement paths. Post-M1G hardening resolved KI-063 for those known paths: RAW input is validated/converted first, and prepared playback is retained/constructed through a `PreparedStart` admission token before destructive ownership transfer. Preserve that admit-first behavior in future compatibility work.
 
 The inherited multi-speaker `*All` / `*At` helpers are not covered by this single-speaker guarantee. They are scheduled for later replacement/migration. Source review also confirmed that legacy `playNoteAll`/`playSoundAll` do not preserve requested normal note/sound semantics.
 

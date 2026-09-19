@@ -19,7 +19,7 @@ M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`, CI `34757923455
 
 M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`. Source/test/CI/package and deterministic/component acceptance are complete; focused Minecraft M1F transport acceptance is unrecorded.
 
-M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406595856`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
 
 ## What is actually integrated now
 
@@ -150,7 +150,27 @@ Record exact source commit, docs commit if relevant, JAR SHA-256, target version
 
 Do not require M1G to prove full late-entry/proactive-leave/return-rejoin/dimension/resource-reload/general-underrun/final-VS2 lifecycle.
 
-For later moving-VS2 proof, remember modern STATE does not carry x/y/z. Test whichever M1H approach is actually selected: client-side ship transform from BEGIN block coordinates (mirroring the legacy path) or an explicit position-update protocol. Do not assume one before implementation.
+### M1H-1 — listener membership
+
+Deterministic tests should prove:
+
+1. outside at playback start is not admitted;
+2. entering range during active playback admits exactly once;
+3. leaving range removes membership and targets client cleanup;
+4. re-entry bootstraps current authoritative position, not zero;
+5. disconnect/removal and dimension mismatch prune membership;
+6. unchanged membership does not spam BEGIN/STOP;
+7. stop/replacement/natural terminal clears membership coherently.
+
+Minecraft acceptance should use a long/looping fixture and physically test walk-in, walk-out, and return.
+
+### M1H-2 — recovery
+
+Verify resource/sound-engine loss and long underrun separately. Reuse existing renderer-loss READY->STATE where sufficient; add new state only for a demonstrated gap.
+
+### M1H-3 — VS2 movement
+
+Modern STATE does not carry live x/y/z. Test whichever design is selected: client-side transform from BEGIN block coordinates or explicit authoritative position updates. Do not assume one before implementation.
 
 ## Current evidence language
 

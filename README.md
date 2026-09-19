@@ -76,7 +76,7 @@ M1G intentionally does not include gapless MP3, permanent-source loop engineerin
 
 ## Post-M1G hardening
 
-The selected Option A hardening pass is complete at `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`.
+The selected Option A hardening pass is complete at source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`. Latest full verification on the same source tree is CI `35406595856`, green on NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifacts.
 
 Closed:
 
@@ -85,7 +85,7 @@ Closed:
 - KI-054 — shutdown cleanup/root-lock retry handling;
 - KI-064 — import no-progress and atomic-move fallback.
 
-The next active milestone is **M1H**, which owns dynamic listener entry/leave/rejoin, recovery, and final moving-source/VS2 lifecycle.
+The next active milestone is **M1H**. Start with listener membership: detect players entering an already-playing speaker's 32-block radius, stop client sessions when they leave, and rebuild them at current authoritative time when they return. Recovery/resource-reload/long-underrun work follows; final moving-source/VS2 handling is a later M1H slice.
 
 ## Audit recheck notes
 

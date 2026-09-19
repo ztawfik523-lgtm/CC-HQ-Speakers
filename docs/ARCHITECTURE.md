@@ -4,7 +4,7 @@
 
 This file describes the current architecture and selected near-term direction. Exact current source still wins over documentation. For implementation status and open defects, read `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` first.
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`.
+Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 
 The source implements modern finite protocol **v7** with an explicit server-authoritative decoder/re-anchor revision.
 
@@ -163,6 +163,16 @@ Seek/replacement/stop supersede stale local replay through generation/revision c
 `FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, linear positional attenuation, and `canStartSilent()`.
 
 The client latches renderer start only after `SoundManager.play(...)` returns, observes later activation/physical EOF, and requests authoritative READY/STATE rejoin when the renderer fails to become active or is unexpectedly lost. KI-060 is resolved at source/component level.
+
+## Listener membership at M1H start
+
+Modern finite relevance is fixed at 32 blocks, but current source does not track which players have actually been admitted to a session.
+
+At session start, BEGIN/STATE are sent to currently relevant players. Later server ticks do not scan for new listeners; they only handle natural EOF. READY and range requests are relevance-checked, but a player who never received BEGIN has no local session/generation to use those paths.
+
+M1H needs an explicit membership transition layer: outside->inside bootstrap, inside->outside targeted cleanup, return/rejoin at current authoritative time, disconnect/dimension pruning, and no repeated BEGIN/STOP spam while membership is unchanged.
+
+Solve membership before broad recovery or moving-source work.
 
 ## Underrun and listener lifecycle
 

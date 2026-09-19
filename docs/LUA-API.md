@@ -1,12 +1,12 @@
 # Lua / ComputerCraft API reference
 
-Updated: 2026-09-17
+Updated: 2026-09-19
 
 This is the current user-facing programming reference for CC:HQ Speakers.
 
 The mod upgrades the normal ComputerCraft `speaker`. Lua decides what the audio means; Java exposes technical audio capabilities and playback controls.
 
-Where this file distinguishes **current source** from **selected M1G target behavior**, current source wins until the selected source work is implemented and tested.
+M1G and the selected post-M1G hardening pass are implemented. Exact current source still wins over this reference if behavior and documentation disagree.
 
 ## Recommended starting point
 
@@ -264,7 +264,7 @@ Important inherited caveats:
 
 Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live x/y/z updates.
 
-The current modern finite client does not update `FiniteSpeakerSound` position after renderer creation, so moving-source/VS2 lifecycle remains M1H.
+The current modern finite client does not update `FiniteSpeakerSound` position after renderer creation, so moving-source/VS2 lifecycle remains M1H. M1H must also add late-entry/proactive-leave/re-entry listener membership; today a player entering the fixed range after playback started is not automatically bootstrapped.
 
 A new network position packet is not automatically required: the inherited client already recalculates VS2 world position from block coordinates each tick. M1H may mirror that path for modern finite playback or choose explicit position updates later.
 

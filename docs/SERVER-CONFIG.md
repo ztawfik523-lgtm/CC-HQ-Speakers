@@ -1,6 +1,6 @@
 # Server configuration
 
-Updated: 2026-09-17
+Updated: 2026-09-19
 
 HQ Speaker does **not** decide how much storage a ComputerCraft computer has. ComputerCraft disks, mounts, and filesystem quotas remain ComputerCraft/server policy.
 
@@ -46,7 +46,7 @@ For the ComputerCraft-visible staging mount, HQ Speaker translates the unlimited
 
 ## Modern finite transport limits
 
-Current implementation uses protocol **v6** with client-requested bounded encoded ranges. A selected future decoder/reanchor revision (likely v7) does not change the storage quota model described here.
+Current modern finite implementation uses protocol **v7** with client-requested bounded encoded ranges and explicit decoder/re-anchor revision. Protocol version does not change the storage quota model described here.
 
 Current implementation tuning is:
 

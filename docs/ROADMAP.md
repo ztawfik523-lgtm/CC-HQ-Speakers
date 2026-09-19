@@ -13,7 +13,7 @@ M1G is complete, including focused NeoForge 21.1.247 audible/core runtime accept
 The selected Option A post-M1G hardening pass is also complete:
 
 - source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`;
-- CI `35406434097`;
+- CI `35406595856`;
 - NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
 - KI-062, KI-063, KI-054, and KI-064 resolved.
 
@@ -77,7 +77,7 @@ Completed contract:
 
 M1G intentionally does **not** include gapless MP3 metadata handling, permanent-source loop engineering, dynamic volume-aware listener membership, general late-entry/rejoin lifecycle, final VS2 movement, or Sound Physics Remastered acoustic/range integration.
 
-Focused real-Minecraft audible proof remains unrecorded under KI-046 and should be included in later consolidated runtime acceptance rather than rewriting CI as audio proof.
+Focused M1G audible/core Minecraft runtime acceptance passed on NeoForge 21.1.247 on 2026-09-19; KI-046 is resolved. NeoForge 21.1.248 remains CI/package verified rather than manually runtime-verified.
 
 ### Post-M1G cross-cutting hardening
 
@@ -92,16 +92,31 @@ Checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`.
 
 ## M1H — dynamic listener lifecycle/recovery
 
-- discover players entering range after playback starts;
-- proactive leave cleanup;
-- return/rejoin current server time;
-- dimension/world/resource reload recovery;
-- robust general underrun rejoin;
-- final VS2 moving-speaker lifecycle.
+### M1H-1 — listener membership
+
+Start here:
+
+- track admitted players for each active modern finite session;
+- discover late entry into the fixed 32-block radius;
+- bootstrap the current generation/current canonical time;
+- proactively clean up players leaving range;
+- re-admit on return;
+- prune disconnect/dimension changes;
+- add deterministic no-spam transition tests plus focused Minecraft walk-in/walk-out/re-entry acceptance.
+
+Current source already relevance-checks READY and range requests, but `HQFiniteMediaServer.tick()` does not maintain listeners.
+
+Late-entry packet sequencing remains a real choice: proactive BEGIN+STATE, or BEGIN followed by existing READY->STATE. Do not silently choose if the tradeoff matters.
+
+### M1H-2 — recovery
+
+Verify resource/sound-engine reload, existing renderer-loss rejoin, long-underrun current-time recovery, and remaining world/dimension lifecycle edges.
+
+### M1H-3 — moving source / VS2
+
+Two viable approaches remain: mirror the inherited client-side ship transform from BEGIN block coordinates, or add explicit authoritative position updates. Do not silently choose between them.
 
 The fixed M1G radius means dynamic volume-aware listener membership is **not** pulled forward.
-
-For VS2 movement, modern BEGIN already carries block coordinates and the legacy client already recomputes ship-transformed positions locally each tick. M1H may reuse that client-side pattern with no new position packet, or may introduce an authoritative position-update mechanism if later lifecycle requirements justify it. That tradeoff remains open for M1H.
 
 ## M1I — gated native FLAC
 
