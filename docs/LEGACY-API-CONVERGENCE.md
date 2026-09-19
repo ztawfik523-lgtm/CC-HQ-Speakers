@@ -22,8 +22,8 @@ This file records the current migration boundary after M1J. It is not a promise 
 | `speakPCM` | Keep separate | Open-ended signed-16 producer-fed RAW source with bounded backpressure. |
 | `hq.playFile` / prepared APIs | Keep primary | Modern bounded finite MP3/common-WAV path. |
 | `speakMp3` / `speakWav` (+ `All`/`At`) | **Migrated to modern finite** | Exact bytes become a temporary MediaAsset, are analyzed on the ComputerCraft thread, and only the short replacement/commit runs on the main thread. `*All` uses the modern shared playback authority. |
-| `speakOgg` | Hold legacy | Modern OGG requires a deliberate progressive/seek/rejoin implementation. |
-| `speakAudio` / `speakFile` / `speakPacked` | Product decision later | Generic historical aliases have a broader/ambiguous format promise. |
+| `speakOgg` (+ `All`/`At`) | **Removed from normal CC:T speaker API** | OGG may return later only through a proper modern progressive/seek/rejoin implementation. |
+| `speakAudio` / `speakFile` / `speakPacked` (+ `All`/`At`) | **Removed from normal CC:T speaker API** | The ambiguous JavaSound-style format promise is intentionally retired. |
 | Legacy finite `*All` / `*At` | Migrate together with their singular frontend | Do not retain the expected-member barrier for modernized formats. |
 | `speakStream` / HLS / TS / ICY | Future optional | Not part of finite convergence. |
 | `speakSupportedFiles` | Legacy-only capability | Use `hq.preparedFormats(speaker)` for modern support. |

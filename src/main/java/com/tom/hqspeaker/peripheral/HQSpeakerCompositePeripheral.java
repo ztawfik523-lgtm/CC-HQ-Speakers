@@ -51,8 +51,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> MODERN_BYTE_FINITE = Set.of(
         "speakMp3", "speakWav", "speakMp3All", "speakWavAll", "speakMp3At", "speakWavAt"
     );
-    private static final Set<String> FINITE_START = Set.of(
-        "speakOgg", "speakAudio", "speakFile", "speakPacked"
+    /** Historical whole-file finite APIs intentionally removed from the normal CC:T speaker surface. */
+    private static final Set<String> RETIRED_LEGACY_FINITE = Set.of(
+        "speakOgg", "speakOggAll", "speakOggAt",
+        "speakAudio", "speakAudioAll", "speakAudioAt",
+        "speakFile", "speakFileAll", "speakFileAt",
+        "speakPacked", "speakPackedAll", "speakPackedAt",
+        "speakMaxFileBytes", "speakMaxOggBytes"
     );
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
@@ -73,10 +78,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         "getPeripheralType", "getPos", "getSpeakerCount",
         "getStreamArtist", "getStreamFormats", "getStreamGenre", "getStreamMeta", "getStreamMetaSerial",
         "getStreamSong", "getStreamStation", "getStreamTitle", "getStreamUrl", "isStreaming",
-        "speakIsPlaying", "speakMaxAudioBytes", "speakMaxFileBytes", "speakMaxOggBytes", "speakMaxSamples",
+        "speakIsPlaying", "speakMaxAudioBytes", "speakMaxSamples",
         "speakQueueSize", "speakSampleRate", "speakSupportedFiles"
     );
-    private static final String[] SUPPORTED_FINITE_FILES = { "wav", "ogg", "mp3", "aiff", "aif", "au", "snd" };
+    private static final String[] SUPPORTED_FINITE_FILES = { "mp3", "wav" };
 
     /** Exact inherited single-speaker RAW limits. */
     private static final int HQ_RAW_MAX_SAMPLES = 131_072;
@@ -90,7 +95,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private enum Owner {
         NONE,
         RAW,
-        LEGACY_FINITE,
         STAGED_FINITE,
         STREAM
     }
@@ -127,6 +131,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         this.staging = staging;
         this.legacyMethods = METHOD_SUPPLIER.getSelfMethods(legacy);
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
+        names.removeAll(RETIRED_LEGACY_FINITE);
         names.addAll(STANDARD);
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
@@ -433,9 +438,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (RAW_START.contains(name)) {
             synchronized (this) { return startRaw(computer, context, name, args); }
         }
-        if (FINITE_START.contains(name)) {
-            synchronized (this) { return startLegacyReplacing(Owner.LEGACY_FINITE, computer, context, name, args); }
-        }
         synchronized (this) { return invokeLegacy(name, computer, context, args); }
     }
 
@@ -688,14 +690,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
-    private MethodResult startLegacyReplacing(Owner requested, IComputerAccess computer, ILuaContext context,
-                                              String name, IArguments args) throws LuaException {
-        beginReplacingHQ(requested);
-        MethodResult result = invokeLegacy(name, computer, context, args);
-        if (immediateTrue(result)) owner = requested;
-        return result;
-    }
-
     private void beginReplacingHQ(Owner requested) {
         if (requested == Owner.RAW && owner == Owner.RAW) return;
         stopCurrentHQ();
@@ -705,7 +699,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private void stopCurrentHQ() {
         switch (owner) {
             case STAGED_FINITE -> finite.stop();
-            case RAW, LEGACY_FINITE, STREAM -> legacy.speakStop();
+            case RAW, STREAM -> legacy.speakStop();
             case NONE -> { }
         }
         rawCapacityWaiters.clear();
@@ -742,7 +736,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return switch (owner) {
             case NONE -> false;
             case RAW -> rawLifetime.active(legacy.speakIsPlaying());
-            case LEGACY_FINITE -> legacy.speakIsPlaying();
             case STAGED_FINITE -> finite.isActive();
             case STREAM -> legacy.isStreaming();
         };
@@ -762,7 +755,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if ("audioStatus".equals(name)) {
             return switch (owner) {
                 case STAGED_FINITE -> MethodResult.of(finite.hasStatus() ? finite.status() : idleStatus());
-                case LEGACY_FINITE, STREAM -> invokeLegacy(name, computer, context, args);
+                case STREAM -> invokeLegacy(name, computer, context, args);
                 case RAW -> MethodResult.of(rawStatus());
                 case NONE -> MethodResult.of(idleStatus());
             };

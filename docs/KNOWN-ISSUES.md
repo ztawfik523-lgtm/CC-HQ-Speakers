@@ -158,8 +158,8 @@ Native ordinary Create contraption assembly/disassembly is outside this resolved
 - Gapless MP3/LAME/Xing delay/padding handling is not an M1G requirement.
 - Continuous-source loop engineering is not an M1G requirement.
 - KI-034: native FLAC is optional codec-expansion work, not the next mandatory milestone.
-- KI-018: **resolved for the modern prepared M1J path** — protocol v8 shared playback uses no expected-member barrier, and each listener receives only relevant physical endpoints while sharing one playback timeline. The inherited legacy multispeaker engine still contains its old barrier until later API/engine convergence.
-- KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
+- KI-018: **resolved for the supported finite API surface** — protocol v8 shared playback uses no expected-member barrier. MP3/WAV legacy-name wrappers use the modern path; OGG/generic legacy finite frontends are removed from the normal CC:T speaker API. Remaining expected-member code is teardown-only dead/legacy implementation until physically deleted.
+- KI-011 / KI-012 / KI-023: supported MP3/WAV APIs have converged on the modern engine. Remaining inherited finite implementation is teardown work, not a supported second finite product.
 - KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues remain legacy/later cleanup. Direct radio/ICY/HLS/TS is not a core roadmap requirement. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
 - inherited capability lists advertise unsupported/broader formats; later migration must make them truthful.
 - inherited `playNoteAll`/`playSoundAll`/`playAudioAll` implementations remain in legacy code, but the composite now intercepts exposed all/indexed standard calls and delegates each endpoint to the real CC:T speaker, preserving requested instrument/sound/DFPWM semantics.

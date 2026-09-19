@@ -31,7 +31,7 @@ M1H source work and M1J modern finite multispeaker source work are complete at s
 
 `FileFiniteAudioStream` was rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence.
 
-`FiniteAudioTrack` remains live: `HQAudioStream` uses it for inherited complete-payload finite playback, so it and its focused test stay until that compatibility path is migrated or retired. The remaining inherited complete-payload finite path is centered on `HQAudioStream`/`HQSpeakerClientHandler` and the old byte-taking APIs.
+`FiniteAudioTrack` remains live only until the now-unexposed inherited complete-payload finite implementation is physically removed. MP3/WAV frontends have already migrated to modern playback, and OGG/generic finite frontends are now removed from the normal CC:T speaker surface.
 
 Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine uses JLayer progressively instead.
 
@@ -53,8 +53,8 @@ Rechecked after M1J:
 | HQ `speakPCM` | Keep as a separate producer-fed signed-16 RAW source. It is not a finite MediaAsset song. |
 | Modern `hq.playFile`, `prepareFile`, `playPrepared`, `playPreparedAll` | Keep as the primary finite-file API. MP3 + supported common WAV only today. |
 | Legacy-name byte-taking `speakMp3` / `speakWav` (+ All/At) | Migrated to the modern finite engine. The wrappers import/analyze temporary MediaAssets on the ComputerCraft thread, commit playback via CC:T's main-thread task bridge, and release temporary import ownership on success/failure. |
-| Legacy `speakOgg` | Keep legacy for now unless OGG is deliberately modernized. Do not silently claim modern OGG support. |
-| Legacy generic `speakAudio`, `speakFile`, `speakPacked` | Ambiguous compatibility aliases. Do not route them blindly until the retained format contract is chosen. |
+| Legacy `speakOgg` (+ All/At) | Removed from the normal upgraded CC:T speaker API. Re-add only through a modern progressive OGG implementation. |
+| Legacy generic `speakAudio`, `speakFile`, `speakPacked` (+ All/At) | Removed from the normal upgraded CC:T speaker API; their ambiguous broad-format promise is retired. |
 | Direct `speakStream` / HLS / TS + ICY | Optional legacy/future external-stream work, not core finite-engine convergence. |
 | `audioStatus` / pause/resume/seek/loop/stop | Composite already routes to the active modern finite owner when present and otherwise preserves legacy behavior. |
 | `speakSupportedFiles` | Legacy compatibility surface. Modern code should query `hq.preparedFormats(speaker)` instead. |

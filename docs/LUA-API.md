@@ -332,3 +332,18 @@ See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, 
 
 These wrappers are intentionally strict: `speakMp3` expects modern-supported MP3 data and `speakWav` expects modern-supported common WAV data. OGG and generic packed-file aliases remain legacy for now.
 
+
+
+## Removed legacy finite aliases
+
+The normal upgraded CC:T speaker no longer exposes the inherited whole-file finite aliases:
+
+- `speakOgg` / `speakOggAll` / `speakOggAt`
+- `speakAudio` / `speakAudioAll` / `speakAudioAt`
+- `speakFile` / `speakFileAll` / `speakFileAt`
+- `speakPacked` / `speakPackedAll` / `speakPackedAt`
+- `speakMaxFileBytes` / `speakMaxOggBytes`
+
+Use the modern MP3/WAV prepared or compatibility-name APIs. `speakSupportedFiles()` now truthfully reports only `mp3` and `wav`.
+
+OGG can return later only as a proper modern progressive format; the old complete-payload OGG path is not retained merely for compatibility.
