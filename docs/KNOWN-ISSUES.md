@@ -162,7 +162,7 @@ Native ordinary Create contraption assembly/disassembly is outside this resolved
 - KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
 - KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues remain legacy/later cleanup. Direct radio/ICY/HLS/TS is not a core roadmap requirement. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
 - inherited capability lists advertise unsupported/broader formats; later migration must make them truthful.
-- inherited `playNoteAll`/`playSoundAll` implementation remains in legacy code, but the composite now intercepts modern exposed calls and delegates each endpoint to the real CC:T speaker, preserving requested instrument/sound semantics.
+- inherited `playNoteAll`/`playSoundAll`/`playAudioAll` implementations remain in legacy code, but the composite now intercepts exposed all/indexed standard calls and delegates each endpoint to the real CC:T speaker, preserving requested instrument/sound/DFPWM semantics.
 - KI-022: separate `hqspeaker:hq_speaker` registration remains a release-cleanup/product decision.
 - KI-025: top-level `LICENSE` is MPL-2.0 while NeoForge metadata declares LGPL-3.0; resolve provenance before public release and do not silently relicense.
 - CI docs-only path filtering/concurrency cancellation remains repository hygiene, not M1G correctness.

@@ -39,8 +39,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final MethodSupplier<PeripheralMethod> METHOD_SUPPLIER = PeripheralMethodSupplier.create(List.of());
     private static final Set<String> STANDARD = Set.of("playNote", "playSound", "playAudio", "stop");
-    private static final Set<String> STANDARD_ALL = Set.of("playNoteAll", "playSoundAll");
-    private static final Set<String> STANDARD_AT = Set.of("playNoteAt", "playSoundAt");
+    private static final Set<String> STANDARD_ALL = Set.of("playNoteAll", "playSoundAll", "playAudioAll");
+    private static final Set<String> STANDARD_AT = Set.of("playNoteAt", "playSoundAt", "playAudioAt");
     private static final Set<String> FINITE_CONTROLS = Set.of(
         "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetLooping", "audioStop"
     );
@@ -479,6 +479,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                         if (one) member.clearTerminalOwnership();
                         yield one || accepted;
                     }
+                    case "playAudioAll" -> {
+                        if (member.isHQContinuousActive()) yield accepted;
+                        boolean one = member.vanilla.playAudio(
+                            context, args.getTableUnsafe(0), args.optDouble(1));
+                        if (one) member.clearTerminalOwnership();
+                        yield one || accepted;
+                    }
                     default -> throw new LuaException("No such standard all-speaker method " + name);
                 };
             }
@@ -499,6 +506,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                     if (member.isHQContinuousActive()) yield MethodResult.of(false);
                     boolean accepted = member.vanilla.playSound(
                         context, args.getString(1), args.optDouble(2), args.optDouble(3));
+                    if (accepted) member.clearTerminalOwnership();
+                    yield MethodResult.of(accepted);
+                }
+                case "playAudioAt" -> {
+                    if (member.isHQContinuousActive()) yield MethodResult.of(false);
+                    boolean accepted = member.vanilla.playAudio(
+                        context, args.getTableUnsafe(1), args.optDouble(2));
                     if (accepted) member.clearTerminalOwnership();
                     yield MethodResult.of(accepted);
                 }
