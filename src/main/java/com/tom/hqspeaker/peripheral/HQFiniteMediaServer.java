@@ -343,6 +343,7 @@ public final class HQFiniteMediaServer {
             HQFiniteMediaServer endpoint = entry.getKey();
             Session next = entry.getValue();
             synchronized (endpoint) {
+                endpoint.discardInactiveSessionForReplacement();
                 endpoint.generationCounter = next.generation;
                 endpoint.session = next;
                 endpoint.terminalStatus = null;
@@ -372,6 +373,7 @@ public final class HQFiniteMediaServer {
             throw new IllegalStateException("prepared finite start became stale");
         }
 
+        discardInactiveSessionForReplacement();
         generationCounter = prepared.next.generation;
         session = prepared.next;
         terminalStatus = null;
@@ -495,6 +497,23 @@ public final class HQFiniteMediaServer {
         if (!s.playback.setLooping(looping, now)) return false;
         s.shared.notifyEndpoints(now);
         return true;
+    }
+
+    /**
+     * Drop a retained terminal endpoint before installing a replacement.
+     *
+     * <p>Terminal status may intentionally remain queryable until ownership changes, but the old shared playback
+     * must not keep this physical endpoint attached after a new playback is installed.</p>
+     */
+    private void discardInactiveSessionForReplacement() {
+        Session old = session;
+        if (old == null) return;
+        if (old.playback.active()) {
+            throw new IllegalStateException("cannot discard active finite endpoint");
+        }
+        old.listeners.clear();
+        session = null;
+        old.shared.detachEndpoint(this);
     }
 
     /** Detach only this physical endpoint. Used by physical replacement/removal. */

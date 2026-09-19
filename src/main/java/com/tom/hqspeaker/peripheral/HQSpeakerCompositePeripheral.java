@@ -555,6 +555,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private void clearTerminalOwnership() {
         if (!isHQContinuousActive()) {
+            if (owner == Owner.STAGED_FINITE) finite.stop();
             owner = Owner.NONE;
             rawCapacityWaiters.clear();
             rawLifetime.clear();
