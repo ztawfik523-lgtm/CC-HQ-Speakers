@@ -29,6 +29,7 @@ import java.util.concurrent.Future;
 @OnlyIn(Dist.CLIENT)
 public final class HQFiniteMediaClient {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, SharedTimeline> TIMELINES = new ConcurrentHashMap<>();
     private static final int MAX_SESSIONS = 128;
     private static final int MAX_IN_FLIGHT_REQUESTS = 2;
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
@@ -43,8 +44,60 @@ public final class HQFiniteMediaClient {
 
     private HQFiniteMediaClient() {}
 
+    /**
+     * One client-projected clock per server playback. STATE packets for multiple physical endpoints with the same
+     * revision do not re-anchor this clock to their individual arrival times.
+     */
+    private static final class SharedTimeline {
+        final UUID playbackId;
+        long stateRevision;
+        double position;
+        double duration;
+        long snapshotNanos;
+        boolean paused;
+        boolean looping;
+
+        SharedTimeline(UUID playbackId) {
+            this.playbackId = playbackId;
+        }
+
+        synchronized boolean observe(HQFiniteMediaStatePacket packet, long nowNanos) {
+            if (packet.stateRevision() < stateRevision) return false;
+            if (stateRevision == 0L || packet.stateRevision() > stateRevision) {
+                stateRevision = packet.stateRevision();
+                position = packet.position();
+                duration = packet.duration();
+                paused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
+                looping = packet.looping();
+                snapshotNanos = nowNanos;
+            }
+            return true;
+        }
+
+        synchronized long revision() {
+            return stateRevision;
+        }
+
+        synchronized double projected(long nowNanos) {
+            double result = position;
+            if (!paused && snapshotNanos > 0L) {
+                result += Math.max(0L, nowNanos - snapshotNanos) / 1_000_000_000.0;
+            }
+            if (duration > 0.0) {
+                if (looping) {
+                    result %= duration;
+                    if (result < 0.0) result += duration;
+                } else {
+                    result = Math.min(result, duration);
+                }
+            }
+            return Math.max(0.0, result);
+        }
+    }
+
     private static final class Session {
         final HQFiniteMediaBeginPacket begin;
+        final SharedTimeline timeline;
         final FiniteRangeWindow window;
         final BlockPos blockPos;
         final Vector3d movingPosition = new Vector3d();
@@ -54,6 +107,7 @@ public final class HQFiniteMediaClient {
         double duration;
         double statePosition;
         long stateSnapshotNanos;
+        long stateRevision;
         double pcmTimelineStart;
         long pcmDiscardedBytes;
         final FiniteDecodeCoordinator coordinator = new FiniteDecodeCoordinator();
@@ -77,6 +131,7 @@ public final class HQFiniteMediaClient {
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
+            this.timeline = TIMELINES.computeIfAbsent(begin.playbackId(), SharedTimeline::new);
             this.window = new FiniteRangeWindow(begin.totalBytes(), FiniteRangeLimits.CLIENT_WINDOW_BYTES);
             this.blockPos = new BlockPos(begin.blockX(), begin.blockY(), begin.blockZ());
             this.desiredPaused = begin.paused();
@@ -180,6 +235,7 @@ public final class HQFiniteMediaClient {
     public static void stopAll() {
         SESSIONS.forEach((source, session) -> session.cancelAll());
         SESSIONS.clear();
+        TIMELINES.clear();
     }
 
     private static void begin0(HQFiniteMediaBeginPacket packet) {
@@ -187,7 +243,10 @@ public final class HQFiniteMediaClient {
         if (!SESSIONS.containsKey(packet.source()) && SESSIONS.size() >= MAX_SESSIONS) return;
 
         Session old = SESSIONS.remove(packet.source());
-        if (old != null) old.cancelAll();
+        if (old != null) {
+            old.cancelAll();
+            releaseTimelineIfUnused(old);
+        }
 
         Session session = new Session(packet);
         SESSIONS.put(packet.source(), session);
@@ -196,13 +255,15 @@ public final class HQFiniteMediaClient {
 
     private static void state0(HQFiniteMediaStatePacket packet) {
         Session session = SESSIONS.get(packet.source());
-        if (!matches(session, packet.mediaId(), packet.generation()) || session.terminal) return;
+        if (!matches(session, packet.mediaId(), packet.generation()) || session.terminal
+                || !session.begin.playbackId().equals(packet.playbackId())) return;
+
+        long now = System.nanoTime();
+        if (!session.timeline.observe(packet, now)) return;
 
         if (packet.state() == HQFiniteMediaStatePacket.PlaybackState.ENDED
                 || packet.state() == HQFiniteMediaStatePacket.PlaybackState.ERROR) {
-            session.terminal = true;
-            session.cancelAll();
-            SESSIONS.remove(packet.source(), session);
+            stopTerminalPlayback(packet.playbackId());
             return;
         }
 
@@ -218,7 +279,7 @@ public final class HQFiniteMediaClient {
         if (decision == FiniteDecodeCoordinator.StateDecision.STALE) return;
 
         session.recovery.stateReceived();
-        long now = System.nanoTime();
+        session.stateRevision = packet.stateRevision();
         session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
         if (session.desiredPaused || decision != FiniteDecodeCoordinator.StateDecision.KEEP) {
             session.recovery.clearStarvation();
@@ -229,7 +290,7 @@ public final class HQFiniteMediaClient {
         session.stateSnapshotNanos = now;
         session.anchorOffset = packet.anchorOffset();
         session.anchorTime = packet.anchorTime();
-        session.targetPosition = packet.position();
+        session.targetPosition = projectedServerPosition(session, now);
         session.anchorReady = true;
         setVolume(session, packet.volume());
 
@@ -242,7 +303,7 @@ public final class HQFiniteMediaClient {
 
         if (decision == FiniteDecodeCoordinator.StateDecision.RESTART) {
             session.localExhausted = false;
-            restartDecodeEpoch(session, packet.anchorOffset(), packet.anchorTime(), packet.position());
+            restartDecodeEpoch(session, packet.anchorOffset(), packet.anchorTime(), session.targetPosition);
         }
 
         pump(session, now);
@@ -272,6 +333,7 @@ public final class HQFiniteMediaClient {
         session.terminal = true;
         session.cancelAll();
         SESSIONS.remove(packet.source(), session);
+        releaseTimelineIfUnused(session);
     }
 
     private static void restartDecodeEpoch(Session session, long startOffset,
@@ -457,6 +519,10 @@ public final class HQFiniteMediaClient {
     }
 
     private static double projectedServerPosition(Session session, long nowNanos) {
+        if (session.stateRevision > 0L && session.stateRevision == session.timeline.revision()) {
+            return session.timeline.projected(nowNanos);
+        }
+
         double position = session.statePosition;
         if (!session.desiredPaused && session.stateSnapshotNanos > 0L) {
             position += Math.max(0L, nowNanos - session.stateSnapshotNanos) / 1_000_000_000.0;
@@ -560,6 +626,25 @@ public final class HQFiniteMediaClient {
         report(session, HQFiniteMediaStatusPacket.Transition.ERROR, error);
         session.cancelAll();
         SESSIONS.remove(session.begin.source(), session);
+        releaseTimelineIfUnused(session);
+    }
+
+    private static void stopTerminalPlayback(UUID playbackId) {
+        for (Session candidate : SESSIONS.values()) {
+            if (!candidate.begin.playbackId().equals(playbackId)) continue;
+            candidate.terminal = true;
+            candidate.cancelAll();
+            SESSIONS.remove(candidate.begin.source(), candidate);
+        }
+        TIMELINES.remove(playbackId);
+    }
+
+    private static void releaseTimelineIfUnused(Session removed) {
+        UUID playbackId = removed.begin.playbackId();
+        for (Session candidate : SESSIONS.values()) {
+            if (candidate.begin.playbackId().equals(playbackId)) return;
+        }
+        TIMELINES.remove(playbackId, removed.timeline);
     }
 
     private static void report(Session session, HQFiniteMediaStatusPacket.Transition transition, String error) {

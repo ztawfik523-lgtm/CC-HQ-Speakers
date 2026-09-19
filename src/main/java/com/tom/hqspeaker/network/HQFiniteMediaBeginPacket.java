@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /** Modern finite source descriptor. M1G intentionally exposes only MP3 or normalized common WAV. */
 public record HQFiniteMediaBeginPacket(
-    UUID source, UUID mediaId, long generation, FiniteDecodeDescriptor descriptor,
+    UUID source, UUID mediaId, UUID playbackId, long generation, FiniteDecodeDescriptor descriptor,
     float volume, float x, float y, float z,
     int blockX, int blockY, int blockZ,
     long totalBytes, boolean looping, boolean paused
@@ -27,10 +27,11 @@ public record HQFiniteMediaBeginPacket(
             @Override public HQFiniteMediaBeginPacket decode(RegistryFriendlyByteBuf buf) {
                 UUID source = buf.readUUID();
                 UUID mediaId = buf.readUUID();
+                UUID playbackId = buf.readUUID();
                 long generation = buf.readVarLong();
                 FiniteDecodeDescriptor descriptor = readDescriptor(buf);
                 return new HQFiniteMediaBeginPacket(
-                    source, mediaId, generation, descriptor,
+                    source, mediaId, playbackId, generation, descriptor,
                     buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
                     buf.readInt(), buf.readInt(), buf.readInt(), buf.readVarLong(),
                     buf.readBoolean(), buf.readBoolean());
@@ -39,6 +40,7 @@ public record HQFiniteMediaBeginPacket(
             @Override public void encode(RegistryFriendlyByteBuf buf, HQFiniteMediaBeginPacket p) {
                 buf.writeUUID(p.source());
                 buf.writeUUID(p.mediaId());
+                buf.writeUUID(p.playbackId());
                 buf.writeVarLong(Math.max(1L, p.generation()));
                 writeDescriptor(buf, p.descriptor());
                 buf.writeFloat(p.volume());
@@ -51,7 +53,7 @@ public record HQFiniteMediaBeginPacket(
         };
 
     public boolean sensible() {
-        if (source == null || mediaId == null || generation <= 0L || descriptor == null
+        if (source == null || mediaId == null || playbackId == null || generation <= 0L || descriptor == null
                 || !Float.isFinite(volume) || !Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)
                 || totalBytes <= 0L) {
             return false;
@@ -95,8 +97,8 @@ public record HQFiniteMediaBeginPacket(
             HQSpeakerMod.warn("M1G finite BEGIN rejected as nonsensical");
             return;
         }
-        HQSpeakerMod.log("M1G finite wire BEGIN received source=" + packet.source()
-            + " generation=" + packet.generation() + " format=" + packet.descriptor().kind()
+        HQSpeakerMod.log("M1J finite wire BEGIN received source=" + packet.source()
+            + " playback=" + packet.playbackId() + " generation=" + packet.generation() + " format=" + packet.descriptor().kind()
             + " rate=" + packet.descriptor().sampleRate() + " channels=" + packet.descriptor().channels()
             + " bytes=" + packet.totalBytes() + " volume=" + packet.volume()
             + " worldPos=" + packet.x() + "," + packet.y() + "," + packet.z()

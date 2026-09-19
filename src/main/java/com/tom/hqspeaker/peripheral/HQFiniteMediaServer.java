@@ -691,7 +691,7 @@ public final class HQFiniteMediaServer {
     }
 
     private HQFiniteMediaBeginPacket beginPacket(Session s, float[] world) {
-        return new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.descriptor,
+        return new HQFiniteMediaBeginPacket(source, s.mediaId, s.playback.playbackId(), s.generation, s.descriptor,
             effectiveVolume(s), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
             s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackAuthority.State.PAUSED);
     }
@@ -731,7 +731,8 @@ public final class HQFiniteMediaServer {
         FiniteDecodeAnchorSelector.Anchor anchor =
             FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, playback.position());
         return new HQFiniteMediaStatePacket(
-            source, s.mediaId, s.generation, playback.decodeRevision(), wireState(playback.state()),
+            source, s.mediaId, playback.playbackId(), s.generation,
+            playback.stateRevision(), playback.decodeRevision(), wireState(playback.state()),
             playback.position(), playback.duration(), effectiveVolume(s), playback.looping(),
             anchor.offset(), anchor.seconds(), playback.error()
         );
