@@ -44,7 +44,46 @@ public final class HQFiniteMediaServer {
     private static final Set<HQFiniteMediaServer> ACTIVE = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, HQFiniteMediaServer> BY_SOURCE = new ConcurrentHashMap<>();
 
+    /**
+     * State shared by every physical endpoint participating in one finite playback.
+     *
+     * <p>M1J deliberately keeps listener membership, endpoint gain and renderer transport outside this object.</p>
+     */
+    private static final class SharedPlayback {
+        final UUID mediaId;
+        final FiniteDecodeDescriptor descriptor;
+        final MediaMetadata metadata;
+        final long totalBytes;
+        final FinitePlaybackAuthority playback;
+        final FiniteRangeReadService rangeReads;
+        final MediaAssetReleaseQueue releases;
+        final UUID retainedAssetId;
+        private boolean assetReferenceHeld = true;
+
+        SharedPlayback(UUID mediaId, MediaMetadata metadata, long totalBytes,
+                       FiniteRangeReadService rangeReads, MediaAssetReleaseQueue releases,
+                       long nowNanos) {
+            this.mediaId = mediaId;
+            this.metadata = metadata;
+            this.descriptor = FiniteDecodeDescriptor.fromMetadata(metadata);
+            this.totalBytes = totalBytes;
+            this.rangeReads = rangeReads;
+            this.releases = releases;
+            this.retainedAssetId = mediaId;
+            this.playback = new FinitePlaybackAuthority(metadata.durationSeconds(), nowNanos);
+            FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0);
+        }
+
+        synchronized MediaAssetReleaseQueue.Result releaseAssetReference() {
+            if (!assetReferenceHeld) return null;
+            MediaAssetReleaseQueue.Result result = releases.release(retainedAssetId);
+            assetReferenceHeld = false;
+            return result;
+        }
+    }
+
     private static final class Session {
+        final SharedPlayback shared;
         final UUID mediaId;
         final long generation;
         final FiniteDecodeDescriptor descriptor;
@@ -55,23 +94,20 @@ public final class HQFiniteMediaServer {
         final FiniteRangeReadService rangeReads;
         final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
-        boolean assetReferenceHeld = true;
         final FiniteListenerMembership listeners = new FiniteListenerMembership();
 
-        Session(UUID mediaId, long generation, MediaMetadata metadata, long totalBytes,
-                FiniteRangeReadService rangeReads, MediaAssetReleaseQueue releases,
-                double volume, long nowNanos) {
-            this.mediaId = mediaId;
+        Session(SharedPlayback shared, long generation, double volume) {
+            this.shared = shared;
+            this.mediaId = shared.mediaId;
             this.generation = generation;
-            this.metadata = metadata;
-            this.descriptor = FiniteDecodeDescriptor.fromMetadata(metadata);
-            this.totalBytes = totalBytes;
-            this.rangeReads = rangeReads;
-            this.releases = releases;
-            this.retainedAssetId = mediaId;
-            this.playback = new FinitePlaybackAuthority(metadata.durationSeconds(), nowNanos);
+            this.metadata = shared.metadata;
+            this.descriptor = shared.descriptor;
+            this.totalBytes = shared.totalBytes;
+            this.rangeReads = shared.rangeReads;
+            this.releases = shared.releases;
+            this.retainedAssetId = shared.retainedAssetId;
+            this.playback = shared.playback;
             this.volume = clampVolume(volume);
-            FiniteDecodeAnchorSelector.select(metadata, totalBytes, 0.0);
         }
     }
 
@@ -133,8 +169,8 @@ public final class HQFiniteMediaServer {
         public void close() {
             if (finished) return;
             finished = true;
-            MediaAssetReleaseQueue.Result release = next.releases.release(next.retainedAssetId);
-            if (release.deferred()) {
+            MediaAssetReleaseQueue.Result release = next.shared.releaseAssetReference();
+            if (release != null && release.deferred()) {
                 HQSpeakerMod.warn("uncommitted prepared start release queued for retry " + next.retainedAssetId
                     + ": " + release.error());
             }
@@ -169,8 +205,9 @@ public final class HQFiniteMediaServer {
             long generation = generationCounter + 1L;
             if (generation <= 0L) throw new IllegalStateException("finite generation exhausted");
             long now = System.nanoTime();
-            Session next = new Session(id, generation, metadata, asset.sizeBytes(),
-                mediaAssets.rangeReads(), mediaAssets.releases(), volume, now);
+            SharedPlayback shared = new SharedPlayback(id, metadata, asset.sizeBytes(),
+                mediaAssets.rangeReads(), mediaAssets.releases(), now);
+            Session next = new Session(shared, generation, volume);
             return new PreparedStart(this, next, statusOf(next, now));
         } catch (RuntimeException e) {
             MediaAssetReleaseQueue.Result release = mediaAssets.releases().release(id);
@@ -602,9 +639,8 @@ public final class HQFiniteMediaServer {
     }
 
     private void releaseAssetReference(Session s) {
-        if (!s.assetReferenceHeld) return;
-        MediaAssetReleaseQueue.Result result = s.releases.release(s.retainedAssetId);
-        s.assetReferenceHeld = false;
+        MediaAssetReleaseQueue.Result result = s.shared.releaseAssetReference();
+        if (result == null) return;
         if (result.status() == MediaAssetReleaseQueue.Status.MISSING) {
             HQSpeakerMod.warn("playback media asset reference was already missing " + s.retainedAssetId);
         } else if (result.deferred()) {
