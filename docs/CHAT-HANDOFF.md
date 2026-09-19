@@ -1,24 +1,32 @@
 # CC:HQ Speakers — handoff pointer
 
-Updated: 2026-09-19
+Updated: 2026-09-20
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
-Current completed-hardening branch: `codex/post-m1g-hardening`
+Active branch at handoff: `codex/m1j-multispeaker`
 
 Current continuation:
 
-1. `HANDOFF-2026-09-19-M1H-START.md`
+1. `HANDOFF-2026-09-20-POST-CONVERGENCE.md`
 2. `CURRENT-STATE.md`
 3. `KNOWN-ISSUES.md`
 4. `TESTING.md`
 5. `VERIFIED-FACTS.md`
-6. exact current source/CI
+6. `ARCHITECTURE.md`
+7. `ROADMAP.md`
+8. exact current source/CI
 
-Ready-to-paste new-chat instructions: `NEXT-CHAT-PROMPT.md`
+Ready-to-paste new-chat instructions:
 
-Final post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`
+`HANDOFF-PROMPT-2026-09-20.md`
 
-Latest full verification of that source tree: CI `35406595856`, green on NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifacts.
+`NEXT-CHAT-PROMPT.md` is the stable pointer to the same prompt.
 
-M1G and Option A hardening are closed. Start M1H; do not reopen completed milestones without a concrete regression.
+Latest source checkpoint before documentation closeout:
+
+`00b07db41c003363cef60ef8ec4134fa387c421c`
+
+CI `35474944518` passed NeoForge 21.1.247 and 21.1.248.
+
+Older dated handoffs are historical and must not override the current handoff.
