@@ -29,9 +29,9 @@ Current active engineering is M1H listener/rejoin/movement lifecycle; this file 
 
 ## Old complete-file decoder classes/dependencies
 
-`FileFiniteAudioStream`, `FiniteAudioTrack`, and old complete-payload finite paths may remain because inherited compatibility APIs still exist.
+`FileFiniteAudioStream` and `FiniteAudioTrack` were rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence. Their old test was removed with them.
 
-`FileFiniteAudioStream` is no longer referenced by the modern prepared path and has no focused modern-path role. Treat it as migration/removal material, not an alternate M1G implementation.
+The remaining inherited complete-payload finite path is centered on `HQAudioStream`/`HQSpeakerClientHandler` and the old byte-taking APIs. That path is still live compatibility code and must not be deleted until its exposed callers are migrated or intentionally retired.
 
 Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine uses JLayer progressively instead.
 
@@ -70,7 +70,7 @@ Target M1J/M1K:
 
 ## Protocol/state cleanup after M1G
 
-Modern finite protocol is version 7 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
+Modern finite protocol is version 8 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
 
 STATE carries explicit server-authoritative `decodeRevision`. PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP are no longer projected through CONTROL; STATE is the sole nonterminal transition authority. CONTROL remains for explicit STOP.
 
@@ -142,9 +142,9 @@ Target M4: remove it with world/registry migration consideration or explicitly j
 
 ## Dead/parallel implementation cleanup
 
-Candidates include `FileFiniteAudioStream`, `HQSpeakerCluster`, stale diagnostic helpers, and parts of the separate `HQSpeakerBlockEntity` path.
+`FileFiniteAudioStream`, `FiniteAudioTrack`, and `HQSpeakerCluster` were rechecked against the current branch and removed as unreferenced dead code.
 
-Verify each reference count immediately before deletion; do not delete merely from an old audit note.
+Remaining candidates include stale diagnostic helpers and parts of the separate `HQSpeakerBlockEntity` path. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
 
 The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, without churning the completed modern finite engine unnecessarily.
 

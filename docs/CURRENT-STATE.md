@@ -26,7 +26,7 @@ Implemented in this checkpoint:
 - protocol v8 `playbackId` + `stateRevision` + existing `decodeRevision`;
 - one client `FinitePlaybackProjection` per shared playback, with deterministic same-revision/no-reanchor coverage.
 
-M1J source work is functionally complete at the current branch head after the initial checkpoint plus subsequent client-timeline, indexed-control, documentation, and endpoint-detach hardening commits. Focused Minecraft multispeaker acceptance remains deferred/not yet recorded, so M1J is not claimed runtime-complete. The post-M1J performance gate currently defers shared decode/network fan-out: server range IO is already globally bounded per player, while the remaining duplicated client decode cost needs realistic runtime evidence before adding a multi-reader decode layer.
+M1J source work is functionally complete at the current branch head after the initial checkpoint plus subsequent client-timeline, indexed-control, documentation, endpoint-detach hardening, and early engine/API convergence. Focused Minecraft multispeaker acceptance remains deferred/not yet recorded, so M1J is not claimed runtime-complete. The post-M1J performance gate currently defers shared decode/network fan-out: server range IO is already globally bounded per player, while the remaining duplicated client decode cost needs realistic runtime evidence before adding a multi-reader decode layer.
 
 M1H-1 **source** checkpoint:
 
@@ -310,6 +310,10 @@ M1J protocol: v8
 M1J shared playback/client projection deterministic coverage: PASS
 M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 ```
+
+## Post-M1J dead-code recheck
+
+A branch-local source reference scan confirmed that `FileFiniteAudioStream`, `FiniteAudioTrack`, its isolated test, and `HQSpeakerCluster` had no live references outside their own definitions/tests. They were removed. `HQAudioStream` remains live through `HQSpeakerClientHandler` and therefore stays until inherited finite/live callers are migrated or retired.
 
 ## Read order
 
