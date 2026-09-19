@@ -63,4 +63,19 @@ class FiniteDecodeCoordinatorTest {
         assertFalse(coordinator.isCurrentLocalEpoch(first));
         assertTrue(coordinator.isCurrentLocalEpoch(replacement));
     }
+    @Test
+    void sameRevisionRecoveryRebuildsAfterLocalDecoderWasDiscarded() {
+        FiniteDecodeCoordinator coordinator = new FiniteDecodeCoordinator();
+
+        assertEquals(FiniteDecodeCoordinator.StateDecision.RESTART,
+            coordinator.observeState(7L, false, false, false));
+        assertEquals(FiniteDecodeCoordinator.StateDecision.KEEP,
+            coordinator.observeState(7L, true, false, false));
+
+        assertEquals(FiniteDecodeCoordinator.StateDecision.RESTART,
+            coordinator.observeState(7L, false, false, false));
+        assertEquals(7L, coordinator.serverRevision());
+    }
+
 }
+
