@@ -366,125 +366,39 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     @LuaFunction
     public final void setLooping(boolean loop) {
-        looping = loop;
-        FiniteServerTrack current;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current != null) current.looping = loop;
-        }
-        if (current != null) sendControl(current,
-            HQSpeakerControlPacket.Action.SET_LOOP, loop ? 1.0 : 0.0);
-        HQSpeakerMod.log("HQSpeaker: looping set to " + loop + " at " + pos);
+        // Finite looping is owned by HQFiniteMediaServer. RAW/live legacy sources do not loop here.
     }
 
     @LuaFunction
     public final boolean speakIsPlaying() {
-        if (streamActive.get()) return true;
-        synchronized (playerLock) {
-            FiniteServerTrack current = finiteTracks.peekFirst();
-            if (current != null) {
-                return current.state == PlayerState.LOADING
-                    || current.state == PlayerState.PLAYING
-                    || current.state == PlayerState.PAUSED;
-            }
-        }
-        return !speakerQueue.isEmpty();
+        return streamActive.get() || !speakerQueue.isEmpty();
     }
 
     @LuaFunction
     public final Map<String, Object> audioStatus() {
-        synchronized (playerLock) {
-            FiniteServerTrack current = finiteTracks.peekFirst();
-            if (current != null) return finiteStatus(current);
-            if (terminalTrack != null) return finiteStatus(terminalTrack);
-        }
         Map<String, Object> status = new HashMap<>();
-        if (streamActive.get()) {
-            status.put("state", "playing");
-            status.put("kind", "stream");
-            status.put("observed", false);
-        } else {
-            status.put("state", "idle");
-            status.put("kind", "none");
-            status.put("observed", false);
-        }
+        status.put("state", streamActive.get() ? "playing" : "idle");
+        status.put("kind", streamActive.get() ? "stream" : "none");
+        status.put("observed", false);
         status.put("canPause", false);
         status.put("canSeek", false);
         status.put("canLoop", false);
         return status;
     }
 
-    @LuaFunction public final boolean audioPause() {
-        FiniteServerTrack current;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current == null || current.state == PlayerState.ENDED
-                    || current.state == PlayerState.ERROR) return false;
-            if (current.desiredPaused) return true;
-            current.basePosition = current.position(System.nanoTime());
-            current.desiredPaused = true;
-            current.state = PlayerState.PAUSED;
-        }
-        sendControl(current, HQSpeakerControlPacket.Action.PAUSE, 0.0);
-        return true;
-    }
-
-    @LuaFunction public final boolean audioResume() {
-        FiniteServerTrack current;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current == null || current.state == PlayerState.ENDED
-                    || current.state == PlayerState.ERROR) return false;
-            if (!current.desiredPaused) return true;
-            current.desiredPaused = false;
-            current.anchorNanos = System.nanoTime();
-            current.state = current.observed ? PlayerState.PLAYING : PlayerState.LOADING;
-        }
-        sendControl(current, HQSpeakerControlPacket.Action.RESUME, 0.0);
-        return true;
-    }
-
+    @LuaFunction public final boolean audioPause() { return false; }
+    @LuaFunction public final boolean audioResume() { return false; }
     @LuaFunction public final boolean audioSeek(double seconds) throws LuaException {
         if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
-        FiniteServerTrack current;
-        double target;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current == null || current.duration <= 0.0
-                    || current.state == PlayerState.ERROR || current.state == PlayerState.ENDED) return false;
-            target = Math.max(0.0, Math.min(current.duration, seconds));
-            current.basePosition = target;
-            current.anchorNanos = System.nanoTime();
-        }
-        sendControl(current, HQSpeakerControlPacket.Action.SEEK, target);
-        return true;
+        return false;
     }
-
     @LuaFunction public final boolean audioSetVolume(double volume) throws LuaException {
-        float applied = clampVolChecked(volume, "volume");
-        FiniteServerTrack current;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current == null) return false;
-            current.volume = applied;
-        }
-        sendControl(current, HQSpeakerControlPacket.Action.SET_VOLUME, applied);
-        return true;
+        clampVolChecked(volume, "volume");
+        return false;
     }
-
-    @LuaFunction public final boolean audioSetLooping(boolean loop) {
-        looping = loop;
-        FiniteServerTrack current;
-        synchronized (playerLock) {
-            current = finiteTracks.peekFirst();
-            if (current == null) return false;
-            current.looping = loop;
-        }
-        sendControl(current, HQSpeakerControlPacket.Action.SET_LOOP, loop ? 1.0 : 0.0);
-        return true;
-    }
-
+    @LuaFunction public final boolean audioSetLooping(boolean loop) { return false; }
     @LuaFunction public final void audioStop() { speakStop(); }
+
     @LuaFunction public final int speakQueueSize() { return speakerQueue.size(); }
     @LuaFunction public final int speakSampleRate() { return SPEAKER_SAMPLE_RATE; }
     @LuaFunction public final int speakMaxSamples() { return SPEAKER_MAX_PCM; }
