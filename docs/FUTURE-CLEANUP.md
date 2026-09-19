@@ -1,196 +1,86 @@
-# Future cleanup inventory
+# Future cleanup
 
-Updated: 2026-09-19
+Updated: 2026-09-20
 
-This is a parking lot for obsolete/legacy code, later milestones, and release cleanup. M1G is complete; this file is not permission to reopen it without a concrete regression.
+This is the current cleanup parking lot after finite convergence.
 
-Current active correctness/evidence issues belong in `KNOWN-ISSUES.md`.
+## Near-term source cleanup
 
-## Modern prepared path cleanup state
+### Dead grouped/indexed standard implementations
 
-The modern prepared path already removed:
+The supported product surface always goes through `HQSpeakerCompositePeripheral`, which intercepts:
 
-- whole-file finite CHUNK/END transfer;
-- client `.part/.media` accumulation;
-- tick-thread whole-file server reads;
-- direct prototype `audioPlayStaged()`;
-- active modern use of `FileFiniteAudioStream`;
-- broad historical OGG/AIFF/AU prepared-format promises.
+- `playNoteAll` / `playSoundAll` / `playAudioAll`
+- `playNoteAt` / `playSoundAt` / `playAudioAt`
 
-Do not restore these for temporary audibility.
+and dispatches to actual CC:T speakers.
 
-## Active issues which are not optional cleanup
+The old implementations still exist inside `HQSpeakerPeripheral`. The removed standalone HQ block was the last known direct `HQSpeakerPeripheral` exposure.
 
-The M1G closeout resolved KI-051/053/055/056/057/058/060/061.
+Next cleanup should re-verify references and then remove these dead bodies plus helpers that become unreferenced.
 
-The post-M1G Option A hardening pass closed KI-062, KI-063, KI-054, and KI-064. Do not carry their old pre-fix descriptions forward as active cleanup work.
+Do **not** mechanically delete `SyncDispatch` / client sync-group code at the same time: grouped optional live-stream helpers still use it.
 
-M1H source work and M1J modern finite multispeaker source work are complete at source/test/CI/package level, with focused runtime checks deferred. Current non-runtime work is engine/API convergence and release-oriented cleanup.
+## RAW/API cleanup
 
-## Old complete-file decoder classes/dependencies
+Current RAW admission is already bounded and unified.
 
-`FileFiniteAudioStream` was rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence.
+Remaining goals:
 
-`FiniteAudioTrack` and its focused test are now removed together with the inherited complete-payload finite client implementation. `HQAudioStream` remains only as the RAW/live stream adapter.
+- make signed-16/48-kHz behavior concise and truthful;
+- keep `hqspeaker_audio_empty` tied to observed backpressure;
+- remove obsolete status/helper aliases which no longer add supported behavior;
+- keep native `speaker_audio_empty` separate;
+- avoid fake seek/duration/loop for RAW.
 
-Historical mp3spi duration/seek defects no longer affect any finite playback path; modern finite MP3 uses JLayer progressively.
+## Optional live containment
 
-JLayer remains required by modern MP3 (and parts of optional live streaming). mp3spi/Tritonus are no longer justified by finite playback, but optional HLS/TS code still invokes JavaSound conversion paths which may depend on installed SPI providers. Do not remove those SPI providers until live-stream dependencies are separately audited or retired.
+Live MP3/HLS/TS/ICY is not core.
 
-## Old client cache artifacts
+If retained, fix HLS refreshed-window progression, reconsider expected-member group start behavior, keep DNS validation off server-sensitive locks, and verify URL/worker/shutdown limits.
 
-Older development builds may have left an `hqspeaker-cache` directory or `.part/.media` files on disk. Active M1F/M1G client source does not use them.
+If not worth maintaining, retirement is preferable to letting this legacy path constrain core design.
 
-If one-time cleanup is later added, restrict deletion narrowly to mod-owned old cache paths.
+## Already removed
 
-## Legacy API convergence matrix
+- `FileFiniteAudioStream`
+- `HQSpeakerCluster`
+- `FiniteAudioTrack`
+- duplicate finite server/client/control/status code
+- old finite entry points
+- standalone block path
+- mp3spi/Tritonus
 
-Rechecked after M1J:
+Remaining candidates should be verified by exact reference search immediately before deletion.
 
-| Surface | Current decision |
-| --- | --- |
-| Standard `playNote`, `playSound`, `playAudio`, `stop` | Keep native CC:T semantics. Grouped/indexed note/sound/audio calls are intercepted by the composite and delegated to the real CC:T speakers. |
-| HQ `speakPCM` | Keep as a separate producer-fed signed-16 RAW source. It is not a finite MediaAsset song. |
-| Modern `hq.playFile`, `prepareFile`, `playPrepared`, `playPreparedAll` | Keep as the primary finite-file API. MP3 + supported common WAV only today. |
-| Legacy-name byte-taking `speakMp3` / `speakWav` (+ All/At) | Migrated to the modern finite engine. The wrappers import/analyze temporary MediaAssets on the ComputerCraft thread, commit playback via CC:T's main-thread task bridge, and release temporary import ownership on success/failure. |
-| Legacy `speakOgg` (+ All/At) | Removed from the normal upgraded CC:T speaker API. Re-add only through a modern progressive OGG implementation. |
-| Legacy generic `speakAudio`, `speakFile`, `speakPacked` (+ All/At) | Removed from the normal upgraded CC:T speaker API; their ambiguous broad-format promise is retired. |
-| Direct `speakStream` / HLS / TS + ICY | Optional legacy/future external-stream work, not core finite-engine convergence. |
-| `audioStatus` / pause/resume/seek/loop/stop | Composite already routes to the active modern finite owner when present and otherwise preserves legacy behavior. |
-| `speakSupportedFiles` | Legacy compatibility surface. Modern code should query `hq.preparedFormats(speaker)` instead. |
+## Documentation/script cleanup
 
-The bridge prerequisite is architectural, not a request to add a third engine: reuse `MediaAssetStore.importAsset(..., ReadableByteChannel)` and `ModernFiniteMediaAnalyzer`, then commit through the existing prepared finite server. CC:T dynamic peripheral methods run on the computer thread; world/server-state commit must use the main-thread task API rather than moving import/decode work onto the server tick.
+Current authority begins with `HANDOFF-2026-09-20-POST-CONVERGENCE.md`, `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md` and `VERIFIED-FACTS.md`.
 
-## Legacy finite engine / advertised format surface
+Historical dated milestone documents should remain historical.
 
-The duplicate finite engine is removed. `HQAudioStream` and `HQSpeakerAudioPacket` remain only for RAW/live sources; MP3/WAV byte-taking compatibility names route through modern finite playback; OGG/generic whole-file aliases are retired.
+Old runtime Lua scripts which target retired APIs should be labeled historical or replaced by current acceptance scripts before release.
 
-Legacy Lua-visible capability lists are not a reliable statement of modern prepared support. For example, `speakSupportedFiles()` advertises `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared analyzer accepts only MP3 + supported common WAV.
+## CI/repository hygiene
 
-Convergence target:
+Current workflow builds NeoForge 21.1.247 and 21.1.248 on every push/PR.
 
-- preserve only compatibility frontends worth keeping;
-- route them into the new asset/transport/decoder engine where sensible;
-- remove obsolete whole-packet/whole-PCM implementation;
-- do not force historical OGG/AIFF/AU support into the modern core merely to preserve old helper names;
-- make capability-reporting methods truthful about which engine/surface they describe.
+Possible cleanup:
 
-## Legacy multispeaker note/sound helpers
+- concurrency cancellation;
+- docs-only optimization;
+- default branch pointing at the real product line when ready;
+- release artifact naming/versioning;
+- changelog/release notes.
 
-Inherited `*All` / `*At` helpers and expected-member shared groups remain legacy.
-
-Source recheck confirmed that `playNoteAll(...)` synthesizes a sine and ignores the requested instrument, while `playSoundAll(...)` routes into that sine path and ignores the requested Minecraft sound name. These helpers therefore do not preserve normal CC:T note/sound semantics even though the singular standard methods do.
-
-Current status:
-
-- modern prepared multispeaker now uses one shared authority with independent positional endpoints;
-- grouped/indexed standard note/sound/audio calls now route through actual CC:T speaker semantics;
-- inherited expected-member finite/live group code remains only for legacy surfaces not yet migrated.
-
-## Protocol/state cleanup after M1G
-
-Current network protocol is version 9. The modern finite payload family remains BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA; v9 removed the separate obsolete legacy finite control/status payloads.
-
-STATE carries explicit server-authoritative `decodeRevision`. PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP are no longer projected through CONTROL; STATE is the sole nonterminal transition authority. CONTROL remains for explicit STOP.
-
-Review later rather than deleting blindly:
-
-- whether READY remains useful once M1H listener lifecycle is settled;
-- whether M1H needs a specific subscription/cancel message;
-- whether the STOP-only CONTROL packet should be folded into another lifecycle packet in a future incompatible protocol cleanup.
-
-Server authority must never regress into waiting for client readiness.
-
-## M1F/M1G tuning values
-
-Current values include 128 KiB max range responses, 512 KiB client encoded window, per-player outstanding caps, two server IO workers, and queue size 64.
-
-M1O should benchmark packet compression/CPU, queueing, memory, many-player demand, cancellation storms, and seek spam before tuning is frozen.
-
-## Historical format surface
-
-Frozen M1D analyzed formats are broader than the modern product target. Current modern prepared/local playback is MP3 + supported common WAV.
-
-M1I may add native FLAC only if fully proven.
-
-## Diagnostic instrumentation
-
-After the progressive renderer is runtime-proven, remove/downgrade noisy development diagnostics while retaining concise operational failures.
-
-Before release/M1O, keep diagnostics useful for renderer/session failures while removing or downgrading development-only noise.
-
-## Live/HLS/TS inherited code — M3
-
-Known later issues include double gain, HLS sequence/window progression, non-incremental TS behavior, unsupported codecs, and old shared-session lifecycle.
-
-A specific live-HLS progression defect is confirmed: `StreamingAudioSource.streamHLS()` retains a monotonically increasing `currentSegmentIndex`, while each refreshed playlist exposes a fresh zero-based segment list. After the first live window is consumed, refreshed windows can therefore contain no list index at or above `currentSegmentIndex`, leaving the stream alive but producing no new audio.
-
-Fix later using media-sequence/absolute segment identity rather than list index.
-
-`streamTS()` also demuxes an entire input into a `List<AudioFrame>` before playback, which is unsuitable as a long-lived live-stream architecture.
-
-The earlier audit claim that HTTP streaming paths failed to close streams was retracted: current paths do close them. Do not carry that false issue forward.
-
-Do not mix inherited live-stream repair into finite M1G unless a truly shared primitive requires it.
-
-## Sound/OpenAL / moving-source cleanup
-
-Target M1N and M1H together own final lifecycle details such as resource reload, stale-channel cleanup, remaining attenuation behavior, and moving-source/VS2 integration.
-
-Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live x/y/z. `FiniteSpeakerSound.updatePosition(...)` exists but modern M1G does not call it after renderer creation.
-
-A new wire position packet is not automatically necessary. The inherited client already recomputes VS2 ship-transformed positions from block coordinates each tick. M1H may mirror that client-side pattern or add authoritative position updates if later lifecycle/network requirements justify it.
-
-Do not silently choose between those two approaches in cleanup work.
-
-## Provider cache / lifecycle
-
-`HQSpeakerPeripheralProvider` uses a Level-keyed `WeakHashMap`, but cached composite values themselves reference their Level. The source explicitly documents that the weak key is only a fallback and deterministic lifecycle hooks must evict entries.
-
-There is no `HQSpeakerPeripheral -> composite` back-reference. Do not revive the retracted “WeakHashMap defeated by a fabricated back-reference” claim.
-
-If a residual chunk-unload/cache-lifetime issue is investigated later, verify actual Minecraft/CC:T block-entity lifecycle hooks and the provider's `forget`/`forgetLevel`/`clearAll` behavior rather than reasoning from WeakHashMap alone.
-
-## Product/registry cleanup
-
-Resolved: the inherited standalone `hqspeaker:hq_speaker` block, item, block entity, registry, blockstate, and item model are removed. The product surface is only the normal `computercraft:speaker` upgraded through the composite mixin.
-
-The `hqspeaker:hq_speaker` resource ID still exists as a sound event used by the custom AudioStream renderers; that sound resource is unrelated to the deleted block.
-
-## Dead/parallel implementation cleanup
-
-`FileFiniteAudioStream`, `HQSpeakerCluster`, and—after finite convergence—`FiniteAudioTrack` were removed. `HQAudioStream` now has only RAW/live responsibilities.
-
-Remaining candidates include stale diagnostic helpers. The separate `HQSpeakerBlockEntity` path has been removed with the inherited standalone block. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
-
-The goal is to remove parallel implementations that can mislead future contributors after compatibility callers are gone, without churning the completed modern finite engine unnecessarily.
-
-## Documentation/test cleanup
-
-Historical scripts/handoffs are evidence, not current contracts. Keep them historical rather than rewriting them to pretend newer architecture existed earlier.
-
-Current docs must point readers to `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` for present behavior.
-
-The bundled ROM module comment about `audioPlayStaged()` being scheduled for removal was corrected during the M1G closeout; M1F had already removed that prototype route.
-
-Historical M0 smoke-test log markers also predate the current protocol/payload count. Keep M0 results as historical evidence rather than current regression expectations.
-
-## CI / repository hygiene
-
-The build workflow currently runs the two-target NeoForge matrix for all pushes and pull requests with no docs-only path exclusion or concurrency cancellation.
-
-A later CI cleanup can skip full builds for documentation-only changes and cancel superseded runs while retaining lightweight docs validation if desired.
-
-Do not make CI run-count/failure-rate statistics into permanent correctness claims; they are time-sensitive.
-
-The working implementation branch/default-branch policy should also be normalized before public release so repository visitors land on the actual product or are clearly directed to it.
-
-## Packaging/license cleanup
+## Release gate
 
 Before public release:
 
-- resolve top-level MPL-2.0 versus NeoForge metadata LGPL-3.0 from actual provenance;
-- update mod description to the final supported feature/format set rather than inherited/live features which may be legacy or gated;
-- verify final protocol/mixins/dependencies/ROM module;
-- remove unused legacy decoder/provider dependencies only after migration proof;
-- consider pinning the Gradle wrapper distribution checksum and removing unused build plugins/configuration.
+- final exact-source dead-code pass;
+- package/dependency verification;
+- current public API freeze;
+- integrated Minecraft acceptance/stress;
+- both NeoForge targets;
+- Sound Physics Remastered regression/performance;
+- movement/multispeaker backlog.

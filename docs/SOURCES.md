@@ -1,8 +1,8 @@
 # Sources and provenance
 
-Updated: 2026-09-19
+Updated: 2026-09-20
 
-## Exact target dependencies
+## Target dependencies
 
 - Minecraft 1.21.1
 - Java 21
@@ -10,132 +10,50 @@ Updated: 2026-09-19
 - NeoForge 21.1.248 compatibility
 - CC:Tweaked 1.120.0
 
-CC:T Maven artifact used by this fork:
+CC:T artifact: `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
 
-`cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`
+## CC:T speaker basis
 
-## CC:T speaker contract
+Exact target release: tag `v1.21.1-1.120.0`, release commit `98f3a71`.
 
-Exact target release:
+Primary upstream class: `projects/common/src/main/java/dan200/computercraft/shared/peripheral/speaker/SpeakerPeripheral.java`.
 
-- tag: `v1.21.1-1.120.0`
-- release commit: `98f3a71`
-
-Upstream source:
-
-`cc-tweaked/CC-Tweaked`
-
-Primary speaker source:
-
-`projects/common/src/main/java/dan200/computercraft/shared/peripheral/speaker/SpeakerPeripheral.java`
-
-Official docs:
-
-`https://tweaked.cc/peripheral/speaker.html`
-
-Use the exact target source when implementation behavior matters. Current docs are useful for API semantics, but exact source wins for version-specific internals.
+Exact target source wins for version-specific behavior.
 
 ## Fork provenance
 
-Repository:
-
-`ztawfik523-lgtm/CC-HQ-Speakers`
-
-Lineage:
-
 `tiktop101/CC-HQ-Speakers -> jvrcruzGAMES/CC-HQ-Speakers -> ztawfik523-lgtm/CC-HQ-Speakers`
 
-Untouched fork baseline:
+The original and intermediate repositories carry an MPL-2.0 `LICENSE`. Their mod metadata also contained an inconsistent LGPL-3.0 label. This fork keeps MPL-2.0 and corrected NeoForge metadata.
 
-`d1a592351c866f9a28ceef00b59e591ee773f3d5`
+## Current source checkpoint
 
-M1 reviewed reference:
+Before documentation closeout: `00b07db41c003363cef60ef8ec4134fa387c421c` / CI `35474944518` / both NeoForge targets PASS.
 
-`fba84a33a94d451af09b983bcb04416c97ff64cf`
+Important earlier checkpoints:
 
-Final M1G source checkpoint:
+- M1G `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
+- post-M1G hardening `3d30ce4564de749f32171666df65de739b08ad77`
+- M1H-1 `84e7bab99009e5871934a960908945ceb00a10a9`
+- M1H-2 `aa72f0d2fc9f8cde53cd956389beca1743d06165`
+- M1H-3 `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`
+- M1J first shared-playback checkpoint `b557773b9c6f6b8029aec132a1706f0d8da914bd`
+- finite teardown `fcb6670dd818412c15509129105aa7f54be9d5ba`
 
-`fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`
+## Embedded dependencies
 
-Final M1G source CI: `35297026277`, green on NeoForge 21.1.247 and 21.1.248.
+JLayer `1.0.1.4` is used directly by modern progressive MP3 and optional live MP3 streaming.
 
-Post-M1G hardening source checkpoint:
+Sable Companion `1.6.0` is used for Sable/Aeronautics sublevel position projection.
 
-`3d30ce4564de749f32171666df65de739b08ad77`
-
-Latest full verification on that source tree: CI `35406595856`, green on NeoForge 21.1.247 and 21.1.248. Current completed-hardening branch is `codex/post-m1g-hardening`.
-
-## Codec dependencies
-
-Build currently packages:
-
-- `com.googlecode.soundlibs:mp3spi:1.9.5.4`
-- `com.googlecode.soundlibs:jlayer:1.0.1.4`
-- `com.googlecode.soundlibs:tritonus-share:0.3.7.4`
-
-**Modern prepared MP3 playback uses JLayer progressively.** mp3spi/Tritonus remain because inherited legacy paths still exist; their presence is not evidence that modern prepared playback uses the old JavaSound bridge.
-
-Historical/inherited OGG finite decode uses LWJGL STBVorbis from the Minecraft/LWJGL stack. OGG does not define the current modern prepared support surface.
-
-Current modern prepared support is MP3 + supported common WAV only. Do not claim AAC/MP4/M4A/MP2 support merely because inherited capability lists advertise extensions or because JavaSound providers are packaged.
-
-## HighAudio research
-
-See:
-
-`research/HIGHAUDIO-TRANSFERABLE-FINDINGS.md`
-
-Use only transferable facts such as sound-thread behavior, PCM alignment, STB experiments, and source reservation evidence. Do not import HighAudio's application architecture wholesale.
+Removed: mp3spi, tritonus-share.
 
 ## Sound Physics Remastered
 
-Existing compat repository:
+Existing compatibility/research repository: `ztawfik523-lgtm/cchq-soundphysics-compat`.
 
-`ztawfik523-lgtm/cchq-soundphysics-compat`
-
-Frozen V7.1 acoustic baseline:
-
-`ffcf5f6e05d85b69f1f1dff8cfae1b082b71604d`
-
-Approved V7.1 JAR SHA-256:
-
-`30d457c2a52672f893b1076938e2fdea3f41759173dfd843ff652bd490692101`
-
-Current project direction:
-
-- M1G keeps a fixed 32-block core modern-finite range;
-- HQ volume changes gain, not core range;
-- later SPR compatibility owns intentional acoustic/range extension and matching transport relevance;
-- do not build a speculative SPR range/plugin layer into M1G.
-
-See `research/SPR-INTEGRATION-BASELINE.md`.
-
-## Repository audit evidence
-
-PR #1 (`docs: add corrected 2026-09-16 repository implementation review`) is supporting audit evidence, not current authority.
-
-Its corrected report explicitly records first-draft retractions. Current project docs and exact source take precedence.
-
-Important rechecked facts which should not be lost:
-
-- `FiniteDecodeAnchorSelector.Anchor` is exactly `(offset, seconds)`;
-- modern STATE does not carry live x/y/z;
-- `audioPrepareStaged(...)` is not synchronized on the composite monitor;
-- the confirmed shared-monitor/DNS path is dynamic legacy stream dispatch;
-- `HQSpeakerPeripheral` has no composite back-reference;
-- provider cache lifetime intentionally depends on explicit lifecycle eviction;
-- inherited HTTP stream paths close their streams.
+Current finite rendering uses normal Minecraft SoundManager sources. Runtime compatibility/performance remains part of the integrated backlog.
 
 ## Evidence policy
 
-Order:
-
-1. exact runtime evidence for behavior which requires runtime proof;
-2. exact current source;
-3. `VERIFIED-FACTS.md`;
-4. `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`;
-5. current architecture/roadmap/API/config docs;
-6. corrected audit/research evidence;
-7. historical milestone/handoff notes.
-
-Keep facts, owner-selected decisions, recommendations, and unresolved choices separate.
+Priority: focused runtime evidence when required; exact current source; `VERIFIED-FACTS.md`; current state/issues/testing; current architecture/roadmap/API/config; research/audit evidence; historical milestone/handoff docs.
