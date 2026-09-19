@@ -33,6 +33,8 @@ public final class HQFiniteMediaClient {
     private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
     private static final float FIXED_ATTENUATION_DISTANCE = 32.0f;
     private static final long RENDERER_START_GRACE_NANOS = 1_000_000_000L;
+    private static final long LONG_STARVATION_NANOS = 5_000_000_000L;
+    private static final long REJOIN_READY_RETRY_NANOS = 1_000_000_000L;
     private static final ExecutorService DECODERS = Executors.newThreadPerTaskExecutor(
         Thread.ofVirtual().name("hqspeaker-finite-decoder-", 0L).factory());
 
@@ -50,6 +52,7 @@ public final class HQFiniteMediaClient {
         double pcmTimelineStart;
         long pcmDiscardedBytes;
         final FiniteDecodeCoordinator coordinator = new FiniteDecodeCoordinator();
+        final FiniteRecoveryCoordinator recovery = new FiniteRecoveryCoordinator();
         boolean anchorReady;
         boolean terminal;
         boolean localExhausted;
@@ -136,7 +139,28 @@ public final class HQFiniteMediaClient {
         }
         long now = System.nanoTime();
         SESSIONS.forEach((source, session) -> {
+            if (session.terminal) return;
+            if (session.recovery.awaitingState()) {
+                sendReadyIfDue(session, now);
+                return;
+            }
             if (!session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
+
+            FinitePcmAudioStream stream = session.rendererStream;
+            if (session.rendererStarted && stream != null && stream.closed() && !stream.reachedEof()) {
+                HQSpeakerMod.warn("M1H finite renderer stream closed unexpectedly; rejoining current server time source="
+                    + session.begin.source() + " generation=" + session.begin.generation());
+                requestAuthoritativeRejoin(session, now);
+                return;
+            }
+            if (!session.desiredPaused && stream != null
+                    && session.recovery.longStarved(now, LONG_STARVATION_NANOS)) {
+                HQSpeakerMod.warn("M1H finite renderer stayed starved; rejoining current server time source="
+                    + session.begin.source() + " generation=" + session.begin.generation());
+                requestAuthoritativeRejoin(session, now);
+                return;
+            }
+
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
             pump(session, now);
             tryStartRenderer(session, now);
@@ -185,6 +209,7 @@ public final class HQFiniteMediaClient {
             packet.decodeRevision(), decoderUsable, exhaustedBlocksRestart, packet.volume() <= 0.0f);
         if (decision == FiniteDecodeCoordinator.StateDecision.STALE) return;
 
+        session.recovery.stateReceived();
         long now = System.nanoTime();
         session.desiredPaused = packet.state() == HQFiniteMediaStatePacket.PlaybackState.PAUSED;
         session.looping = packet.looping();
@@ -289,6 +314,15 @@ public final class HQFiniteMediaClient {
     private static void decoderFailed(Session session, long epoch, Exception failure) {
         if (session.terminal || !session.coordinator.isCurrentLocalEpoch(epoch)
                 || SESSIONS.get(session.begin.source()) != session) return;
+
+        FinitePcmAudioStream stream = session.rendererStream;
+        if (stream != null && stream.closed() && !stream.reachedEof()) {
+            HQSpeakerMod.warn("M1H finite decoder was cancelled by renderer close; rejoining current server time source="
+                + session.begin.source() + " generation=" + session.begin.generation());
+            requestAuthoritativeRejoin(session, System.nanoTime());
+            return;
+        }
+
         fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
@@ -302,7 +336,8 @@ public final class HQFiniteMediaClient {
         int threshold = prebufferBytes(session.begin.descriptor().sampleRate(), pcm.capacityBytes());
         if (queued <= 0 || (queued < threshold && !pcm.eofMarked())) return;
 
-        FinitePcmAudioStream stream = new FinitePcmAudioStream(pcm, session.begin.descriptor().sampleRate());
+        FinitePcmAudioStream stream = new FinitePcmAudioStream(
+            pcm, session.begin.descriptor().sampleRate(), session.recovery);
         FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, session.volume,
             session.begin.x(), session.begin.y(), session.begin.z());
         session.rendererStream = stream;
@@ -317,7 +352,7 @@ public final class HQFiniteMediaClient {
         } catch (RuntimeException failure) {
             HQSpeakerMod.warn("M1G finite renderer start failed source=" + session.begin.source()
                 + " generation=" + session.begin.generation() + ": " + safeMessage(failure));
-            requestAuthoritativeRejoin(session);
+            requestAuthoritativeRejoin(session, nowNanos);
         }
     }
 
@@ -340,7 +375,7 @@ public final class HQFiniteMediaClient {
 
         HQSpeakerMod.warn("M1G finite renderer did not remain active; requesting authoritative rejoin source="
             + session.begin.source() + " generation=" + session.begin.generation());
-        requestAuthoritativeRejoin(session);
+        requestAuthoritativeRejoin(session, nowNanos);
     }
 
     private static void handleLocalEof(Session session, long nowNanos) {
@@ -357,10 +392,18 @@ public final class HQFiniteMediaClient {
         session.localExhausted = true;
     }
 
-    private static void requestAuthoritativeRejoin(Session session) {
+    private static void requestAuthoritativeRejoin(Session session, long nowNanos) {
+        if (session.terminal) return;
         session.cancelDecodeEpoch();
         session.window.cancel();
         session.localExhausted = false;
+        session.recovery.beginRejoin();
+        sendReadyIfDue(session, nowNanos);
+    }
+
+    private static void sendReadyIfDue(Session session, long nowNanos) {
+        if (!session.recovery.readyDue(nowNanos, REJOIN_READY_RETRY_NANOS)) return;
+        session.recovery.markReadyAttempt(nowNanos);
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
     }
 

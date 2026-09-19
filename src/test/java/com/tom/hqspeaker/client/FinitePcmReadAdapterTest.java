@@ -50,4 +50,22 @@ class FinitePcmReadAdapterTest {
         assertEquals(FinitePcmReadAdapter.State.SILENCE, result.state());
         assertEquals(512, result.data().length);
     }
+    @Test
+    void trackedReadFeedsRecoveryStarvationAndProgress() throws Exception {
+        FinitePcmQueue queue = new FinitePcmQueue(16);
+        FiniteRecoveryCoordinator recovery = new FiniteRecoveryCoordinator();
+
+        FinitePcmReadAdapter.Result silence =
+            FinitePcmReadAdapter.read(queue, 8, 4, recovery, 100L);
+        assertEquals(FinitePcmReadAdapter.State.SILENCE, silence.state());
+        assertTrue(recovery.longStarved(600L, 500L));
+
+        queue.write(new byte[] { 1, 2 }, 0, 2);
+        FinitePcmReadAdapter.Result data =
+            FinitePcmReadAdapter.read(queue, 8, 4, recovery, 601L);
+        assertEquals(FinitePcmReadAdapter.State.DATA, data.state());
+        assertFalse(recovery.longStarved(2_000L, 500L));
+    }
+
 }
+

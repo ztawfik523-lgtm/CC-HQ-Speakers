@@ -15,13 +15,16 @@ public final class FinitePcmAudioStream implements AudioStream {
     private final FinitePcmQueue queue;
     private final AudioFormat format;
     private final int silenceBytes;
+    private final FiniteRecoveryCoordinator recovery;
     private volatile boolean closed;
     private volatile boolean reachedEof;
 
-    public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate) {
+    public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate, FiniteRecoveryCoordinator recovery) {
         if (queue == null) throw new NullPointerException("queue");
+        if (recovery == null) throw new NullPointerException("recovery");
         if (sampleRate <= 0) throw new IllegalArgumentException("sampleRate must be positive");
         this.queue = queue;
+        this.recovery = recovery;
         this.format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
             sampleRate, 16, 1, 2, sampleRate, false);
         // About 20 ms of mono S16 silence, hard capped so a huge source rate cannot inflate sound-thread allocation.
@@ -44,7 +47,8 @@ public final class FinitePcmAudioStream implements AudioStream {
 
         int wanted = Math.min(maxBytes - (maxBytes & 1), MAX_READ_BYTES);
         if (wanted < 2) wanted = 2;
-        FinitePcmReadAdapter.Result result = FinitePcmReadAdapter.read(queue, wanted, silenceBytes);
+        FinitePcmReadAdapter.Result result =
+            FinitePcmReadAdapter.read(queue, wanted, silenceBytes, recovery, System.nanoTime());
         return switch (result.state()) {
             case DATA, SILENCE -> direct(result.data());
             case EOF -> {

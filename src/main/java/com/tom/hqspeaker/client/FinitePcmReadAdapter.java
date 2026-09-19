@@ -18,6 +18,14 @@ final class FinitePcmReadAdapter {
 
     private FinitePcmReadAdapter() {}
 
+    static Result read(FinitePcmQueue queue, int wantedBytes, int silenceBytes,
+                       FiniteRecoveryCoordinator recovery, long nowNanos) {
+        if (recovery == null) throw new NullPointerException("recovery");
+        Result result = read(queue, wantedBytes, silenceBytes);
+        recovery.observeRead(result.state(), nowNanos);
+        return result;
+    }
+
     static Result read(FinitePcmQueue queue, int wantedBytes, int silenceBytes) {
         if (queue == null) throw new NullPointerException("queue");
         if (wantedBytes < 2 || (wantedBytes & 1) != 0) {
