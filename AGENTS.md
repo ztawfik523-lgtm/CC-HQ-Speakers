@@ -1,191 +1,95 @@
 # CC:HQ Speakers — agent guide
 
-Updated: 2026-09-17
+Updated: 2026-09-19
 
-## Start here
+## Current state
 
-Current checkpoint: **M1E + M1F source/test/CI/package complete; M1G progressive decode/render integrated in source and still in correctness/evidence work.**
+Active branch: `codex/m1h-moving-source`.
 
-Active branch: `codex/m1g-progressive-finite-decode`.
+M1E through M1H are complete at source/test/CI/package level. M1H-1 listener membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented. Focused M1H Minecraft runtime checks are intentionally deferred to the runtime backlog.
 
-Current green integrated M1G **source** checkpoint: `957832348eaa6e497282d923f2312c9c7d7c550f`, CI `34778546164`.
+Current source checkpoint for M1H-3: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
 
-Documentation/audit commits after that checkpoint do not change the source baseline. Green CI is not Minecraft runtime proof.
+Current branch head may contain documentation-only commits after that source checkpoint. Verify exact source and CI before claiming runtime behavior.
 
-## Read before changing source
+## How to make design decisions
 
-1. `docs/CURRENT-STATE.md`
-2. `docs/M1G-SCOPE-DECISIONS-2026-09-14.md`
-3. `docs/KNOWN-ISSUES.md`
-4. `docs/TESTING.md`
-5. `docs/VERIFIED-FACTS.md`
-6. `docs/FUTURE-CLEANUP.md`
-7. `docs/ARCHITECTURE.md`
-8. `docs/ROADMAP.md`
-9. exact current source/CI
+Do not default to either the simpler design or the more general design.
 
-Historical milestone/preparation/handoff documents preserve old checkpoints. They do not override current records.
+When multiple approaches are reasonable, compare what each one actually buys the project. Weigh current implementation cost, maintenance burden, runtime/performance cost, new failure modes, debugging surface, reversibility, and migration cost against the realistic likelihood and value of the future cases the more adaptable design would cover.
 
-## Product / architecture rules
+Future flexibility is valuable only when the future need is plausible enough or expensive enough to retrofit later. Treat realistic near-term needs differently from hypothetical edge cases.
 
-This is a programmable ComputerCraft speaker peripheral. Lua owns application meaning/policy. Do not create permanent Java music/effect/notification lanes or infer role from MP3/WAV/etc.
+A simple design should not win merely because it is simple. A complex design should not win merely because it is more flexible or elegant.
+
+Explain which option appears better justified by the tradeoff and why, but for meaningful tradeoffs leave the final choice to the owner. Handle minor implementation details yourself.
+
+The roadmap is a planning tool, not immutable law. Reorder, merge, split, defer, or scrap roadmap items when a fresh comparison shows a better sequence. Explain the reason and preserve completed evidence/history.
+
+## Communication style
+
+Keep explanations practical, concise, and concrete.
+
+Prefer normal paragraphs over tall stacks of one-sentence lines. Do not repeat the same idea in several forms just to make the response longer.
+
+Avoid abstract architecture language and extreme implementation detail unless it is needed for the decision at hand. Explain what changes in-game, what changes in the code, what it costs, and what can go wrong.
+
+The owner can understand technical material; do not over-explain straightforward points.
+
+When presenting options, keep the comparison short enough to scan, but include the tradeoffs that materially affect the choice.
+
+## Product rules
+
+This is a programmable ComputerCraft speaker peripheral. Lua owns application meaning and policy. Do not add permanent Java music/effect/notification roles.
+
+Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty`. HQ RAW uses separate `hqspeaker_audio_empty`.
 
 One physical speaker remains one mono positional source.
 
-Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty`; HQ RAW uses separate `hqspeaker_audio_empty`.
+Modern prepared finite playback is server-authoritative, bounded, progressive, and currently supports MP3 plus supported common WAV. Protocol v7 uses STATE as the nonterminal authority and explicit STOP for removal.
 
-Locked M1G media/renderer choices:
+The fixed modern core radius is 32 blocks. HQ volume changes gain, not that core radius. Sound Physics Remastered work may intentionally extend acoustics/range later.
 
-- A1 — Minecraft `AudioStream` / normal `SoundManager` renderer;
-- B1 — server-normalized common-WAV layout;
-- C1 — preserve source sample rate;
-- D1 — narrow PCM/float WAVEX;
-- E1 — conservative MP3 pre-roll from an earlier analyzed seek point.
+M1H moving-source support uses local Sable/Aeronautics and VS2 transforms. Do not add continuous position packets or a universal movement framework unless a concrete future requirement makes that tradeoff worthwhile.
 
-Owner-selected later M1G scope:
+## Source-work rules
 
-- explicit server-authoritative decoder/re-anchor revision; do not infer restart intent from anchor movement;
-- fixed 32-block core modern-finite listening/delivery radius; HQ volume changes gain/loudness, not core range;
-- global HQ volume zero keeps canonical server time running but hibernates local decode/render/range work until unmuted;
-- looping is ordinary local replay after physical EOF while authoritative state still says looping; a normal restart gap is acceptable;
-- no gapless MP3 work, permanent-source loop engineering, dynamic volume-aware radius, general M1H listener lifecycle, or SPR range/acoustic integration in M1G.
+Before changing source, read:
 
-Do not reopen L1/L2/L3, L4a/L4b, or dynamic-range alternatives unless the owner explicitly changes scope.
+1. `docs/CURRENT-STATE.md`
+2. `docs/KNOWN-ISSUES.md`
+3. `docs/TESTING.md`
+4. `docs/VERIFIED-FACTS.md`
+5. `docs/ARCHITECTURE.md`
+6. `docs/ROADMAP.md`
+7. the exact current source and latest CI
 
-## Current modern prepared path
+Historical milestone/handoff documents preserve history and do not override current records.
 
-```text
-server MediaAsset
--> server-authoritative playback state
--> protocol v6 descriptor + codec-aware STATE anchor
--> bounded range transport / sliding encoded window
--> FiniteEncodedInputStream
--> ProgressiveWavDecoder / ProgressiveMp3Decoder
--> bounded FinitePcmQueue
--> FinitePcmAudioStream
--> FiniteSpeakerSound / SoundManager / BLOCKS
-```
+For source changes: implement the selected behavior fully, add deterministic tests when they genuinely test the behavior, run both supported NeoForge CI targets, verify packaging when relevant, and adversarially reread the changed lifecycle paths before calling the work complete.
 
-Modern prepared playback is MP3 + supported common WAV. It does not use the inherited complete-file JavaSound/mp3spi bridge, complete client song files, or modern CHUNK/END whole-file transfer.
+Do not invent artificial test plumbing merely to satisfy a checkbox when compilation/package/runtime evidence is the correct proof.
 
-Server owns finite generation/state/time/control/EOF. Client decoder/render failures are local diagnostics.
+Green CI is not Minecraft runtime proof. Keep source/CI/package evidence separate from focused in-game acceptance.
 
-Current source is protocol **v6**. The selected explicit decoder/re-anchor revision is next-protocol work, likely v7.
+## Current architecture boundaries
 
-## Current M1G source work
+Server owns finite playback generation, timeline, controls, seek/reanchor revision, natural EOF, and terminal errors.
 
-### KI-053 / KI-056 / KI-057 — decoder revision/re-anchor cluster
+Client owns bounded encoded-window consumption, progressive decode, PCM buffering, SoundManager rendering, and local recovery/rejoin.
 
-Solve these together using the selected explicit server-authoritative decoder/re-anchor revision.
+Temporary starvation is not EOF. Seek/replacement/stop must invalidate stale encoded waits, decoder workers, PCM, and renderer state.
 
-Required properties:
+M1H listener admission is dynamic. Late listeners receive the current authoritative state; leaving relevance gets cleanup; returning rejoins at current server time.
 
-- ordinary STATE preserves a healthy decoder/window;
-- semantic seek is self-describing even with the same coarse anchor;
-- stale worker identity is invalidated before cancellation can wake/report;
-- correctness does not depend on CONTROL SEEK arriving before STATE.
+M1H recovery rejoins current server time after renderer loss or sustained starvation without inventing a new server revision.
 
-One implementation-shape choice remains: keep finite PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP CONTROL packets only as optional latency hints, or remove that duplicate path and use STATE as sole transition authority. Do not preserve duplicate v6 behavior merely because it already exists.
+M1H moving-source support resolves Sable/Aeronautics-style sublevels first, VS2 second, otherwise normal block center. Native ordinary Create contraption lifecycle is not part of this support unless a concrete requirement justifies separate work.
 
-### KI-058 / KI-060 — fixed-range renderer behavior
+## Remaining roadmap areas
 
-M1G core radius is fixed at 32 blocks unless the owner explicitly changes the number. Volume affects gain, not that radius.
+The old roadmap currently lists optional native FLAC, multispeaker shared clocks, active-session sharing, legacy finite migration/removal, RAW finalization, SoundEngine/OpenAL cleanup, hardening/final acceptance, SPR compatibility, live streams, and release cleanup.
 
-The live Minecraft channel must explicitly retain the fixed attenuation distance rather than native CC:T's volume-scaled distance. Global volume zero hibernates transport/rendering while server time continues; client-local MASTER/BLOCKS mute is separate. Harden the one-way renderer-start latch.
+Do not assume that order is still correct. Re-evaluate the remaining milestones using the decision rules above before starting the next one.
 
-### KI-051 — ordinary replay
-
-At physical EOF, if authoritative state still says `looping=true`, start the same media again with a fresh local decoder/render iteration. A normal gap is acceptable. Do not add gapless/padding/prefetch/permanent-source work.
-
-### KI-055 / KI-061
-
-Add a real-MP3 progressive JLayer integration test across range sliding/starvation and focused `FinitePcmAudioStream` tests. Reclaim leftover staging files on whole staging-owner cleanup, not individual computer detach.
-
-## Cross-cutting findings that must not be lost
-
-### KI-062 — synchronized stream dispatch + blocking DNS
-
-Dynamic legacy stream methods can hold the composite monitor while synchronous DNS runs. The server tick's `tickOwnership()` and synchronized composite `cleanup()` use the same monitor. Provider `forget`, `forgetLevel`, and `clearAll` reach cleanup during removal/Level unload/server stop.
-
-A DNS-parked computer thread can therefore stall server tick ownership work or lifecycle cleanup waiting on that composite.
-
-`audioPrepareStaged(...)` is **not** synchronized on the composite monitor; do not generalize KI-062 to every media operation.
-
-Keep the fix narrow: preserve ownership ordering while moving/blocking DNS/I/O outside the shared monitor or otherwise removing server-thread dependence on it. Do not turn M1G into an M3 stream rewrite.
-
-### KI-063 — replacement-before-admission
-
-Rejected/failed RAW or prepared replacement can stop the current valid HQ source before the new source is known to be accepted. Validation/admission should precede destructive ownership transfer where practical.
-
-### KI-054 / KI-064 — storage/shutdown hardening
-
-- completed-file deletion failure can lose retry bookkeeping;
-- range-service close can throw before store close, leaving the media-store root lock and stopped-server registry entry alive in the JVM;
-- `writeExact()` can spin indefinitely on repeated zero reads;
-- import lacks an unsupported-`ATOMIC_MOVE` fallback.
-
-These are real but separate from decoder protocol design.
-
-## Practical sequencing
-
-The latest working recommendation is:
-
-1. remove KI-062 before relying on legacy stream calls;
-2. implement the explicit decoder/reanchor revision and fix KI-053/056/057 as one cluster;
-3. implement fixed attenuation + global-volume-zero/renderer-start behavior;
-4. implement ordinary replay;
-5. close real-MP3 / `FinitePcmAudioStream` / cancellation/seek evidence gaps;
-6. fix KI-061 staging cleanup;
-7. place KI-063 and KI-054/KI-064 around that sequence according to patch cohesion;
-8. run both NeoForge targets and focused Minecraft acceptance.
-
-A broader safety-first batch closing KI-062/063/054/064 before v7 is also defensible. If choosing that route, record it explicitly. Do not silently pull HLS/legacy/CI/release work into either plan.
-
-## Audit corrections — do not regress
-
-A broad repository audit was useful but contained retracted claims. Exact source confirms:
-
-- `FiniteDecodeAnchorSelector.Anchor` is exactly `(offset, seconds)`; STATE carries both;
-- modern STATE does **not** carry world x/y/z; BEGIN carries initial world/block position;
-- `audioPrepareStaged(...)` is not synchronized on the composite monitor;
-- `HQSpeakerPeripheral` has no composite back-reference;
-- the provider WeakHashMap intentionally depends on explicit lifecycle eviction because cached values reference their Level;
-- `HQFiniteMediaServer.tick()` does not itself perform the per-player/fanout work first attributed to it;
-- inherited HTTP stream paths close their streams;
-- release retry ticking is `ServerMediaAssets.tickPendingReleases()`.
-
-The audit report/PR is supporting evidence, not current authority. Verify exact source before promoting any further audit claim.
-
-## M1H / VS2 note
-
-Modern BEGIN carries block coordinates; STATE does not carry live position updates. `FiniteSpeakerSound.updatePosition(...)` exists but modern M1G does not call it after renderer creation.
-
-The legacy client already recomputes VS2 ship-transformed positions from packet block coordinates each tick. M1H may mirror that client-side path or add explicit authoritative position updates if later requirements justify it. Do not silently choose during M1G.
-
-## Later work — keep out of M1G
-
-- full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/VS2 lifecycle — M1H;
-- native FLAC — M1I;
-- multispeaker shared clocks/helpers — M1J/M1K;
-- legacy finite migration/removal — M1L;
-- broader RAW/OpenAL cleanup — M1M/M1N;
-- Sound Physics Remastered compatibility/range/acoustics — M2;
-- inherited live MP3/HLS/TS repair — M3;
-- separate HQ block, CI hygiene, license provenance, release cleanup — M4.
-
-Confirmed later issues include the inherited HLS refreshed-window index bug, misleading legacy capability lists, and legacy `playNoteAll`/`playSoundAll` semantic mismatch. Do not fix them incidentally during M1G unless a genuinely shared primitive requires it.
-
-## M1G correctness rules
-
-- server M1E state remains canonical;
-- temporary encoded starvation is not decoder EOF;
-- decoder/network/disk waits stay off Minecraft/audio threads;
-- encoded and decoded memory stay bounded independently of duration;
-- semantic seek creates fresh codec state even if the coarse anchor byte is unchanged;
-- ordinary state snapshots do not gratuitously restart healthy decoding;
-- seek/replacement/stop discard stale encoded wait/decoder/PCM/renderer state;
-- one physical speaker remains one mono positional source.
-
-## Evidence boundary
-
-M1E final focused Minecraft acceptance was skipped/unrecorded. M1F focused Minecraft transport acceptance is unrecorded. M1G integrated source/tests/package is green at the source checkpoint above, but real-MP3 progressive integration coverage, focused renderer-adapter coverage, selected ordinary replay, and focused audible Minecraft acceptance remain incomplete.
+Known later issues include the inherited multispeaker expected-member barrier, misleading legacy capability lists, incorrect legacy `playNoteAll`/`playSoundAll` semantics, inherited live/HLS/TS defects, license provenance, and release hygiene.
