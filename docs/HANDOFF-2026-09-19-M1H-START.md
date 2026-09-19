@@ -179,6 +179,6 @@ Do not explain things in abstract architecture language by default. Prefer plain
 
 For meaningful tradeoffs, present the main options and consequences and let the owner choose. Handle minor implementation details without asking.
 
-Do not treat a more general or abstract design as inherently better. Give simple and complex approaches equal consideration. Prefer the simplest solution that reliably covers the actual supported cases; add framework or compatibility machinery only when it buys concrete value.
+Do not default to either the simpler or the more general design. When both are reasonable, weigh them against each other. Compare the work and failure surface added now against the realistic likelihood and impact of future cases the more adaptable design would cover. Consider maintenance cost, performance cost, implementation risk, reversibility, migration cost if requirements grow later, and whether the extra abstraction would materially reduce future work. Treat plausible near-term needs differently from speculative edge cases. Explain which option appears better justified by those tradeoffs and why, but still leave the final choice to the owner.
 
 When source work is requested: implement fully, add meaningful deterministic tests where they genuinely test the behavior, run both supported NeoForge CI targets, then adversarially re-read the changed lifecycle paths before calling the slice complete.
