@@ -4,9 +4,9 @@ Date: 2026-09-13
 
 This handoff originally paused progress after an audit reopened M1E/M1F correctness/acceptance work. That gate is now resolved.
 
-Current continuation is:
+Historical continuation at that checkpoint was `M1F-FINALIZATION-2026-09-13.md`.
 
-`M1F-FINALIZATION-2026-09-13.md`
+Current continuation is `HANDOFF-2026-09-19-M1H-START.md`.
 
 Current branch:
 

@@ -1,6 +1,6 @@
 # M1G preparation — 2026-09-13
 
-> **Historical preparation record. M1G has since started and its original decision gates are resolved.**
+> **Historical preparation record. M1G and the separate post-M1G Option A hardening pass are now complete; M1H is current. The original decision gates are resolved.**
 >
 > This file preserves the reasoning used before implementation. It is not a current task list. Current authority is `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, and exact current source.
 

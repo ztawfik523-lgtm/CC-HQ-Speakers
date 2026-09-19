@@ -4,7 +4,7 @@
 >
 > This file preserves the September 13/14 checkpoint and evidence. It contains old open option lists which are now settled. Current work must start from `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, `TESTING.md`, `VERIFIED-FACTS.md`, and exact current source.
 >
-> Current selected M1G scope: explicit decoder/re-anchor revision (current source remains v6); fixed 32-block core radius with volume changing gain rather than range; global-volume-zero local hibernation while canonical server time continues; ordinary non-gapless replay after local EOF. Do **not** ask the owner to choose L1/L2/L3 or dynamic volume-range behavior based on the historical text below.
+> M1G is now complete on protocol v7, and the separate Option A post-M1G hardening pass is also complete. Current continuation is M1H; use `HANDOFF-2026-09-19-M1H-START.md`. Do **not** ask the owner to re-choose old M1G loop/range/reanchor options from the historical text below.
 
 Original handoff date: 2026-09-13
 

@@ -1,6 +1,6 @@
 # M1G scope decisions — 2026-09-14
 
-Updated with the 2026-09-17 recheck/audit conclusions.
+Updated with the 2026-09-17 recheck/audit conclusions. Postscript updated 2026-09-19.
 
 This document records the owner's narrowed M1G direction after rechecking the progressive finite player against current source, Minecraft 1.21.1 sound behavior, CC:T 1.120.0 speaker behavior, and planned Sound Physics Remastered compatibility.
 
@@ -163,7 +163,7 @@ Implemented:
 
 Focused audible Minecraft acceptance remains unrecorded under KI-046. It is retained as an evidence gap rather than an unfinished M1G source item.
 
-KI-062, KI-063, KI-054, and KI-064 remain real post-M1G cross-cutting hardening. They were not silently folded into the core finite-engine milestone.
+At M1G closeout, KI-062, KI-063, KI-054, and KI-064 remained post-M1G cross-cutting hardening rather than being folded into M1G. They were subsequently resolved on `codex/post-m1g-hardening` at source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 
 ## Explicitly deferred
 

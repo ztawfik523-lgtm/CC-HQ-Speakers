@@ -1,6 +1,6 @@
 # CC:HQ Speakers — pre-M1G handoff
 
-> **Historical preparation checkpoint. M1G has since started and the decision gates below are resolved.**
+> **Historical preparation checkpoint. M1G and the separate post-M1G Option A hardening pass are now complete; M1H is current. The decision gates below are historical.**
 >
 > Preserve this file as evidence of the pre-M1G reasoning, but do not follow its stop condition or ask the owner to re-choose A/B/C. A1/B1/C1/D1/E1 are locked, the progressive decoder/renderer is integrated in current source, and later scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md` / `CURRENT-STATE.md`.
 >

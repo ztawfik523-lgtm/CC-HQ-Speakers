@@ -1,5 +1,7 @@
 # Handoff — M1G complete — 2026-09-18
 
+> **2026-09-19 continuation note:** M1G remains complete. The separate Option A post-M1G hardening pass also completed at source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`. KI-062/063/054/064 are closed. Current continuation is `HANDOFF-2026-09-19-M1H-START.md`; do not use this older handoff as the active task list.
+
 ## Verdict
 
 M1G — the core progressive finite MP3/common-WAV engine — is complete at source/test/CI/package/component level.
