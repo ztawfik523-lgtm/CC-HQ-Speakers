@@ -10,7 +10,7 @@ Facts only. Recommendations and unresolved choices belong elsewhere.
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`.
 
-Current completed-hardening branch: `codex/post-m1g-hardening`.
+Current active M1H branch: `codex/m1h-listener-lifecycle`.
 
 Important source checkpoints:
 
@@ -18,7 +18,8 @@ Important source checkpoints:
 - M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`;
 - M1G preparation base: `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`;
 - final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`;
-- post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
+- post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`;
+- M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`.
 
 ### FACT-PLATFORM-001
 
@@ -308,11 +309,23 @@ KI-062, KI-063, KI-054, and KI-064 are resolved by post-M1G hardening checkpoint
 
 ### FACT-M1H-LISTENER-001
 
-Current modern finite server source has no admitted-listener membership set. BEGIN is projected to players relevant when playback starts, while the normal server tick only handles natural EOF. A player entering range after playback starts therefore cannot bootstrap a client session on its own.
+M1H-1 adds an admitted-listener UUID set for each active modern finite session. The server checks membership every server tick against the fixed 32-block relevance rule.
 
 ### FACT-M1H-LISTENER-002
 
-READY/STATE and range requests already check current relevance. Missing behavior is proactive server admission/removal: late-entry bootstrap and proactive leave cleanup.
+A newly relevant player receives BEGIN plus current authoritative STATE immediately. The existing READY -> STATE path remains enabled, so one additional same-revision STATE may follow. This is intentional.
+
+### FACT-M1H-LISTENER-003
+
+A player who leaves relevance receives targeted STOP before membership removal when still connected. Disconnected players are pruned without a packet. A player in another dimension can still receive targeted cleanup through the server player list.
+
+### FACT-M1H-LISTENER-004
+
+READY and finite range requests/completions now require both current relevance and current listener membership. Stop/replacement clears admitted listeners with STOP; natural end/error sends terminal STATE to admitted listeners and clears membership.
+
+### FACT-M1H-LISTENER-005
+
+M1H-1 source checkpoint `84e7bab99009e5871934a960908945ceb00a10a9` passed CI `35410830197` on NeoForge 21.1.247 and 21.1.248, including deterministic tests, packaged-mod verification, and artifact upload. Focused real-Minecraft walk-in/walk-out/re-entry acceptance is not yet recorded.
 
 ### FACT-M1H-NEXT-001
 
@@ -320,7 +333,7 @@ Modern moving-source/VS2 handling remains M1H. Two source-compatible approaches 
 
 ## Later milestone facts
 
-Full late-entry/proactive-leave/return-rejoin/dimension/reload/general-underrun/final-VS2 lifecycle remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
+M1H-1 late-entry/proactive-leave/return-rejoin/dimension membership is implemented at source/test/CI/package level, with focused Minecraft acceptance still pending. Resource reload, general underrun recovery, and final VS2 movement remain later M1H work. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
 
 ## License
 

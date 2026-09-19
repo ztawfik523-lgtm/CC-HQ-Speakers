@@ -59,49 +59,32 @@ Do not reopen M1G or KI-062/063/054/064 without a concrete regression.
 
 Do not pull SPR, FLAC, multispeaker synchronization, live-stream redesign, legacy migration, or release cleanup into M1H.
 
-## Next milestone: M1H
+## M1H status
 
-The first implementation slice is **listener membership**.
+M1H-1 listener membership is now implemented at source/test/CI/package level.
 
-### Exact current source gap
+Source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`
 
-- `HQFiniteMediaServer.commitPreparedStart()` sends BEGIN and STATE only to players relevant at that moment.
-- `HQFiniteMediaServer.tick()` handles natural EOF only.
-- There is no admitted-listener UUID set.
-- READY/STATE and range requests already check current relevance.
-- A player who starts outside the fixed 32-block radius and walks in later never received BEGIN, so the client cannot bootstrap itself.
-- A player leaving range is not proactively sent targeted cleanup.
-- Return/rejoin has no explicit current-time re-admission path.
-- `FiniteSpeakerSound.updatePosition(...)` exists but is not driven after renderer creation.
+CI: `35410830197`
 
-### M1H-1 acceptance target
+- NeoForge 21.1.247: PASS, artifact `10574726822`, SHA-256 `62e8f090ddfe5466db3807dd1d78fd738c355887e6e938f811834d9630078cc9`;
+- NeoForge 21.1.248: PASS, artifact `10573826903`, SHA-256 `2538111207be632a1253a762f6a45218b6d7ca4b24c2739359b4f56c8e648555`.
 
-1. Start outside range: no client admission.
-2. Walk into range during playback: exactly one bootstrap for current generation/current canonical time.
-3. Stay in range: no BEGIN/STOP spam.
-4. Walk out: targeted client cleanup and membership removal.
-5. Walk back in: rejoin current authoritative time, not zero.
-6. Disconnect/removal: membership pruned.
-7. Dimension mismatch: old membership pruned; re-admit only when relevant again.
-8. Stop/replacement/natural terminal: membership cleared coherently.
+Implemented M1H-1 behavior:
 
-Add deterministic membership-transition tests before Minecraft acceptance.
+1. Start outside range: no admission.
+2. Enter range: targeted BEGIN + current STATE immediately.
+3. Stay in range: no repeated BEGIN/STOP.
+4. Leave range: targeted STOP and membership removal.
+5. Return: rejoin current authoritative playback time.
+6. Disconnect: membership pruned.
+7. Dimension mismatch: connected player gets cleanup and membership is pruned.
+8. Stop/replacement/natural terminal/error: membership cleared coherently.
+9. READY and range traffic require current membership plus relevance.
 
-### First M1H design choice
+The selected late-entry choice is **Option A**: BEGIN + current STATE immediately. The normal client READY can cause one harmless follow-up STATE; no extra suppression bookkeeping was added.
 
-Do not silently choose between:
-
-**A. Proactive BEGIN + current STATE**
-
-- faster/self-contained admission;
-- duplicates part of existing BEGIN -> READY -> STATE flow and needs clean ordering/idempotence.
-
-**B. BEGIN, then existing READY -> STATE**
-
-- reuses current rejoin path;
-- adds a round trip before initial late-entry state arrives.
-
-Server playback time remains authoritative either way. Present the tradeoff briefly to the owner before implementation if it materially affects the patch.
+Deterministic membership-transition tests are included. Focused real-Minecraft walk-in/walk-out/re-entry acceptance is still pending and must not be claimed from CI alone.
 
 ## M1H-2 — recovery
 

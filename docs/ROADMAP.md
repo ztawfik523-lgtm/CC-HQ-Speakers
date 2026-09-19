@@ -17,7 +17,7 @@ The selected Option A post-M1G hardening pass is also complete:
 - NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
 - KI-062, KI-063, KI-054, and KI-064 resolved.
 
-The next active milestone is **M1H — dynamic listener lifecycle/recovery**.
+The active milestone is **M1H — dynamic listener lifecycle/recovery**. M1H-1 is implemented at source/test/CI/package level at `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`; focused Minecraft walk-in/walk-out/re-entry acceptance is still pending.
 
 ## Foundation
 
@@ -94,19 +94,25 @@ Checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification
 
 ### M1H-1 — listener membership
 
-Start here:
+**Implemented at source/test/CI/package level. Focused Minecraft acceptance pending.**
 
-- track admitted players for each active modern finite session;
-- discover late entry into the fixed 32-block radius;
-- bootstrap the current generation/current canonical time;
-- proactively clean up players leaving range;
-- re-admit on return;
+Checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`.
+
+Implemented behavior:
+
+- track admitted player UUIDs for each active modern finite session;
+- discover entry into the fixed 32-block radius every server tick;
+- selected Option A: send BEGIN + current STATE immediately on admission;
+- allow the normal READY -> STATE reply afterward rather than adding duplicate-suppression state;
+- no repeated BEGIN/STOP while membership stays unchanged;
+- targeted STOP on leave;
+- re-admit on return at current server playback time;
 - prune disconnect/dimension changes;
-- add deterministic no-spam transition tests plus focused Minecraft walk-in/walk-out/re-entry acceptance.
+- gate READY/range traffic on both relevance and membership;
+- clear membership coherently on stop/replacement/natural terminal/error;
+- deterministic tests cover transitions and retry/no-spam behavior.
 
-Current source already relevance-checks READY and range requests, but `HQFiniteMediaServer.tick()` does not maintain listeners.
-
-Late-entry packet sequencing remains a real choice: proactive BEGIN+STATE, or BEGIN followed by existing READY->STATE. Do not silently choose if the tradeoff matters.
+Remaining M1H-1 evidence: focused real-Minecraft walk-in/walk-out/re-entry/dimension acceptance.
 
 ### M1H-2 — recovery
 

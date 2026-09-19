@@ -4,9 +4,18 @@ Updated: 2026-09-19
 
 ## Checkpoint
 
-Active branch: `codex/post-m1g-hardening`.
+Active branch: `codex/m1h-listener-lifecycle`.
 
-M1E, M1F, and M1G are complete at source/test/CI/package level.
+M1E, M1F, and M1G are complete. M1H-1 listener membership is complete at source/test/CI/package level and still needs focused Minecraft walk-in/walk-out/re-entry acceptance.
+
+M1H-1 **source** checkpoint:
+
+`84e7bab99009e5871934a960908945ceb00a10a9`
+
+M1H-1 CI `35410830197` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
+
+- NeoForge 21.1.247: artifact `10574726822`, SHA-256 `62e8f090ddfe5466db3807dd1d78fd738c355887e6e938f811834d9630078cc9`;
+- NeoForge 21.1.248: artifact `10573826903`, SHA-256 `2538111207be632a1253a762f6a45218b6d7ca4b24c2739359b4f56c8e648555`.
 
 Final M1G **source** checkpoint:
 
@@ -167,25 +176,30 @@ The next active milestone is **M1H**: listener entry/leave/rejoin, dimension/res
 - modern finite STATE does not carry x/y/z; BEGIN carries initial world/block position;
 - `audioPrepareStaged(...)` is not synchronized on the composite monitor;
 - `HQSpeakerPeripheral` has no composite back-reference;
-- `HQFiniteMediaServer.tick()` does not itself iterate/project players every tick;
+- M1H-1 now makes `HQFiniteMediaServer.tick()` check listener membership every server tick; the speaker world position is calculated once for that scan;
 - inherited HTTP stream paths do close their streams;
 - pending release retries are driven by `ServerMediaAssets.tickPendingReleases()`.
 
-## M1H concrete starting gap
+## M1H-1 listener membership implemented
 
-The next active milestone is M1H. Exact source currently has no server-side admitted-listener set for modern finite playback.
+M1H-1 is implemented at source/test/CI/package level at `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`.
 
-- `commitPreparedStart()` sends BEGIN and STATE only to players relevant at playback start;
-- `HQFiniteMediaServer.tick()` only handles natural EOF and does not discover newly relevant players;
-- a player entering range later never received BEGIN, so the client cannot bootstrap itself;
-- players leaving the fixed 32-block radius are not proactively sent targeted STOP/removal;
-- return/rejoin has no explicit current-time re-admission path;
-- `FiniteSpeakerSound.updatePosition(...)` exists but modern finite playback does not drive it after renderer creation.
+Current behavior:
 
-First M1H slice: late entry, proactive leave, return/rejoin, disconnect/dimension pruning, and deterministic transition tests. Recovery/resource reload/general underrun follows. VS2 movement is a later M1H slice.
+- players outside the fixed 32-block range are not admitted;
+- entering range sends BEGIN + current STATE immediately;
+- the normal client READY reply is allowed to produce one harmless follow-up STATE;
+- staying in range does not repeat BEGIN or STOP;
+- leaving range sends targeted STOP and removes membership;
+- returning gets a fresh client session for the same active generation and the current server playback time;
+- disconnected players are forgotten; dimension-changed players are sent cleanup when still connected;
+- READY and range traffic are accepted only from currently admitted, relevant players;
+- stop/replacement sends cleanup to all admitted players;
+- natural end/error sends the terminal STATE to admitted players and clears membership.
 
-Late-entry bootstrap has a meaningful choice: proactive BEGIN+current STATE, or BEGIN followed by existing READY->STATE. Do not silently choose if the tradeoff matters.
+`FiniteListenerMembershipTest` covers walk-in/stay/leave/return, retry behavior when a projection fails, disconnect/dimension-style pruning, and full clear on stop/replacement/terminal.
 
+Focused real-Minecraft M1H-1 walk-in/walk-out/re-entry acceptance is still pending. CI does not prove audible cleanup/rejoin behavior.
 
 ## M1H / VS2 movement boundary
 
@@ -213,7 +227,9 @@ Post-M1G KI-062 DNS/monitor hardening: PASS
 Post-M1G KI-063 replacement admission hardening: PASS
 Post-M1G KI-064 import progress/rename hardening: PASS
 Post-M1G KI-054 shutdown lock/retry hardening: PASS
-Next milestone: M1H listener/recovery lifecycle
+M1H-1 listener membership source/test/CI/package: PASS at 84e7bab99009e5871934a960908945ceb00a10a9 / CI 35410830197
+M1H-1 focused Minecraft walk-in/walk-out/re-entry acceptance: pending
+Next slice: M1H-2 recovery
 ```
 
 ## Read order

@@ -19,7 +19,14 @@ M1E final hardening: `521d4323d9216c8a99e8ec60426997c3330c4068`, CI `34757923455
 
 M1F final source/test candidate: `d0acd41df690d02c9813ecd7e84d3115b44f6a3f`, CI `34763362365`. Source/test/CI/package and deterministic/component acceptance are complete; focused Minecraft M1F transport acceptance is unrecorded.
 
-M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406595856`. Both supported NeoForge targets passed build/tests/package verification/artifact upload at both checkpoints.
+M1G final source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406595856`.
+
+M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`. Both NeoForge 21.1.247 and 21.1.248 passed build, deterministic tests, packaged-mod verification, and artifact upload.
+
+M1H-1 artifacts:
+
+- 21.1.247 artifact `10574726822`, SHA-256 `62e8f090ddfe5466db3807dd1d78fd738c355887e6e938f811834d9630078cc9`;
+- 21.1.248 artifact `10573826903`, SHA-256 `2538111207be632a1253a762f6a45218b6d7ca4b24c2739359b4f56c8e648555`.
 
 ## What is actually integrated now
 
@@ -105,6 +112,33 @@ Exact-source re-audit additionally verifies:
 - RAW replacement validates/converts before current ownership is stopped;
 - the same stopping server cannot reopen media services after shutdown begins;
 - a later server instance retries old failed closing services before opening the media-store root.
+
+## M1H-1 listener membership evidence
+
+Deterministic tests now cover the membership transitions used by the server:
+
+- outside -> inside produces one join;
+- remaining inside produces no new transition;
+- inside -> outside produces one leave;
+- returning produces a new join;
+- a failed BEGIN or STOP projection remains retryable instead of being silently forgotten;
+- disconnect/dimension-style disappearance prunes the missing listener without disturbing listeners that remain;
+- stop/replacement/terminal cleanup clears all membership.
+
+The server implementation uses those transitions every server tick. A late entrant gets BEGIN + current STATE immediately. The client's normal READY reply may then cause one extra STATE, which is intentionally accepted because same-revision STATE does not restart healthy playback.
+
+### Focused Minecraft M1H-1 acceptance still required
+
+CI does not prove the live client/audio behavior. In a real NeoForge 21.1.247 Minecraft run, verify:
+
+1. start prepared playback while the player is farther than 32 blocks away: no sound/client admission;
+2. walk inside 32 blocks: playback joins near the song's current time, not from zero;
+3. remain inside for several seconds: no repeated restart or audible BEGIN spam;
+4. walk outside: sound stops promptly and client range/decode/render work stops;
+5. walk back inside: playback rejoins the current server time cleanly;
+6. change dimension while admitted: old playback is cleaned up; returning to the relevant dimension/range can rejoin;
+7. stop or replace playback while admitted: old sound is cleaned up;
+8. let non-looping playback end naturally: client playback disappears cleanly.
 
 ## Lua/runtime scripts: current versus historical
 
