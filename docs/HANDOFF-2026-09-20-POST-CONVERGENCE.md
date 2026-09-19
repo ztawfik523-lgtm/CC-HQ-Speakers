@@ -9,11 +9,11 @@ Active branch: `codex/m1j-multispeaker`
 
 ## Exact checkpoint
 
-Latest source checkpoint before this documentation closeout:
+Current source checkpoint:
 
-`00b07db41c003363cef60ef8ec4134fa387c421c` — `cleanup: rename internal audio source resource`
+`395a41c1c91a4d1efa41cee9db89ba02fe767785` — `cleanup: remove dead legacy raw grouped bodies`
 
-CI `35474944518`:
+CI `35476526511`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS
@@ -198,7 +198,9 @@ Composite now intercepts grouped/indexed standard note/sound/audio and delegates
 
 This fixed inherited fake-sine/ignored-sound/HQ-PCM behavior on the supported surface.
 
-Old wrong bodies still physically exist in `HQSpeakerPeripheral`. They appear dead now that the standalone block is gone, but verify exact references before deletion.
+The obsolete legacy standard All/At bodies were removed at `ef2a917de429c34409ae7866f59cb50f3c191aa1`. The composite now explicitly retains those six Lua names while dispatching them to real CC:T speakers.
+
+The obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and now-unreferenced helper wrappers were removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`. Public RAW All/At remains composite-owned.
 
 ## Exact current architecture
 
@@ -250,16 +252,17 @@ Each audible modern finite endpoint decodes independently. Do not optimize witho
 
 ## What should happen next
 
-### A. Dead standard All/At cleanup
+### A. RAW/public API compatibility-control decision
 
-Recheck whether old `HQSpeakerPeripheral` bodies for:
+The dead standard and RAW grouped/indexed implementation duplicates are gone.
 
-- `playNoteAll` / `playSoundAll` / `playAudioAll`
-- `playNoteAt` / `playSoundAt` / `playAudioAt`
+Remaining inherited aliases need an explicit policy because they are not equivalent to the composite ownership model:
 
-have any direct exposure after standalone-block removal.
+- `speakStopAll` / `speakStopAt` call legacy stop directly;
+- `speakVolumeAll` changes legacy default volume rather than current modern finite endpoint gain;
+- `setLoopingAll` currently reaches a legacy no-op.
 
-If truly unreachable, remove them and only helpers which become unreferenced.
+Choose between removing these undocumented compatibility aliases or preserving them with explicit ownership-aware semantics.
 
 Do **not** delete `SyncDispatch` / packet sync-group fields / client `SyncGroupState` wholesale because optional grouped live streams still use them.
 

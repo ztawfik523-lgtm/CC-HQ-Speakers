@@ -7,11 +7,11 @@ Updated: 2026-09-20
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`  
 Active branch: `codex/m1j-multispeaker`
 
-Latest source checkpoint before this documentation closeout:
+Current source checkpoint:
 
-`00b07db41c003363cef60ef8ec4134fa387c421c`
+`395a41c1c91a4d1efa41cee9db89ba02fe767785`
 
-CI `35474944518` passed:
+CI `35476526511` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248
@@ -124,7 +124,9 @@ Relevant commits:
 
 `HQSpeakerCompositePeripheral` intercepts standard singular/All/At speaker calls and delegates to the real CC:T `SpeakerPeripheral`.
 
-Old fake sine/HQ-PCM grouped/indexed implementations still exist inside `HQSpeakerPeripheral` but are bypassed by the supported composite surface. With the standalone block removed, they are strong dead-code candidates; verify exact references before deleting.
+The obsolete fake sine/HQ-PCM standard grouped/indexed implementations were removed at `ef2a917de429c34409ae7866f59cb50f3c191aa1`. The composite explicitly preserves the six standard All/At method names and remains their sole supported implementation.
+
+The obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and now-unreferenced helper wrappers were removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`; composite RAW admission remains authoritative.
 
 ## Optional live path
 
@@ -146,7 +148,7 @@ Known HLS refresh/index progression concerns remain.
 
 Near-term non-runtime:
 
-1. verify/remove dead standard All/At bodies/helpers in `HQSpeakerPeripheral`;
+1. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
 2. keep live-stream sync machinery while grouped live helpers still depend on it;
 3. finish RAW/public API truthfulness and obsolete-helper cleanup;
 4. continue exact dead-code/import/dependency cleanup;

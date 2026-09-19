@@ -22,9 +22,9 @@ Start with:
 
 Active branch at handoff: `codex/m1j-multispeaker`.
 
-Latest source checkpoint before documentation closeout: `00b07db41c003363cef60ef8ec4134fa387c421c`.
+Current source checkpoint: `395a41c1c91a4d1efa41cee9db89ba02fe767785`.
 
-CI `35474944518` passed NeoForge 21.1.247 and 21.1.248 with tests/package verification/artifacts.
+CI `35476526511` passed NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifact upload.
 
 Current network protocol is v9 with 9 payloads.
 
@@ -49,15 +49,14 @@ Preserve these core facts:
 
 Important unresolved source/runtime risk: `HQFiniteMediaServer.isRelevant(...)` still requires `player.level() == level` after projecting moving speaker coordinates. A Sable sublevel speaker may fail listener membership for a parent-world player even if projected geometry is correct. Do not claim this is resolved without testing/fixing it.
 
-Likely next non-runtime task is dead standard All/At cleanup, but recheck first:
+Dead grouped/indexed implementation cleanup is now complete:
 
-- `HQSpeakerCompositePeripheral` already intercepts grouped/indexed standard note/sound/audio and dispatches to real CC:T speakers;
-- old wrong bodies remain in `HQSpeakerPeripheral`;
-- standalone direct-peripheral block path is gone;
-- verify exact references; if truly unreachable, remove them and helpers which become unreferenced;
-- do NOT delete `SyncDispatch` / packet sync fields / client `SyncGroupState` wholesale because grouped optional live helpers still use them.
+- `ef2a917de429c34409ae7866f59cb50f3c191aa1` removed the obsolete standard `playNote/playSound/playAudio` All/At bodies after explicitly preserving those names in the composite;
+- `395a41c1c91a4d1efa41cee9db89ba02fe767785` removed the obsolete legacy `speakPCMAll/speakPCMAt` bodies and their now-unreferenced helper wrappers;
+- the composite remains the public standard/RAW All/At authority;
+- `SyncDispatch` / packet sync fields / client `SyncGroupState` remain because grouped optional live helpers still use them.
 
-After that, continue RAW/public API release cleanup and exact dead-code/dependency/docs/repository hygiene.
+Likely next non-runtime task is the RAW/public API compatibility-control decision: inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Decide whether to remove these undocumented aliases or preserve them with explicit ownership-aware semantics, then continue exact dead-code/dependency/docs/repository hygiene.
 
 Do not start FLAC/OGG/provider playback/shared decode fan-out unless a fresh decision justifies it.
 

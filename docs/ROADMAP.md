@@ -40,11 +40,15 @@ Complete for the current admission model: singular/All/At share bounded admissio
 
 Complete: standalone HQ block removed, normal CC:T speaker is sole block surface, MPL-2.0 metadata corrected, internal sound ID renamed to `hqspeaker:hq_audio_source`.
 
+### Dead grouped/indexed implementation cleanup
+
+Complete: obsolete legacy standard All/At bodies were removed while the composite explicitly retained the public method names; obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and their now-unreferenced wrappers were also removed. Optional live sync machinery remains because grouped live helpers still use it.
+
 ## Active non-runtime phase — release/API cleanup
 
 Priorities:
 
-1. re-verify and remove dead `HQSpeakerPeripheral` standard All/At bodies/helpers;
+1. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
 2. finish RAW/public contract cleanup;
 3. contain optional live code without letting it drive core architecture;
 4. exact dead-code/dependency/package cleanup;

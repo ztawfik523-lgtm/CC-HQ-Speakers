@@ -48,11 +48,11 @@ Live streaming is optional, so this is not a core release blocker unless live HL
 
 Finite and RAW no longer use this barrier. Do not confuse the remaining live-only code with core multispeaker design.
 
-### KI-CLEANUP-009 — dead standard All/At implementations remain in HQSpeakerPeripheral
+### KI-API-012 — stale inherited grouped/indexed control aliases bypass composite ownership
 
-`HQSpeakerCompositePeripheral` intercepts standard grouped/indexed note/sound/audio calls and delegates to real CC:T speakers.
+`speakStopAll` / `speakStopAt` still call legacy stop directly, `speakVolumeAll` only changes legacy default volume, and `setLoopingAll` reaches a legacy no-op.
 
-The old fake-sine/HQ-PCM grouped/indexed bodies remain inside `HQSpeakerPeripheral`. With the standalone block removed they appear to be dead, but exact-reference verification should precede deletion.
+These aliases are not documented in the current Lua API. Decide whether to remove them as obsolete compatibility surface or preserve them with explicit ownership-aware semantics.
 
 ### KI-RELEASE-010 — final integrated runtime/stress acceptance remains
 
@@ -73,6 +73,8 @@ Possible non-functional cleanup: docs-only CI path, concurrency cancellation, de
 - modern finite expected-member barrier removed.
 - RAW expected-member barrier removed.
 - grouped/indexed standard semantics corrected at the composite surface.
+- dead legacy standard grouped/indexed bodies removed at `ef2a917de429c34409ae7866f59cb50f3c191aa1`.
+- dead legacy RAW `speakPCMAll/speakPCMAt` duplicates/helpers removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`.
 - inherited standalone HQ block removed.
 - license metadata mismatch corrected to MPL-2.0.
 

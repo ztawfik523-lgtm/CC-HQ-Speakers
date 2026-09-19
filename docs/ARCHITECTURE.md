@@ -27,7 +27,7 @@ Replacement paths should validate/admit the new source before ending the current
 
 Standard singular/All/At note, sound and DFPWM calls are handled by the composite and dispatched to actual CC:T speaker peripherals.
 
-Old fake grouped/indexed implementations remain inside `HQSpeakerPeripheral` only as cleanup debt; they are not the supported behavior.
+The obsolete fake grouped/indexed implementations have been removed from `HQSpeakerPeripheral`. The composite explicitly owns and exposes the standard All/At names.
 
 ## Modern finite
 
@@ -74,6 +74,8 @@ Shared/global failure should be reserved for genuinely shared failures.
 RAW is producer-fed signed-16 PCM at 48 kHz.
 
 Composite admission provides max 131072 samples/call, queue limit 16, bounded sample lifetime, non-destructive rejection, `hqspeaker_audio_empty` after observed rejection, singular/All/At, full group preflight for All, and one future group start tick without expected-member synchronization.
+
+The composite owns the public RAW singular/All/At admission path; `HQSpeakerPeripheral` remains the lower-level RAW queue/packet substrate. Obsolete legacy RAW All/At duplicate bodies are removed.
 
 RAW is not a finite MediaAsset and has no real seek/duration/loop model.
 

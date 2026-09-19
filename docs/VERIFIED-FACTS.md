@@ -2,7 +2,7 @@
 
 Updated: 2026-09-20
 
-Checked against current `codex/m1j-multispeaker` source at/through `00b07db41c003363cef60ef8ec4134fa387c421c` unless explicitly historical.
+Checked against current `codex/m1j-multispeaker` source at/through `395a41c1c91a4d1efa41cee9db89ba02fe767785` unless explicitly historical.
 
 ## Product/repository
 
@@ -17,13 +17,13 @@ Checked against current `codex/m1j-multispeaker` source at/through `00b07db41c00
 - FACT-010: current network protocol is v9 with 9 registered payloads.
 - FACT-011: JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded.
 - FACT-012: mp3spi and tritonus-share are removed.
-- FACT-013: `00b07db41c003363cef60ef8ec4134fa387c421c` passed CI `35474944518` on both supported NeoForge targets.
+- FACT-013: `395a41c1c91a4d1efa41cee9db89ba02fe767785` passed CI `35476526511` on both supported NeoForge targets, including packaged-mod verification and artifact upload.
 
 ## Standard CC:T
 
 - FACT-020: standard singular `playNote/playSound/playAudio/stop` route through the real CC:T `SpeakerPeripheral`.
 - FACT-021: standard grouped/indexed note/sound/audio calls are intercepted by the composite and dispatch to real CC:T speakers.
-- FACT-022: old fake grouped/indexed bodies remain in `HQSpeakerPeripheral` but are bypassed on the supported product surface.
+- FACT-022: obsolete legacy standard grouped/indexed bodies are removed; the composite explicitly exposes those method names and dispatches to real CC:T speakers.
 
 ## Modern finite
 
@@ -57,6 +57,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `00b07db41c00
 - FACT-061: composite RAW max is 131072 samples/call; queue limit is 16.
 - FACT-062: RAW backpressure uses boolean rejection plus `hqspeaker_audio_empty` only for a producer that observed rejection.
 - FACT-063: `speakPCMAll` preflights the target snapshot and uses a common future start tick without expected-member synchronization.
+- FACT-064: obsolete legacy `speakPCMAll/speakPCMAt` duplicates and their now-unreferenced wrappers are removed; public RAW All/At admission is composite-owned.
 
 ## Optional live
 
