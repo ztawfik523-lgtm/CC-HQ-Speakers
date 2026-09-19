@@ -103,6 +103,16 @@ function hqspeaker.preparedInfo(speaker, assetId)
     return speaker.audioPreparedInfo(assetId)
 end
 
+--- Return the formats accepted by the modern prepared-file engine.
+---
+--- This intentionally does not mirror legacy speakSupportedFiles(), whose broader list
+--- describes inherited compatibility paths rather than modern prepared playback.
+--- @return table formats Set-like table, currently { mp3 = true, wav = true }.
+function hqspeaker.preparedFormats(speaker)
+    checkSpeaker(speaker)
+    return speaker.audioPreparedFormats()
+end
+
 --- Start a previously prepared server asset on this speaker.
 ---
 --- A successful playback takes its own asset reference before returning true, so the

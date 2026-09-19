@@ -249,6 +249,19 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return staging.preparedInfo(assetId);
     }
 
+    /**
+     * Truthful capability surface for the modern prepared engine.
+     *
+     * <p>Keep this separate from inherited speakSupportedFiles(), which still describes legacy compatibility paths.</p>
+     */
+    @LuaFunction
+    public final Map<String, Boolean> audioPreparedFormats() {
+        Map<String, Boolean> formats = new HashMap<>();
+        formats.put("mp3", true);
+        formats.put("wav", true);
+        return formats;
+    }
+
     @LuaFunction(mainThread = true)
     public final boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
         // This direct CC:T main-thread method must invalidate any older stream still blocked in DNS before it waits

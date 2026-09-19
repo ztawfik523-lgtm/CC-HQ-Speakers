@@ -96,6 +96,16 @@ The client requests bounded encoded ranges and progressively decodes them; it do
 
 Import/analyze a local file without starting playback. Returns a server media asset ID and gives the calling ComputerCraft computer one preparation-owner reference.
 
+### `hq.preparedFormats(speaker) -> table`
+
+Return the truthful modern prepared-format capability set. Current result is equivalent to:
+
+```lua
+{ mp3 = true, wav = true }
+```
+
+This is deliberately separate from inherited `speakSupportedFiles()`, whose broader result describes legacy compatibility paths and must not be interpreted as the modern prepared engine contract.
+
 ### `hq.preparedInfo(speaker, assetId) -> table`
 
 Return server-derived media information. Current fields include:
