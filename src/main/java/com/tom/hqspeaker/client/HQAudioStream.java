@@ -67,8 +67,6 @@ public class HQAudioStream implements AudioStream {
         switch (packet.format) {
             case PCM_S16LE -> pushPCM(packet.data);
             case MP3_STREAM, HLS_STREAM, TS_STREAM -> startStreaming(packet);
-            case OGG_VORBIS, MP3, AUDIO_FILE ->
-                HQSpeakerMod.warn("HQAudioStream: rejected retired whole-file format " + packet.format);
         }
     }
 
