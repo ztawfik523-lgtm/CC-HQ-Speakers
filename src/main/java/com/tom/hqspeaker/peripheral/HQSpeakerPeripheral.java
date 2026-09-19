@@ -3,7 +3,6 @@ package com.tom.hqspeaker.peripheral;
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
-import com.tom.hqspeaker.network.HQSpeakerStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerStopPacket;
 import com.tom.hqspeaker.network.IcyMetaPacket;
 
@@ -34,7 +33,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     private static final java.util.concurrent.ConcurrentHashMap<Integer, java.util.Set<HQSpeakerPeripheral>> COMPUTER_SPEAKERS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Set<HQSpeakerPeripheral> ACTIVE_SPEAKERS = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
-    private static final java.util.concurrent.ConcurrentHashMap<UUID, HQSpeakerPeripheral> SOURCE_SPEAKERS = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final java.util.Set<IComputerAccess> attachedComputers = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
     private final BlockPos pos;
@@ -72,11 +70,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
         this.world = world;
-        SOURCE_SPEAKERS.put(speakerSource, this);
-    }
-
-    public static HQSpeakerPeripheral findBySource(UUID source) {
-        return source == null ? null : SOURCE_SPEAKERS.get(source);
     }
 
     @Nonnull @Override public String getType() { return "speaker"; }
@@ -89,7 +82,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @Override
     public void attach(@Nonnull IComputerAccess computer) {
         ACTIVE_SPEAKERS.add(this);
-        SOURCE_SPEAKERS.put(speakerSource, this);
         attachedComputers.add(computer);
         COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), id -> java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>())).add(this);
         HQSpeakerMod.log("HQSpeaker attached to computer " + computer.getID() + " at " + pos);
@@ -164,7 +156,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
-        SOURCE_SPEAKERS.remove(speakerSource, this);
         broadcastStopPacket();
     }
 
@@ -404,11 +395,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         icyMetaSerial++;
 
         for (IComputerAccess comp : attachedComputers) comp.queueEvent("hqspeaker_metadata", getStreamMeta());
-    }
-
-    /** Legacy player-status payload is retained temporarily only for protocol compatibility. */
-    public void acceptPlaybackStatus(ServerPlayer sender, HQSpeakerStatusPacket packet) {
-        // No-op: the legacy finite player is no longer admitted.
     }
 
 @LuaFunction

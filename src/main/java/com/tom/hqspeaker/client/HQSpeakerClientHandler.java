@@ -2,7 +2,6 @@ package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
-import com.tom.hqspeaker.network.HQSpeakerControlPacket;
 import com.tom.hqspeaker.vs2.VS2TransformHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
@@ -53,11 +52,6 @@ public final class HQSpeakerClientHandler {
                 id -> new SyncGroupState(id, packet.syncGroupSize))
                 .add(packet.source, packet.syncGroupSize);
         }
-    }
-
-    /** Retained until the dead legacy finite control payload is removed in the next teardown step. */
-    public static void control(HQSpeakerControlPacket packet) {
-        // Intentionally ignored: legacy finite playback is no longer admitted.
     }
 
     private static boolean isPacketSafe(HQSpeakerAudioPacket packet) {
