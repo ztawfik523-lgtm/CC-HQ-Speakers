@@ -220,6 +220,8 @@ A multispeaker start snapshots the speakers selected by the calling ComputerCraf
 
 The shared authority owns only facts that must be identical: media/playback identity, canonical time, play/pause/seek/loop, shared revisions, natural EOF/shared failure, and playback asset lifetime. Each endpoint owns its physical source identity, position/movement, listener membership, endpoint gain, range transport, renderer, and recovery.
 
+Group-wide endpoint gain/mute operations iterate the authority's surviving endpoint snapshot. They do not rescan current ComputerCraft attachment membership, so topology changes do not silently redefine an active playback group.
+
 Removing/replacing one endpoint detaches it from the authority without stopping the remaining endpoints. An authority with no endpoints releases its playback ownership.
 
 Single-speaker prepared playback is the same architecture with one endpoint; do not maintain a second semantic engine for the one-speaker case.

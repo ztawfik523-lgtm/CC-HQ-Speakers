@@ -101,6 +101,22 @@ public final class HQFiniteMediaServer {
             }
         }
 
+        boolean setAllEndpointVolumes(double volume, long nowNanos) {
+            boolean changed = false;
+            for (HQFiniteMediaServer endpoint : new ArrayList<>(endpoints)) {
+                changed = endpoint.setSharedEndpointVolume(this, volume, nowNanos) || changed;
+            }
+            return changed;
+        }
+
+        boolean setAllEndpointMuted(boolean muted, long nowNanos) {
+            boolean changed = false;
+            for (HQFiniteMediaServer endpoint : new ArrayList<>(endpoints)) {
+                changed = endpoint.setSharedEndpointMuted(this, muted, nowNanos) || changed;
+            }
+            return changed;
+        }
+
         synchronized MediaAssetReleaseQueue.Result releaseAssetReference() {
             if (!assetReferenceHeld) return null;
             MediaAssetReleaseQueue.Result result = releases.release(retainedAssetId);
@@ -483,6 +499,60 @@ public final class HQFiniteMediaServer {
         if (s.muted == muted) return true;
         s.muted = muted;
         notifyState(s, now);
+        return true;
+    }
+
+    /** Apply endpoint gain to the complete start-time playback snapshot, not current computer attachments. */
+    public boolean setVolumeAll(double volume) throws LuaException {
+        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        SharedPlayback shared;
+        long now = System.nanoTime();
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            shared = s.shared;
+            if (finalizeNaturalEnd(s, now)) {
+                // Notify after leaving this endpoint monitor so other endpoints can update independently.
+            } else {
+                return shared.setAllEndpointVolumes(volume, now);
+            }
+        }
+        shared.notifyEndpoints(now);
+        return false;
+    }
+
+    /** Apply mute to the complete start-time playback snapshot, not current computer attachments. */
+    public boolean setMutedAll(boolean muted) {
+        SharedPlayback shared;
+        long now = System.nanoTime();
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            shared = s.shared;
+            if (finalizeNaturalEnd(s, now)) {
+                // Notify after leaving this endpoint monitor so other endpoints can update independently.
+            } else {
+                return shared.setAllEndpointMuted(muted, now);
+            }
+        }
+        shared.notifyEndpoints(now);
+        return false;
+    }
+
+    private synchronized boolean setSharedEndpointVolume(SharedPlayback shared, double volume, long nowNanos) {
+        Session s = session;
+        if (s == null || s.shared != shared || s.playback.terminal()) return false;
+        s.volume = clampVolume(volume);
+        notifyState(s, nowNanos);
+        return true;
+    }
+
+    private synchronized boolean setSharedEndpointMuted(SharedPlayback shared, boolean muted, long nowNanos) {
+        Session s = session;
+        if (s == null || s.shared != shared || s.playback.terminal()) return false;
+        if (s.muted == muted) return true;
+        s.muted = muted;
+        notifyState(s, nowNanos);
         return true;
     }
 

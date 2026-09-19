@@ -331,18 +331,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         commandRevision.incrementAndGet();
         synchronized (commandLock) {
             synchronized (this) {
-                if (owner != Owner.STAGED_FINITE) return false;
+                return owner == Owner.STAGED_FINITE && finite.setMutedAll(muted);
             }
-
-            boolean changed = false;
-            for (HQSpeakerCompositePeripheral member : membersFor(computer)) {
-                synchronized (member) {
-                    if (member.owner == Owner.STAGED_FINITE && finite.sharesPlaybackWith(member.finite)) {
-                        changed = member.finite.setMuted(muted) || changed;
-                    }
-                }
-            }
-            return changed;
         }
     }
 
@@ -685,18 +675,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             case "audioResumeAll" -> MethodResult.of(finite.resume());
             case "audioSeekAll" -> MethodResult.of(finite.seek(args.getDouble(0)));
             case "audioSetLoopingAll" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
-            case "audioSetVolumeAll" -> {
-                double volume = args.getDouble(0);
-                boolean changed = false;
-                for (HQSpeakerCompositePeripheral member : membersFor(computer)) {
-                    synchronized (member) {
-                        if (member.owner == Owner.STAGED_FINITE && finite.sharesPlaybackWith(member.finite)) {
-                            changed = member.finite.setVolume(volume) || changed;
-                        }
-                    }
-                }
-                yield MethodResult.of(changed);
-            }
+            case "audioSetVolumeAll" -> MethodResult.of(finite.setVolumeAll(args.getDouble(0)));
             case "audioStopAll" -> {
                 stopFinitePlaybackAndClearOwners();
                 yield MethodResult.of();
