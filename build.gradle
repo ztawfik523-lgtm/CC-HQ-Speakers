@@ -62,24 +62,11 @@ dependencies {
         }
     }
 
-    // Keep the supported Jar-in-Jar ranges, but prefer the exact versions this project has tested and packages.
-    // Supplying an exact preferred dependency avoids dynamic version-list resolution while preserving negotiation metadata.
-    jarJar(implementation('com.googlecode.soundlibs:mp3spi:1.9.5.4')) {
-        version {
-            strictly '[1.9.5.4,1.9.6)'
-            prefer '1.9.5.4'
-        }
-    }
+    // JLayer is used directly by the modern progressive MP3 decoder and optional live MP3 streaming.
     jarJar(implementation('com.googlecode.soundlibs:jlayer:1.0.1.4')) {
         version {
             strictly '[1.0.1.4,1.0.2)'
             prefer '1.0.1.4'
-        }
-    }
-    jarJar(implementation('com.googlecode.soundlibs:tritonus-share:0.3.7.4')) {
-        version {
-            strictly '[0.3.7.4,0.3.8)'
-            prefer '0.3.7.4'
         }
     }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'

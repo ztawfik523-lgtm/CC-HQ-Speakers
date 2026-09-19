@@ -59,3 +59,7 @@ Post-M1J convergence now has one finite engine:
 - Current network protocol is v9.
 
 RAW PCM remains intentionally separate. Optional radio/ICY/HLS/TS also remains separate and does not justify restoring a second finite engine.
+
+## Dependency result
+
+The whole-file finite teardown removes the reason to package Java Sound MP3 SPI compatibility. `mp3spi` and `tritonus-share` are no longer dependencies. JLayer remains the direct MP3 decoder for both modern finite playback and optional live MP3 streaming.
