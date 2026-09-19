@@ -60,6 +60,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         "speakMaxFileBytes", "speakMaxOggBytes"
     );
     private static final Set<String> RAW_START = Set.of("speakPCM");
+    private static final Set<String> RAW_ALL = Set.of("speakPCMAll");
+    private static final Set<String> RAW_AT = Set.of("speakPCMAt");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
     private static final Set<String> STREAM_DIRECT = Set.of(
         "speakStreamAll", "speakHLSAll", "speakTSAll", "speakStreamAt", "speakHLSAt", "speakTSAt"
@@ -134,6 +136,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.removeAll(RETIRED_LEGACY_FINITE);
         names.addAll(STANDARD);
         names.addAll(MODERN_BYTE_FINITE);
+        names.addAll(RAW_ALL);
+        names.addAll(RAW_AT);
         names.addAll(FINITE_CONTROLS);
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
@@ -443,6 +447,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (RAW_START.contains(name)) {
             synchronized (this) { return startRaw(computer, context, name, args); }
         }
+        if (RAW_ALL.contains(name)) {
+            return startRawAll(computer, name, args);
+        }
+        if (RAW_AT.contains(name)) {
+            return startRawAt(computer, name, args);
+        }
         synchronized (this) { return invokeLegacy(name, computer, context, args); }
     }
 
@@ -644,29 +654,94 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult startRaw(IComputerAccess computer, ILuaContext context, String name, IArguments args) throws LuaException {
         HQSpeakerPeripheral.PreparedPcm prepared = legacy.preparePcm(args);
-        int samples = prepared.samples();
-        if (samples <= 0 || samples > HQ_RAW_MAX_SAMPLES) throw new LuaException(name + ": table too large");
+        validateRawPrepared(name, prepared);
+        if (!canAcceptRaw(prepared)) {
+            rawCapacityWaiters.put(computer, prepared.samples());
+            return MethodResult.of(false);
+        }
+        return MethodResult.of(commitRawPrepared(computer, prepared, 0L));
+    }
 
-        if (owner == Owner.RAW) {
-            if (legacy.speakQueueSize() >= HQ_RAW_QUEUE_LIMIT
-                    || !rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES)) {
-                rawCapacityWaiters.put(computer, samples);
-                return MethodResult.of(false);
+    private MethodResult startRawAll(IComputerAccess computer, String name, IArguments args) throws LuaException {
+        HQSpeakerPeripheral.PreparedPcm prepared = legacy.preparePcm(args);
+        validateRawPrepared(name, prepared);
+
+        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
+        if (members.isEmpty()) members = List.of(this);
+
+        // Preflight the complete snapshot before replacing any current output. This keeps backpressure rejection
+        // non-destructive and avoids intentionally creating a partially advanced RAW group.
+        for (HQSpeakerCompositePeripheral member : members) {
+            synchronized (member.commandLock) {
+                synchronized (member) {
+                    if (!member.canAcceptRaw(prepared)) {
+                        member.rawCapacityWaiters.put(computer, prepared.samples());
+                        return MethodResult.of(false);
+                    }
+                }
             }
-        } else {
-            // All normal RAW rejection/validation has happened. Replacing now clears the old queue and lifetime.
+        }
+
+        for (HQSpeakerCompositePeripheral member : members) member.commandRevision.incrementAndGet();
+        long startTick = members.size() > 1 ? members.getFirst().legacy.nextGroupStartTick() : 0L;
+
+        boolean accepted = true;
+        for (HQSpeakerCompositePeripheral member : members) {
+            synchronized (member.commandLock) {
+                synchronized (member) {
+                    accepted = member.commitRawPrepared(computer, prepared, startTick) && accepted;
+                }
+            }
+        }
+        return MethodResult.of(accepted);
+    }
+
+    private MethodResult startRawAt(IComputerAccess computer, String name, IArguments args) throws LuaException {
+        HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
+        HQSpeakerPeripheral.PreparedPcm prepared = member.legacy.preparePcm(args, 1, 2);
+        validateRawPrepared(name, prepared);
+        member.commandRevision.incrementAndGet();
+
+        synchronized (member.commandLock) {
+            synchronized (member) {
+                if (!member.canAcceptRaw(prepared)) {
+                    member.rawCapacityWaiters.put(computer, prepared.samples());
+                    return MethodResult.of(false);
+                }
+                return MethodResult.of(member.commitRawPrepared(computer, prepared, 0L));
+            }
+        }
+    }
+
+    private static void validateRawPrepared(String name, HQSpeakerPeripheral.PreparedPcm prepared) throws LuaException {
+        int samples = prepared == null ? 0 : prepared.samples();
+        if (samples <= 0) throw new LuaException(name + ": table is empty");
+        if (samples > HQ_RAW_MAX_SAMPLES) throw new LuaException(name + ": table too large");
+    }
+
+    private boolean canAcceptRaw(HQSpeakerPeripheral.PreparedPcm prepared) {
+        if (owner != Owner.RAW) return true;
+        int samples = prepared.samples();
+        return legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT
+            && rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES);
+    }
+
+    private boolean commitRawPrepared(IComputerAccess computer, HQSpeakerPeripheral.PreparedPcm prepared,
+                                      long startTick) {
+        if (owner != Owner.RAW) {
+            // Validation/admission happened before this replacement, so old output is only stopped after acceptance.
             beginReplacingHQ(Owner.RAW);
         }
 
-        if (!legacy.enqueuePreparedPcm(prepared)) {
-            if (owner == Owner.RAW) rawCapacityWaiters.put(computer, samples);
-            return MethodResult.of(false);
+        if (!legacy.enqueuePreparedPcmAtTick(prepared, startTick)) {
+            if (owner == Owner.RAW) rawCapacityWaiters.put(computer, prepared.samples());
+            return false;
         }
 
         owner = Owner.RAW;
         rawCapacityWaiters.remove(computer);
-        rawLifetime.acceptedSamples(samples);
-        return MethodResult.of(true);
+        rawLifetime.acceptedSamples(prepared.samples());
+        return true;
     }
 
     private MethodResult startStreamReplacing(String name, IArguments args, long expectedCommandRevision) throws LuaException {

@@ -239,8 +239,12 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     PreparedPcm preparePcm(IArguments args) throws LuaException {
-        Map<?, ?> table = args.getTable(0);
-        float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
+        return preparePcm(args, 0, 1);
+    }
+
+    PreparedPcm preparePcm(IArguments args, int dataIndex, int volumeIndex) throws LuaException {
+        Map<?, ?> table = args.getTable(dataIndex);
+        float volume = clampVolChecked(args.optDouble(volumeIndex, speakerDefaultVolume), "volume");
         int len = 0;
         while ((table.containsKey((long)(len + 1)) || table.containsKey((double)(len + 1))) && len <= SPEAKER_MAX_PCM) len++;
         byte[] data = audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16);
@@ -248,7 +252,16 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     boolean enqueuePreparedPcm(PreparedPcm prepared) {
-        return prepared != null && enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume());
+        return enqueuePreparedPcmAtTick(prepared, 0L);
+    }
+
+    boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
+        return prepared != null && enqueue(
+            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume(), startTick, null, 0);
+    }
+
+    long nextGroupStartTick() {
+        return nextSyncedStartTick();
     }
 
     @LuaFunction

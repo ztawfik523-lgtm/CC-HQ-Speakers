@@ -263,7 +263,7 @@ Returns `131072`.
 
 ### `speaker.speakPCMAll(samples [, volume]) -> boolean`
 
-Broadcast one validated signed-16 PCM chunk to the speakers attached to the calling computer. Multi-speaker RAW uses one shared future server game tick for startup, but deliberately has **no expected-global-member barrier**. A Minecraft client which hears only some endpoints starts the endpoints it actually received.
+Broadcast one validated signed-16 PCM chunk to the speakers attached to the calling computer. Singular, all-speaker, and indexed RAW calls use the same composite ownership/backpressure path. `speakPCMAll` preflights the complete speaker snapshot before replacement, uses one shared future server game tick for startup, and deliberately has **no expected-global-member barrier**. A Minecraft client which hears only some endpoints starts the endpoints it actually received.
 
 RAW remains producer-fed rather than a shared finite timeline, so this is start alignment rather than modern finite catch-up/rejoin semantics.
 
