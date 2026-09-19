@@ -2,7 +2,6 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
-import com.tom.hqspeaker.network.HQSpeakerControlPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import com.tom.hqspeaker.network.HQSpeakerStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerStopPacket;
@@ -468,146 +467,9 @@ public class HQSpeakerPeripheral implements IPeripheral {
         for (IComputerAccess comp : attachedComputers) comp.queueEvent("hqspeaker_metadata", getStreamMeta());
     }
 
+    /** Legacy player-status payload is retained temporarily only for protocol compatibility. */
     public void acceptPlaybackStatus(ServerPlayer sender, HQSpeakerStatusPacket packet) {
-        if (sender == null || packet == null || !speakerSource.equals(packet.source)
-                || !packet.hasSensibleNumbers() || !canAcceptPlaybackStatus(sender)) return;
-
-        boolean changed = false;
-        synchronized (playerLock) {
-            FiniteServerTrack track = findFiniteTrackLocked(packet.generation);
-            if (track == null) return;
-            long now = System.nanoTime();
-            UUID renderer = sender.getUUID();
-            switch (packet.transition) {
-                case READY -> {
-                    if (packet.duration > 0.0) track.duration = packet.duration;
-                    changed = true;
-                }
-                case STARTED -> {
-                    promoteLocked(track);
-                    if (track.successfulRenderers.size() < 8) track.successfulRenderers.add(renderer);
-                    if (track.anchorRenderer == null) track.anchorRenderer = renderer;
-                    track.observed = true;
-                    if (renderer.equals(track.anchorRenderer)) {
-                        track.basePosition = clampPosition(track, packet.position);
-                        track.anchorNanos = now;
-                        track.state = track.desiredPaused ? PlayerState.PAUSED : PlayerState.PLAYING;
-                    }
-                    changed = true;
-                }
-                case PAUSED -> {
-                    if (!isAnchor(track, renderer)) return;
-                    track.observed = true;
-                    track.desiredPaused = true;
-                    track.basePosition = clampPosition(track, packet.position);
-                    track.state = PlayerState.PAUSED;
-                    changed = true;
-                }
-                case RESUMED -> {
-                    if (!isAnchor(track, renderer)) return;
-                    track.observed = true;
-                    track.desiredPaused = false;
-                    track.basePosition = clampPosition(track, packet.position);
-                    track.anchorNanos = now;
-                    track.state = PlayerState.PLAYING;
-                    changed = true;
-                }
-                case SEEKED -> {
-                    if (!isAnchor(track, renderer)) return;
-                    track.observed = true;
-                    track.basePosition = clampPosition(track, packet.position);
-                    track.anchorNanos = now;
-                    track.state = track.desiredPaused ? PlayerState.PAUSED : PlayerState.PLAYING;
-                    changed = true;
-                }
-                case ENDED -> {
-                    if (!isAnchor(track, renderer) || finiteTracks.peekFirst() != track) return;
-                    track.observed = true;
-                    track.basePosition = track.duration > 0.0 ? track.duration : packet.position;
-                    track.state = PlayerState.ENDED;
-                    finiteTracks.removeFirst();
-                    terminalTrack = finiteTracks.isEmpty() ? track : null;
-                    changed = true;
-                }
-                case ERROR -> {
-                    boolean anotherSucceeded = track.successfulRenderers.stream()
-                        .anyMatch(id -> !id.equals(renderer));
-                    if (anotherSucceeded || (track.anchorRenderer != null
-                            && !track.anchorRenderer.equals(renderer) && track.observed)) return;
-                    track.basePosition = clampPosition(track, packet.position);
-                    track.state = PlayerState.ERROR;
-                    track.error = packet.error.isBlank() ? "client playback error" : packet.error;
-                    if (finiteTracks.peekFirst() == track && finiteTracks.size() == 1) {
-                        terminalTrack = track;
-                    }
-                    changed = true;
-                }
-            }
-        }
-        if (changed) {
-            Map<String, Object> status = audioStatus();
-            for (IComputerAccess computer : attachedComputers) {
-                computer.queueEvent("hqspeaker_audio_state", status);
-            }
-        }
-    }
-
-    private boolean canAcceptPlaybackStatus(ServerPlayer player) {
-        if (player.level() != world) return false;
-        float[] worldPos = computeWorldPos("playerStatus");
-        double dx = player.getX() - worldPos[0];
-        double dy = player.getY() - worldPos[1];
-        double dz = player.getZ() - worldPos[2];
-        return dx * dx + dy * dy + dz * dz <= SPEAKER_RADIUS * SPEAKER_RADIUS;
-    }
-
-    private static boolean isAnchor(FiniteServerTrack track, UUID renderer) {
-        if (track.anchorRenderer == null) track.anchorRenderer = renderer;
-        return renderer.equals(track.anchorRenderer);
-    }
-
-    private static double clampPosition(FiniteServerTrack track, double position) {
-        if (!Double.isFinite(position)) return 0.0;
-        return track.duration > 0.0
-            ? Math.max(0.0, Math.min(track.duration, position)) : Math.max(0.0, position);
-    }
-
-    private void promoteLocked(FiniteServerTrack track) {
-        while (!finiteTracks.isEmpty() && finiteTracks.peekFirst() != track) {
-            finiteTracks.removeFirst();
-        }
-        terminalTrack = null;
-    }
-
-    private FiniteServerTrack findFiniteTrackLocked(long generation) {
-        for (FiniteServerTrack track : finiteTracks) {
-            if (track.generation == generation) return track;
-        }
-        return null;
-    }
-
-    private Map<String, Object> finiteStatus(FiniteServerTrack track) {
-        Map<String, Object> status = new HashMap<>();
-        status.put("generation", track.generation);
-        status.put("state", track.state.name().toLowerCase(Locale.ROOT));
-        status.put("kind", "finite");
-        status.put("format", switch (track.format) {
-            case OGG_VORBIS -> "ogg";
-            case MP3 -> "mp3";
-            default -> "audio";
-        });
-        status.put("position", track.position(System.nanoTime()));
-        if (track.duration > 0.0) status.put("duration", track.duration);
-        status.put("volume", (double) track.volume);
-        status.put("looping", track.looping);
-        status.put("observed", track.observed);
-        status.put("canPause", track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
-        status.put("canSeek", track.duration > 0.0
-            && track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
-        status.put("canLoop", track.state != PlayerState.ENDED && track.state != PlayerState.ERROR);
-        status.put("queueSize", finiteTracks.size());
-        if (!track.error.isBlank()) status.put("error", track.error);
-        return status;
+        // No-op: the legacy finite player is no longer admitted.
     }
 
     private void clearFiniteState(boolean invalidateGeneration) {
@@ -1140,14 +1002,6 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
             if (dx*dx + dy*dy + dz*dz <= SPEAKER_RADIUS*SPEAKER_RADIUS)
                 HQSpeakerNetwork.sendToPlayer(pkt, player);
         }
-    }
-
-    private void sendControl(FiniteServerTrack track, HQSpeakerControlPacket.Action action,
-                             double value) {
-        if (!(world instanceof ServerLevel level) || track == null) return;
-        float[] worldPos = computeWorldPos("playerControl");
-        sendToNearby(level, new HQSpeakerControlPacket(speakerSource,
-            track.generation, action, value), worldPos[0], worldPos[1], worldPos[2]);
     }
 
     private void broadcastStopPacket() {
