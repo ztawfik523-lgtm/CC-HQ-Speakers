@@ -88,7 +88,7 @@ Focused M1G audible/core Minecraft runtime acceptance passed on NeoForge 21.1.24
 - KI-054: shutdown starts range-worker cancellation early, retains failed cleanup for retry, and can recover the media-root lock on a later integrated-server start.
 - KI-064: bounded zero-read handling and unsupported-atomic-move fallback are implemented and tested.
 
-Checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, CI `35406434097`.
+Checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 
 ## M1H — dynamic listener lifecycle/recovery
 

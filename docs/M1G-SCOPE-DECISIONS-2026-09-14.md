@@ -161,7 +161,7 @@ Implemented:
 6. whole-owner staging cleanup closing KI-061;
 7. both NeoForge targets green/package-verified at CI `35297026277`.
 
-Focused audible Minecraft acceptance remains unrecorded under KI-046. It is retained as an evidence gap rather than an unfinished M1G source item.
+Focused M1G audible/core Minecraft acceptance was subsequently recorded PASS on NeoForge 21.1.247 on 2026-09-19, resolving KI-046. NeoForge 21.1.248 remains CI/package verified rather than manually runtime-verified.
 
 At M1G closeout, KI-062, KI-063, KI-054, and KI-064 remained post-M1G cross-cutting hardening rather than being folded into M1G. They were subsequently resolved on `codex/post-m1g-hardening` at source checkpoint `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
 

@@ -111,7 +111,7 @@ Do not ask the owner to choose A/B/C again.
 
 After implementation/audit/rethink, the owner additionally selected:
 
-- an explicit server-authoritative decoder/re-anchor revision, likely protocol v7; current source remains v6;
+- an explicit server-authoritative decoder/re-anchor revision, likely protocol v7; at this historical preparation checkpoint source was still v6;
 - fixed 32-block modern-finite core listening/delivery radius;
 - HQ volume changes gain/loudness, not core range;
 - global HQ volume zero keeps canonical server time running but hibernates local decoder/renderer/range work;
