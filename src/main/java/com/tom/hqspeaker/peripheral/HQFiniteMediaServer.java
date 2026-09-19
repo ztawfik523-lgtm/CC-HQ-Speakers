@@ -32,6 +32,8 @@ import org.joml.Vector3d;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -202,6 +204,25 @@ public final class HQFiniteMediaServer {
         }
     }
 
+    static final class PreparedGroupStart implements AutoCloseable {
+        private final SharedPlayback shared;
+        private final Map<HQFiniteMediaServer, Session> nextByServer;
+        private boolean finished;
+
+        private PreparedGroupStart(SharedPlayback shared, Map<HQFiniteMediaServer, Session> nextByServer) {
+            this.shared = shared;
+            this.nextByServer = nextByServer;
+        }
+
+        @Override
+        public void close() {
+            if (finished) return;
+            finished = true;
+            logReleaseResult(shared.releaseAssetReference(), shared.retainedAssetId,
+                "uncommitted prepared multispeaker playback");
+        }
+    }
+
     synchronized PreparedStart preparePreparedStart(String assetId, double volume) throws LuaException {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
 
@@ -244,6 +265,102 @@ public final class HQFiniteMediaServer {
         }
     }
 
+    PreparedGroupStart preparePreparedGroupStart(List<HQFiniteMediaServer> targets,
+                                                       String assetId, double volume) throws LuaException {
+        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        if (targets == null || targets.isEmpty()) throw new LuaException("no speakers connected to this computer");
+
+        UUID id = HQMediaStaging.parseAssetId(assetId);
+        MediaAssetStore store = staging.assetStore();
+        MediaAsset asset = store.get(id).orElseThrow(() -> new LuaException("unknown or released media asset"));
+        MediaMetadata metadata = asset.metadata();
+        if (metadata == null) throw new LuaException("media asset has not been analyzed");
+
+        ServerMediaAssets mediaAssets;
+        try {
+            mediaAssets = ServerMediaAssets.get(level.getServer());
+        } catch (IOException e) {
+            throw new LuaException("HQ media services are unavailable: " + safeMessage(e));
+        }
+
+        final boolean retained;
+        try {
+            retained = store.retain(id);
+        } catch (IllegalStateException e) {
+            throw new LuaException("HQ media asset store is unavailable: " + safeMessage(e));
+        }
+        if (!retained) throw new LuaException("unknown or released media asset");
+
+        SharedPlayback shared = null;
+        try {
+            long now = System.nanoTime();
+            shared = new SharedPlayback(id, metadata, asset.sizeBytes(),
+                mediaAssets.rangeReads(), mediaAssets.releases(), now);
+
+            Map<HQFiniteMediaServer, Session> next = new LinkedHashMap<>();
+            for (HQFiniteMediaServer target : targets) {
+                if (target == null || target.level.getServer() != level.getServer()) {
+                    throw new LuaException("all multispeaker endpoints must belong to the same Minecraft server");
+                }
+                synchronized (target) {
+                    long generation = target.generationCounter + 1L;
+                    if (generation <= 0L) throw new IllegalStateException("finite generation exhausted");
+                    next.put(target, new Session(shared, generation, volume));
+                }
+            }
+            if (next.isEmpty()) throw new LuaException("no speakers connected to this computer");
+            return new PreparedGroupStart(shared, next);
+        } catch (LuaException | RuntimeException e) {
+            MediaAssetReleaseQueue.Result release = shared == null
+                ? mediaAssets.releases().release(id)
+                : shared.releaseAssetReference();
+            logReleaseResult(release, id, "failed prepared multispeaker playback");
+            throw e;
+        }
+    }
+
+    static boolean commitPreparedGroupStart(PreparedGroupStart prepared) {
+        if (prepared == null || prepared.finished) {
+            throw new IllegalArgumentException("invalid or consumed prepared multispeaker start");
+        }
+
+        // Validate every endpoint before installing any of them.
+        for (Map.Entry<HQFiniteMediaServer, Session> entry : prepared.nextByServer.entrySet()) {
+            HQFiniteMediaServer endpoint = entry.getKey();
+            Session next = entry.getValue();
+            synchronized (endpoint) {
+                if (endpoint.isActive()) return false;
+                if (next.generation != endpoint.generationCounter + 1L) {
+                    throw new IllegalStateException("prepared multispeaker start became stale");
+                }
+            }
+        }
+
+        long now = System.nanoTime();
+        for (Map.Entry<HQFiniteMediaServer, Session> entry : prepared.nextByServer.entrySet()) {
+            HQFiniteMediaServer endpoint = entry.getKey();
+            Session next = entry.getValue();
+            synchronized (endpoint) {
+                endpoint.generationCounter = next.generation;
+                endpoint.session = next;
+                endpoint.terminalStatus = null;
+                prepared.shared.attachEndpoint(endpoint);
+            }
+        }
+        prepared.finished = true;
+
+        // Projection is intentionally after every endpoint is installed: listeners can never observe a half-built group.
+        for (Map.Entry<HQFiniteMediaServer, Session> entry : prepared.nextByServer.entrySet()) {
+            HQFiniteMediaServer endpoint = entry.getKey();
+            Session next = entry.getValue();
+            synchronized (endpoint) {
+                endpoint.refreshListeners(next);
+                endpoint.queueStateEvent(endpoint.statusOf(next, now));
+            }
+        }
+        return true;
+    }
+
     synchronized boolean commitPreparedStart(PreparedStart prepared) {
         if (prepared == null || prepared.server != this || prepared.finished) {
             throw new IllegalArgumentException("invalid or consumed prepared start");
@@ -273,6 +390,18 @@ public final class HQFiniteMediaServer {
 
     public synchronized boolean isActive() {
         return session != null && session.playback.active();
+    }
+
+    public boolean sharesPlaybackWith(HQFiniteMediaServer other) {
+        if (other == null) return false;
+        SharedPlayback mine;
+        synchronized (this) {
+            mine = session == null ? null : session.shared;
+        }
+        if (mine == null) return false;
+        synchronized (other) {
+            return other.session != null && other.session.shared == mine;
+        }
     }
 
     public synchronized boolean pause() {
