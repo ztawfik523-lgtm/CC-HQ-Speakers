@@ -432,9 +432,6 @@ public boolean enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat fmt, byte[] d
     return enqueue(fmt, data, volume, startTick);
 }
 
-public boolean enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume, long startTick, java.util.UUID syncGroupId, int syncGroupSize) {
-    return enqueue(fmt, data, volume, startTick, syncGroupId, syncGroupSize);
-}
 
 private static final long MULTI_SPEAKER_SYNC_LEAD_TICKS = 12L;
 
@@ -474,45 +471,6 @@ private SyncDispatch nextSyncDispatch(int members) {
 }
 
 @LuaFunction
-public final boolean playNoteAll(IComputerAccess computer, String instrument, double volume, double pitch) throws LuaException {
-    boolean ok = false;
-    float vol = clampVolChecked(volume, "volume");
-    int samples = (int)(SPEAKER_SAMPLE_RATE * 0.8);
-    float freq = (float)(440.0 * Math.pow(2.0, (pitch - 9.0) / 12.0));
-    ByteBuffer buf = ByteBuffer.allocate(samples * 2).order(ByteOrder.LITTLE_ENDIAN);
-    for (int i = 0; i < samples; i++) {
-        double angle = 2 * Math.PI * freq * i / SPEAKER_SAMPLE_RATE;
-        short sample = (short)(Math.sin(angle) * 32767 * 0.6);
-        buf.putShort(sample);
-    }
-    buf.flip();
-    byte[] audio = buf.array();
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, audio, vol, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean playSoundAll(IComputerAccess computer, String soundName, java.util.Optional<Double> volume, java.util.Optional<Double> pitch) throws LuaException {
-    return playNoteAll(computer, "harp", volume.orElse(1.0), pitch.orElse(1.0));
-}
-
-@LuaFunction
-public final boolean playAudioAll(IComputerAccess computer, IArguments args) throws LuaException {
-    java.util.Map<?, ?> table = args.getTable(0);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    int len = 0;
-    while ((table.containsKey((long) (len + 1)) || table.containsKey((double) (len + 1))) && len <= SPEAKER_MAX_AUDIO_TABLE) len++;
-    boolean ok = false;
-    byte[] pcm = audioTableToPcmBytes(table, len, "playAudio", -128, 127, 8);
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
 public final boolean speakPCMAll(IComputerAccess computer, IArguments args) throws LuaException {
     java.util.Map<?, ?> table = args.getTable(0);
     float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
@@ -527,7 +485,7 @@ public final boolean speakPCMAll(IComputerAccess computer, IArguments args) thro
     long startTick = members.size() > 1 ? nextSyncedStartTick() : 0L;
     for (HQSpeakerPeripheral member : members) {
         ok = anyTrue(ok, member.enqueueAudioAtTick(
-            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, startTick, null, 0));
+            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, startTick));
     }
     return ok;
 }
@@ -617,23 +575,6 @@ public final boolean speakTSAll(IComputerAccess computer, String url, java.util.
     SyncDispatch sync = nextSyncDispatch(members.size());
     for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.startStreamAtTick(url, volume, HQSpeakerAudioPacket.AudioFormat.TS_STREAM, "speakTS", sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
     return ok;
-}
-
-@LuaFunction
-public final boolean playNoteAt(IComputerAccess computer, int index, String instrument, double volume, double pitch) throws LuaException {
-    return byIndexFor(computer, index).playNote(instrument, volume, pitch);
-}
-
-@LuaFunction
-public final boolean playSoundAt(IComputerAccess computer, int index, String soundName, java.util.Optional<Double> volume, java.util.Optional<Double> pitch) throws LuaException {
-    return byIndexFor(computer, index).playSound(soundName, volume, pitch);
-}
-
-@LuaFunction
-public final boolean playAudioAt(IComputerAccess computer, int index, java.util.Map<?, ?> audio, java.util.Optional<Double> volume) throws LuaException {
-    int len = 0;
-    while ((audio.containsKey((long) (len + 1)) || audio.containsKey((double) (len + 1))) && len <= SPEAKER_MAX_AUDIO_TABLE) len++;
-    return byIndexFor(computer, index).playAudioTable(audio, len, clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume"));
 }
 
 @LuaFunction

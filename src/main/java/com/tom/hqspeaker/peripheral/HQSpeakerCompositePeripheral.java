@@ -126,6 +126,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         this.legacyMethods = METHOD_SUPPLIER.getSelfMethods(legacy);
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
         names.addAll(STANDARD);
+        names.addAll(STANDARD_ALL);
+        names.addAll(STANDARD_AT);
         names.addAll(MODERN_BYTE_FINITE);
         names.addAll(RAW_ALL);
         names.addAll(RAW_AT);
