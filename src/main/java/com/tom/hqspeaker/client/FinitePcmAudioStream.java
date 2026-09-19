@@ -19,7 +19,11 @@ public final class FinitePcmAudioStream implements AudioStream {
     private volatile boolean closed;
     private volatile boolean reachedEof;
 
-    public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate, FiniteRecoveryCoordinator recovery) {
+    public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate) {
+        this(queue, sampleRate, new FiniteRecoveryCoordinator());
+    }
+
+    FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate, FiniteRecoveryCoordinator recovery) {
         if (queue == null) throw new NullPointerException("queue");
         if (recovery == null) throw new NullPointerException("recovery");
         if (sampleRate <= 0) throw new IllegalArgumentException("sampleRate must be positive");

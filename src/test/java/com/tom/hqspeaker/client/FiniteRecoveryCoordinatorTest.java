@@ -59,4 +59,24 @@ class FiniteRecoveryCoordinatorTest {
         assertFalse(recovery.readyDue(1_100L, 250L));
         assertTrue(recovery.readyDue(1_250L, 250L));
     }
+    @Test
+    void negativeNanoTimeValuesDoNotLookLikeNoStarvation() {
+        FiniteRecoveryCoordinator recovery = new FiniteRecoveryCoordinator();
+
+        recovery.observeRead(FinitePcmReadAdapter.State.SILENCE, -1_000L);
+
+        assertFalse(recovery.longStarved(-501L, 500L));
+        assertTrue(recovery.longStarved(-500L, 500L));
+    }
+
+    @Test
+    void readyRetrySurvivesNanoTimeWraparound() {
+        FiniteRecoveryCoordinator recovery = new FiniteRecoveryCoordinator();
+        recovery.beginRejoin();
+        recovery.markReadyAttempt(Long.MAX_VALUE - 100L);
+
+        assertTrue(recovery.readyDue(Long.MIN_VALUE + 200L, 250L));
+    }
+
 }
+
