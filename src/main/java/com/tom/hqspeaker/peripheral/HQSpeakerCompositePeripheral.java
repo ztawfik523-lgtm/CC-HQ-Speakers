@@ -133,6 +133,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
         names.removeAll(RETIRED_LEGACY_FINITE);
         names.addAll(STANDARD);
+        names.addAll(MODERN_BYTE_FINITE);
+        names.addAll(FINITE_CONTROLS);
+        names.addAll(FINITE_ALL_CONTROLS);
+        names.addAll(FINITE_AT_CONTROLS);
+        names.add("setLooping");
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
     }
