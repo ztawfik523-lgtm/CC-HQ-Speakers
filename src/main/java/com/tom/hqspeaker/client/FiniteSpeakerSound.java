@@ -13,14 +13,14 @@ import java.util.concurrent.CompletableFuture;
 
 /** One Minecraft positional source for one physical speaker's modern finite renderer epoch. */
 final class FiniteSpeakerSound extends AbstractSoundInstance implements TickableSoundInstance {
-    private static final ResourceLocation SOUND =
-        ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_speaker");
+    private static final ResourceLocation AUDIO_SOURCE =
+        ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_audio_source");
 
     private final AudioStream stream;
     private volatile boolean stopped;
 
     FiniteSpeakerSound(AudioStream stream, float volume, float x, float y, float z) {
-        super(SOUND, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
+        super(AUDIO_SOURCE, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
         if (stream == null) throw new NullPointerException("stream");
         this.stream = stream;
         this.volume = volume;

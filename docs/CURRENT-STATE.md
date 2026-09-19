@@ -319,7 +319,7 @@ Legacy-name MP3/WAV compatibility calls now route through the modern finite engi
 
 The inherited standalone `hqspeaker:hq_speaker` Minecraft block has been removed. It was present in the original upstream source and was never part of the current product direction. The normal `computercraft:speaker` upgraded by the mixin/composite remains the only block surface.
 
-The `hqspeaker:hq_speaker` sound event/resource remains because RAW/live and modern finite renderers use that ResourceLocation for custom AudioStream playback; it is not a block registration.
+The internal custom-audio sound event/resource has been renamed to `hqspeaker:hq_audio_source` so it cannot be confused with the removed standalone block. RAW/live and modern finite renderers use that ResourceLocation only as the SoundManager anchor for custom AudioStream playback.
 
 License provenance is now explicit: this fork descends from `tiktop101/CC-HQ-Speakers` via `jvrcruzGAMES/CC-HQ-Speakers`, whose repository license is MPL-2.0. NeoForge metadata has been corrected from the inherited LGPL-3.0 label to MPL-2.0.
 

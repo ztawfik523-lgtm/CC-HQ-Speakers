@@ -19,7 +19,7 @@ This mod is a **programmable audio peripheral**, not a built-in music player.
 
 Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java distinguishes sources only where technical capabilities differ.
 
-The normal `computercraft:speaker` is the only block product surface. The inherited standalone `hqspeaker:hq_speaker` block has been removed; the same resource ID remains only as an internal sound event for custom audio playback. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
+The normal `computercraft:speaker` is the only block product surface. The inherited standalone `hqspeaker:hq_speaker` block has been removed. The internal custom-audio sound event is now named `hqspeaker:hq_audio_source` to avoid reusing the deleted block's ID. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T compatibility requirements.
 
 One physical speaker remains one mono positional source.
 

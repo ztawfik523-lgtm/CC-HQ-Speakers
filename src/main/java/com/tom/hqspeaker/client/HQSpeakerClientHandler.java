@@ -26,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Legacy client path for RAW PCM and optional live streams only. */
 @OnlyIn(Dist.CLIENT)
 public final class HQSpeakerClientHandler {
-    private static final ResourceLocation HQ_SOUND_LOC =
-        ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_speaker");
+    private static final ResourceLocation AUDIO_SOURCE_LOC =
+        ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_audio_source");
     private static final ConcurrentHashMap<UUID, SpeakerState> states = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, SyncGroupState> syncGroups = new ConcurrentHashMap<>();
     private static final int MAX_ACTIVE_SPEAKERS = 256;
@@ -272,7 +272,7 @@ public final class HQSpeakerClientHandler {
 
         HQSpeakerSound(HQAudioStream stream, HQSpeakerAudioPacket packet,
                        float volume, float x, float y, float z) {
-            super(HQ_SOUND_LOC, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
+            super(AUDIO_SOURCE_LOC, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
             this.stream = stream;
             this.volume = volume;
             this.x = x;

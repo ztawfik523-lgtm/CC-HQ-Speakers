@@ -1,10 +1,10 @@
 {
-  "hq_speaker": {
+  "hq_audio_source": {
     "category": "block",
     "replace": true,
     "sounds": [
       {
-        "name": "hqspeaker:hq_speaker",
+        "name": "hqspeaker:hq_audio_source",
         "stream": true
       }
     ]
