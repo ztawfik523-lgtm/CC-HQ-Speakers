@@ -18,6 +18,14 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 repositories {
     mavenCentral()
     maven { name = 'CC: Tweaked'; url = 'https://maven.squiddev.cc' }
+    exclusiveContent {
+        forRepository {
+            maven { name = 'Sable Companion'; url = 'https://maven.ryanhcode.dev/releases' }
+        }
+        filter {
+            includeGroup 'dev.ryanhcode.sable-companion'
+        }
+    }
 }
 
 neoForge {
@@ -45,6 +53,14 @@ neoForge {
 
 dependencies {
     implementation 'cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0'
+
+    // Lightweight moving-sublevel compatibility. Safe default behavior is used when Sable is absent.
+    jarJar(api("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${sableCompanionVersion}")) {
+        version {
+            strictly "[${sableCompanionVersion},1.7.0)"
+            prefer sableCompanionVersion
+        }
+    }
 
     // Keep the supported Jar-in-Jar ranges, but prefer the exact versions this project has tested and packages.
     // Supplying an exact preferred dependency avoids dynamic version-list resolution while preserving negotiation metadata.

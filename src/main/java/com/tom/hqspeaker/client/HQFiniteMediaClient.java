@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
 import com.tom.hqspeaker.media.FiniteRangeLimits;
 import com.tom.hqspeaker.media.FiniteRangeWindow;
@@ -12,8 +13,10 @@ import com.tom.hqspeaker.network.HQFiniteMediaStatePacket;
 import com.tom.hqspeaker.network.HQFiniteMediaStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.joml.Vector3d;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -43,6 +46,8 @@ public final class HQFiniteMediaClient {
     private static final class Session {
         final HQFiniteMediaBeginPacket begin;
         final FiniteRangeWindow window;
+        final BlockPos blockPos;
+        final Vector3d movingPosition = new Vector3d();
         long anchorOffset;
         double anchorTime;
         double targetPosition;
@@ -73,6 +78,7 @@ public final class HQFiniteMediaClient {
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
             this.window = new FiniteRangeWindow(begin.totalBytes(), FiniteRangeLimits.CLIENT_WINDOW_BYTES);
+            this.blockPos = new BlockPos(begin.blockX(), begin.blockY(), begin.blockZ());
             this.desiredPaused = begin.paused();
             this.looping = begin.looping();
             this.volume = begin.volume();
@@ -145,6 +151,8 @@ public final class HQFiniteMediaClient {
                 return;
             }
             if (!session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
+
+            updateMovingPosition(session, minecraft.level);
 
             FinitePcmAudioStream stream = session.rendererStream;
             if (session.rendererStarted && stream != null && stream.closed() && !stream.reachedEof()) {
@@ -462,6 +470,13 @@ public final class HQFiniteMediaClient {
             }
         }
         return Math.max(0.0, position);
+    }
+
+    private static void updateMovingPosition(Session session, net.minecraft.world.level.Level level) {
+        FiniteSpeakerSound sound = session.sound;
+        if (sound == null || level == null) return;
+        Vector3d world = MovingSourcePosition.resolve(level, session.blockPos, session.movingPosition);
+        sound.updatePosition((float) world.x, (float) world.y, (float) world.z);
     }
 
     private static void applyRendererState(Session session) {

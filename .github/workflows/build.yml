@@ -41,6 +41,7 @@ jobs:
           jar tf "$jar_file" | grep -Fx 'META-INF/jarjar/mp3spi-1.9.5.4.jar'
           jar tf "$jar_file" | grep -Fx 'META-INF/jarjar/jlayer-1.0.1.4.jar'
           jar tf "$jar_file" | grep -Fx 'META-INF/jarjar/tritonus-share-0.3.7.4.jar'
+          jar tf "$jar_file" | grep -Fx 'META-INF/jarjar/sable-companion-common-1.21.1-1.6.0.jar'
           jar tf "$jar_file" | grep -Fx 'data/computercraft/lua/rom/modules/main/hqspeaker.lua'
 
       - name: Upload candidate JAR

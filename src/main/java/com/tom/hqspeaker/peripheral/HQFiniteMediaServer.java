@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeAnchorSelector;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
 import com.tom.hqspeaker.media.FinitePlaybackStateMachine;
@@ -20,14 +21,12 @@ import com.tom.hqspeaker.network.HQFiniteMediaRangeRequestPacket;
 import com.tom.hqspeaker.network.HQFiniteMediaStatePacket;
 import com.tom.hqspeaker.network.HQFiniteMediaStatusPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
-import com.tom.hqspeaker.vs2.VS2TransformHelper;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.peripheral.IComputerAccess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import org.joml.Matrix4dc;
 import org.joml.Vector3d;
 
 import java.io.IOException;
@@ -526,8 +525,7 @@ public final class HQFiniteMediaServer {
 
     private boolean isRelevant(ServerPlayer player, float[] world) {
         if (player == null || world == null || world.length < 3) return false;
-        double dx = player.getX() - world[0], dy = player.getY() - world[1], dz = player.getZ() - world[2];
-        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        double distanceSquared = player.distanceToSqr(world[0], world[1], world[2]);
         return FiniteRangeValidation.listenerRelevant(
             player.level() == level, player.isRemoved(), distanceSquared, SPEAKER_RADIUS);
     }
@@ -585,23 +583,8 @@ public final class HQFiniteMediaServer {
     }
 
     private float[] computeWorldPos() {
-        float x = pos.getX() + 0.5f, y = pos.getY() + 0.5f, z = pos.getZ() + 0.5f;
-        try {
-            if (VS2TransformHelper.isVS2Loaded()) {
-                Object ship = VS2TransformHelper.getShipManagingBlock(level, pos);
-                if (ship != null) {
-                    Matrix4dc matrix = VS2TransformHelper.getShipToWorldMatrix(ship);
-                    if (matrix != null) {
-                        Vector3d point = new Vector3d(x, y, z);
-                        matrix.transformPosition(point);
-                        x = (float) point.x; y = (float) point.y; z = (float) point.z;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            HQSpeakerMod.warn("finite media position transform failed: " + safeMessage(e));
-        }
-        return new float[]{ x, y, z };
+        Vector3d world = MovingSourcePosition.resolve(level, pos, new Vector3d());
+        return new float[]{ (float) world.x, (float) world.y, (float) world.z };
     }
 
     private void releaseAssetReference(Session s) {
