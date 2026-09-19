@@ -1,65 +1,59 @@
 # Legacy API convergence
 
-Updated: 2026-09-19
+Updated: 2026-09-20
 
-This file records the current migration boundary after M1J. It is not a promise to preserve every historical helper forever.
+Finite API convergence is complete.
 
-## Principles
+## Result
 
-- One modern finite engine should own finite MP3/WAV playback.
-- Standard CC:T note/sound/audio stays native CC:T.
-- HQ RAW PCM remains producer-fed and separate from finite songs.
-- Do not pull OGG/AIFF/AU/live-radio requirements into the modern finite core merely to preserve old names.
-- Preserve compatibility where the frontend can be mapped truthfully without retaining a parallel engine.
-- Do not perform media import/analyze work on the Minecraft server tick thread.
+There is one supported finite engine.
 
-## Method matrix
+| API family | Current state |
+| --- | --- |
+| `playNote` / `playSound` / `playAudio` / `stop` | Native CC:T path |
+| Standard All/At note/sound/audio | Composite dispatches to real CC:T speakers |
+| `speakPCM` / All / At | Separate bounded RAW path |
+| `hq.playFile` / prepared APIs | Primary modern finite path |
+| `speakMp3` / `speakWav` / All / At | Compatibility frontends routed to modern finite |
+| `speakOgg` / All / At | Removed |
+| generic `speakAudio` / `speakFile` / `speakPacked` / All / At | Removed |
+| live MP3/HLS/TS/ICY | Separate optional legacy/future path |
+| `speakSupportedFiles` | Reports current finite set: mp3, wav |
+| `hq.preparedFormats(...)` | Structured modern finite capability: mp3 + wav |
 
-| API family | Direction | Notes |
-| --- | --- | --- |
-| `playNote`, `playSound`, `playAudio`, `stop` | Keep native | Standard CC:T contract. |
-| Standard `*All` / `*At` | Keep, native dispatch | Composite now dispatches each real CC:T speaker; old fake-sine/HQ-PCM implementations are bypassed. |
-| `speakPCM` | Keep separate | Open-ended signed-16 producer-fed RAW source with bounded backpressure. |
-| `hq.playFile` / prepared APIs | Keep primary | Modern bounded finite MP3/common-WAV path. |
-| `speakMp3` / `speakWav` (+ `All`/`At`) | **Migrated to modern finite** | Exact bytes become a temporary MediaAsset, are analyzed on the ComputerCraft thread, and only the short replacement/commit runs on the main thread. `*All` uses the modern shared playback authority. |
-| `speakOgg` (+ `All`/`At`) | **Removed from normal CC:T speaker API** | OGG may return later only through a proper modern progressive/seek/rejoin implementation. |
-| `speakAudio` / `speakFile` / `speakPacked` (+ `All`/`At`) | **Removed from normal CC:T speaker API** | The ambiguous JavaSound-style format promise is intentionally retired. |
-| Legacy finite `*All` / `*At` | Migrate together with their singular frontend | Do not retain the expected-member barrier for modernized formats. |
-| `speakStream` / HLS / TS / ICY | Future optional | Not part of finite convergence. |
-| `speakSupportedFiles` | Legacy-only capability | Use `hq.preparedFormats(speaker)` for modern support. |
-
-## Implemented MP3/WAV bridge shape
-
-The existing primitives are sufficient; do not create another storage system:
+## MP3/WAV compatibility bridge
 
 ```text
-Lua byte string/table
-  -> copy and validate on ComputerCraft thread
-  -> MediaAssetStore.importAsset(... ReadableByteChannel)
-  -> ModernFiniteMediaAnalyzer
-  -> prepared modern finite start token
-  -> ILuaContext.executeMainThreadTask(...)
-       -> short ownership replacement + commit
-  -> release temporary import-owner reference
+Lua byte payload
+-> copy/validate on ComputerCraft thread
+-> temporary immutable MediaAsset
+-> ModernFiniteMediaAnalyzer
+-> prepared finite admission
+-> short main-thread ownership/commit task
+-> release temporary importer reference
 ```
 
-The import-owner reference and the playback reference are distinct. Every rejection, supersession, detach, and main-thread commit failure needs an explicit release path.
+The playback keeps its own retained asset reference.
 
-This bridge is now implemented only for MP3/common WAV. It deliberately does not turn `speakOgg` or generic `speakAudio` into misleading aliases.
+## Removed duplicate finite engine
 
+Removed:
 
-## Finite teardown complete
+- inherited whole-file finite server timeline;
+- whole-file finite client decoder;
+- `FiniteAudioTrack`;
+- old finite control/status packets;
+- old finite expected-member synchronization;
+- JavaSound MP3 SPI dependencies.
 
-Post-M1J convergence now has one finite engine:
+Current protocol is v9.
 
-- MP3/WAV compatibility names use modern MediaAssets and modern shared playback.
-- OGG/generic whole-file aliases are retired on the normal upgraded CC:T speaker.
-- The old finite server timeline, whole-file client decoder, expected-member finite sync barrier, `FiniteAudioTrack`, and legacy finite control/status payloads are removed.
-- `HQSpeakerAudioPacket` is RAW/live-only.
-- Current network protocol is v9.
+## Standard All/At cleanup note
 
-RAW PCM remains intentionally separate. Optional radio/ICY/HLS/TS also remains separate and does not justify restoring a second finite engine.
+The composite already provides correct supported behavior for standard grouped/indexed note/sound/audio calls.
 
-## Dependency result
+Old fake implementations remain in `HQSpeakerPeripheral` as dead-code candidates. Do not confuse those bodies with the exposed contract.
 
-The whole-file finite teardown removes the reason to package Java Sound MP3 SPI compatibility. `mp3spi` and `tritonus-share` are no longer dependencies. JLayer remains the direct MP3 decoder for both modern finite playback and optional live MP3 streaming.
+## Live-path boundary
+
+Grouped optional live streaming still uses legacy sync-group metadata. That code is separate from completed finite convergence and should be retained until live grouped behavior is redesigned or retired.

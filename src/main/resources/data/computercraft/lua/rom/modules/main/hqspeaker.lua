@@ -105,8 +105,7 @@ end
 
 --- Return the formats accepted by the modern prepared-file engine.
 ---
---- This intentionally does not mirror legacy speakSupportedFiles(), whose broader list
---- describes inherited compatibility paths rather than modern prepared playback.
+--- The compatibility speakSupportedFiles() surface now reports the same finite set.
 --- @return table formats Set-like table, currently { mp3 = true, wav = true }.
 function hqspeaker.preparedFormats(speaker)
     checkSpeaker(speaker)
