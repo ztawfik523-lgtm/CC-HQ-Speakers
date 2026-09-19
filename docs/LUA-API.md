@@ -251,7 +251,7 @@ Removed as of M1F. Use `hq.playFile(...)` or prepare -> play -> release.
 
 Older functions such as `speakMp3`, `speakWav`, `speakOgg`, `speakAudio`, `speakFile`, `speakPacked`, `speakStream`, `speakHLS`, `speakTS`, metadata helpers, and older multi-speaker helpers still exist in inherited code.
 
-They are not the model for modern large local finite-file playback. Legacy finite compatibility is reviewed later in M1L; live MP3/HLS/TS is later M3 work.
+They are not the model for modern large local finite-file playback. Legacy finite compatibility will be reviewed during engine/API convergence. Direct radio/ICY/HLS/TS is not a core roadmap requirement.
 
 Important inherited caveats:
 
@@ -260,13 +260,13 @@ Important inherited caveats:
 - inherited live HLS has a confirmed refreshed-playlist index progression bug;
 - KI-062 is resolved: blocking DNS may still occupy the calling ComputerCraft command, but it no longer holds the ownership monitor needed by server tick/lifecycle cleanup.
 
-## Positional / VS2 note
+## Positional / moving-source note
 
 Modern BEGIN carries initial world position and block coordinates. Modern STATE does not carry live x/y/z updates.
 
-The current modern finite client does not update `FiniteSpeakerSound` position after renderer creation, so moving-source/VS2 lifecycle remains M1H. M1H must also add late-entry/proactive-leave/re-entry listener membership; today a player entering the fixed range after playback started is not automatically bootstrapped.
+M1H now updates the modern finite positional source locally from Sable/Aeronautics-style sublevel projection, VS2 transforms, or normal block center. The server uses the same resolved position for listener relevance. Late entry/leave/re-entry membership is also implemented.
 
-A new network position packet is not automatically required: the inherited client already recalculates VS2 world position from block coordinates each tick. M1H may mirror that path for modern finite playback or choose explicit position updates later.
+Focused moving-source/listener Minecraft checks remain in the runtime backlog.
 
 ## Current implementation/evidence caveat
 

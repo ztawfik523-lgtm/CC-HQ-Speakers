@@ -31,7 +31,23 @@ ComputerCraft file
 -> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-A MediaAsset owns encoded bytes and server-derived facts. A playback owns generation/state/time/seek/loop/volume. A renderer is client-local and never becomes canonical timeline authority.
+A MediaAsset owns encoded bytes and server-derived facts. Current protocol-v7 source still has one finite server session per physical speaker. M1J is refactoring the canonical playback facts into one shared authority so one-speaker and multispeaker playback use the same model.
+
+The selected M1J boundary is:
+
+```text
+shared playback authority
+  media/playback identity
+  canonical clock + play/pause/seek/loop
+  shared state/decode revisions
+  playback asset lifetime
+        |
+        +--> physical speaker endpoint A -> listeners/transport/renderer/recovery
+        +--> physical speaker endpoint B -> listeners/transport/renderer/recovery
+        +--> physical speaker endpoint C -> listeners/transport/renderer/recovery
+```
+
+A renderer remains client-local and never becomes canonical timeline authority. Endpoint loss/removal is not a shared playback failure.
 
 The inherited complete-file JavaSound/mp3spi bridge is not the modern prepared engine.
 
@@ -50,7 +66,7 @@ Finite output is mono signed 16-bit PCM at source sample rate. Stereo is downmix
 
 ## Server authority
 
-The server owns PLAYING/PAUSED/ENDED/ERROR, position/duration, seek, loop, volume, generation, and later sync state.
+The server owns canonical playback identity, PLAYING/PAUSED/ENDED/shared-ERROR, position/duration, seek, loop, and codec re-anchor state. M1J separates endpoint gain and endpoint-local failure from the shared canonical timeline.
 
 Successful play starts canonical time immediately. It does not wait for transfer, decoder readiness, or audibility. Client failures are local diagnostics, not canonical clock/EOF authority.
 
@@ -196,17 +212,31 @@ After validation, the normal single-speaker stream path briefly reacquires comma
 
 KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
 
-## Multispeaker
+## Multispeaker — selected M1J model
 
-Later synchronization uses shared server clocks while each physical speaker retains its own positional renderer. Optional active-session sharing may share encoded/decode work only if it does not collapse physical sources.
+M1J uses one shared playback authority plus independent physical speaker endpoints.
 
-Inherited `*All` / `*At` helpers are legacy and are not a model for the later architecture.
+A multispeaker start snapshots the speakers selected by the calling ComputerCraft computer. It does not maintain an expected-global-member count and does not automatically add speakers attached later.
 
-## Raw and live sources
+The shared authority owns only facts that must be identical: media/playback identity, canonical time, play/pause/seek/loop, shared revisions, natural EOF/shared failure, and playback asset lifetime. Each endpoint owns its physical source identity, position/movement, listener membership, endpoint gain, range transport, renderer, and recovery.
+
+Removing/replacing one endpoint detaches it from the authority without stopping the remaining endpoints. An authority with no endpoints releases its playback ownership.
+
+Single-speaker prepared playback is the same architecture with one endpoint; do not maintain a second semantic engine for the one-speaker case.
+
+Server-side authority alone is not sufficient for tight client synchronization. A later M1J protocol slice will add shared playback identity/state revision so multiple endpoint renderers on one client project the same local authoritative timeline while retaining separate positional SoundManager sources.
+
+Encoded-range/decode sharing is deliberately not part of the correctness model. Measure duplicate work after M1J and add fan-out only if profiling justifies it.
+
+Inherited `*All` / `*At` helpers are legacy and are not the target architecture.
+
+## Raw and optional external/live sources
 
 Standard `playAudio` remains CC:T signed-8 producer-fed audio. HQ `speakPCM` remains open-ended signed-16 producer-fed audio with bounded backpressure; neither is a finite song.
 
-Internet MP3/HLS/TS remains later M3 work and must keep truthful live/open-ended semantics. The current inherited HLS implementation has a confirmed refreshed-playlist index progression bug; do not mix its repair into M1G.
+Direct internet-radio/ICY/HLS/TS support is not a core roadmap requirement. Existing inherited live code remains legacy until retained, replaced, or removed during convergence.
+
+Spotify/YouTube/provider-backed playback is future product research and is not equivalent to generic direct-HTTP audio streaming.
 
 ## Legacy boundary
 

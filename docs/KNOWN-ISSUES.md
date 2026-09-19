@@ -22,7 +22,7 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 **Resolved as focused M1G runtime evidence on 2026-09-19.** NeoForge 21.1.247 integrated singleplayer recorded audible modern WAV/MP3 playback, pause/resume, seek/reanchor, float32 WAV, natural EOF, ordinary looping, positional attenuation/fixed 32-block range behavior, prepared-asset lifetime, stop, and a dedicated loop-safe global-volume-zero hibernation/unmute PASS. No HQSpeaker WARN/ERROR lines were present during the focused mute/unmute run.
 
-This is not a claim that NeoForge 21.1.248 was manually runtime-tested. KI-062/063/054/064 were subsequently closed by the separate post-M1G hardening pass. M1H-1 membership and M1H-2 recovery are now source/test/CI/package complete; their focused Minecraft checks are deferred to the backlog. Moving-source/VS2 remains active M1H work.
+This is not a claim that NeoForge 21.1.248 was manually runtime-tested. KI-062/063/054/064 were subsequently closed by the separate post-M1G hardening pass. M1H-1 membership and M1H-2 recovery are now source/test/CI/package complete; their focused Minecraft checks are deferred to the backlog. Moving-source/Sable/VS2 source work is complete in M1H-3; focused runtime movement checks remain deferred.
 
 ## Resolved by M1E/M1F
 
@@ -157,10 +157,10 @@ Native ordinary Create contraption assembly/disassembly is outside this resolved
 - Sound Physics Remastered compatibility owns future acoustic/range extension and matching transport relevance; do not prebuild it in M1G.
 - Gapless MP3/LAME/Xing delay/padding handling is not an M1G requirement.
 - Continuous-source loop engineering is not an M1G requirement.
-- KI-034: native FLAC remains gated M1I work.
-- KI-018: inherited expected-member multispeaker barrier can deadlock partial listeners — M1J.
+- KI-034: native FLAC is optional codec-expansion work, not the next mandatory milestone.
+- KI-018: inherited expected-member multispeaker barrier can deadlock partial listeners — active M1J replaces it with shared playback authority plus independent endpoints.
 - KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
-- KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues — M3/later cleanup. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
+- KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues remain legacy/later cleanup. Direct radio/ICY/HLS/TS is not a core roadmap requirement. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
 - inherited capability lists advertise unsupported/broader formats; later migration must make them truthful.
 - inherited `playNoteAll`/`playSoundAll` do not preserve requested note/sound semantics; later multispeaker work must repair/remove them.
 - KI-022: separate `hqspeaker:hq_speaker` registration remains a release-cleanup/product decision.
@@ -181,9 +181,11 @@ The repository audit is supporting evidence, not current authority. The followin
 
 ## Current working priority
 
-The post-M1G Option A hardening pass is complete. The next active engineering milestone is **M1H listener/rejoin/movement lifecycle**.
+The post-M1G hardening pass and M1H source slices are complete. Focused M1H runtime checks are deferred for now, not rejected.
 
-Do not reopen KI-062/063/054/064 without a concrete regression. M1H now owns late entry, proactive leave, return/rejoin, dimension/world/resource-reload recovery, robust general underrun rejoin, and final VS2 movement lifecycle.
+The active engineering milestone is **M1J modern finite multispeaker** using one thread-safe shared playback authority plus independent physical speaker endpoints, with no expected-global-member barrier.
+
+Do not reopen KI-062/063/054/064 without a concrete regression.
 
 ## Reminders
 

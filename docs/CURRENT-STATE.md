@@ -4,9 +4,9 @@ Updated: 2026-09-19
 
 ## Checkpoint
 
-Active branch: `codex/m1h-moving-source`.
+Active branch: `codex/m1j-multispeaker`.
 
-M1E, M1F, and M1G are complete. M1H-1 listener membership, M1H-2 recovery, and M1H-3 moving-source support are complete at source/test/CI/package level. Focused Minecraft runtime checks remain deferred to the backlog.
+M1E, M1F, and M1G are complete. M1H-1 listener membership, M1H-2 recovery, and M1H-3 moving-source support are complete at source/test/CI/package level. Focused M1H Minecraft runtime checks remain deferred to the backlog for now. M1J modern finite multispeaker is the active source milestone.
 
 M1H-1 **source** checkpoint:
 
@@ -186,7 +186,9 @@ Resolved after M1G:
 
 `MediaAssetStore.close()` now retains failed-deletion bookkeeping/quota state and keeps the root lock until cleanup actually succeeds.
 
-The next active milestone is **M1H**: listener entry/leave/rejoin, dimension/resource recovery, general underrun recovery, and final moving-source/VS2 lifecycle.
+M1H source work is complete. The active milestone is **M1J modern finite multispeaker**.
+
+Selected direction: one thread-safe shared playback authority owns the canonical timeline/seek/loop/shared terminal state, while each physical speaker remains an independent positional endpoint with its own listeners, movement, transport, renderer, recovery, and eventual endpoint gain. The group is a start-time snapshot and has no expected-member barrier.
 
 ## Rechecked repository-audit corrections to preserve
 
@@ -281,7 +283,7 @@ M1H-2 recovery source/test/CI/package: PASS at aa72f0d2fc9f8cde53cd956389beca174
 M1H-2 focused Minecraft reload/loss/starvation acceptance: deferred to backlog
 M1H-3 Sable/VS2 moving-source source/CI/package: PASS at 5cd6d6ddcad4b5b4887b903f471de0f2f812795c / CI 35451236630
 M1H-3 focused Minecraft Sable/VS2 movement acceptance: deferred to backlog
-M1H source slices 1-3: complete; next roadmap milestone is M1I (gated native FLAC)
+M1H source slices 1-3: complete; focused runtime checks deferred; M1J modern finite multispeaker active
 ```
 
 ## Read order

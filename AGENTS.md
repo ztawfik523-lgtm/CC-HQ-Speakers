@@ -4,9 +4,9 @@ Updated: 2026-09-19
 
 ## Current state
 
-Active branch: `codex/m1h-moving-source`.
+Active branch: `codex/m1j-multispeaker`.
 
-M1E through M1H are complete at source/test/CI/package level. M1H-1 listener membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented. Focused M1H Minecraft runtime checks are intentionally deferred to the runtime backlog.
+M1E through M1H are complete at source/test/CI/package level. M1H-1 listener membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented. Focused M1H Minecraft runtime checks remain deferred to the runtime backlog for now; the owner did not reject later runtime validation. M1J modern finite multispeaker is the active source milestone.
 
 Current source checkpoint for M1H-3: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c`, CI `35451236630`.
 
@@ -74,7 +74,7 @@ Green CI is not Minecraft runtime proof. Keep source/CI/package evidence separat
 
 ## Current architecture boundaries
 
-Server owns finite playback generation, timeline, controls, seek/reanchor revision, natural EOF, and terminal errors.
+Current protocol-v7 source owns finite playback generation, timeline, controls, seek/reanchor revision, natural EOF, and terminal errors per speaker. M1J is refactoring canonical playback facts into one thread-safe shared playback authority referenced by independent physical speaker endpoints.
 
 Client owns bounded encoded-window consumption, progressive decode, PCM buffering, SoundManager rendering, and local recovery/rejoin.
 
@@ -88,8 +88,10 @@ M1H moving-source support resolves Sable/Aeronautics-style sublevels first, VS2 
 
 ## Remaining roadmap areas
 
-The old roadmap currently lists optional native FLAC, multispeaker shared clocks, active-session sharing, legacy finite migration/removal, RAW finalization, SoundEngine/OpenAL cleanup, hardening/final acceptance, SPR compatibility, live streams, and release cleanup.
+M1J modern finite multispeaker is active. The selected model is one shared playback authority plus independent physical speaker endpoints. The start-time member set is a snapshot; endpoint loss/removal must not fail the remaining group; there is no expected-global-member client barrier.
 
-Do not assume that order is still correct. Re-evaluate the remaining milestones using the decision rules above before starting the next one.
+After correctness, multispeaker decode/network sharing is a profiling decision gate rather than a promised milestone. Then converge worthwhile legacy APIs onto the modern engine, evaluate codecs individually, run integrated compatibility/stress work, and perform release cleanup.
+
+Direct radio/ICY/HLS/TS is no longer a core roadmap requirement. Spotify/YouTube/provider-backed playback is future research and must be treated as provider integration, not generic URL streaming.
 
 Known later issues include the inherited multispeaker expected-member barrier, misleading legacy capability lists, incorrect legacy `playNoteAll`/`playSoundAll` semantics, inherited live/HLS/TS defects, license provenance, and release hygiene.
