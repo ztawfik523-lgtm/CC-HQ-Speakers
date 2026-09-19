@@ -168,7 +168,9 @@ Do not branch from old `main`; it is still the untouched fork baseline.
 
 ## Working style
 
-Keep explanations practical and concrete.
+Keep explanations practical, simple, and concrete.
+
+Do not explain things in abstract architecture language by default. Prefer plain descriptions of what will happen in-game or in the code, what the user will notice, and what each choice changes. Use technical terms only when they are needed to make a decision or to identify the exact code being changed, and explain them briefly when used.
 
 For meaningful tradeoffs, present the main options and consequences and let the owner choose. Handle minor implementation details without asking.
 
