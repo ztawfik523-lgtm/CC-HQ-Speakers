@@ -6,7 +6,7 @@ Updated: 2026-09-19
 
 Active branch: `codex/m1j-multispeaker`.
 
-M1E, M1F, and M1G are complete. M1H-1 listener membership, M1H-2 recovery, and M1H-3 moving-source support are complete at source/test/CI/package level. Focused M1H Minecraft runtime checks remain deferred to the backlog for now. M1J modern finite multispeaker is the active source milestone.
+M1E through M1J are complete at source/test/CI/package level. Focused M1H/M1J Minecraft runtime checks remain deferred to the backlog for now. Post-M1J finite API/engine convergence is complete: MP3/WAV compatibility names use the modern engine, OGG/generic whole-file aliases are retired, and the duplicate legacy finite server/client/packet implementation has been removed.
 
 First M1J implementation checkpoint:
 
@@ -86,7 +86,7 @@ Green CI by itself is still not Minecraft runtime proof. A separate focused **M1
 ```text
 server MediaAsset
 -> server-authoritative finite timeline
--> protocol v8 playbackId + STATE stateRevision/decodeRevision + codec-aware anchor
+-> current protocol v9; modern finite STATE still carries playbackId + stateRevision/decodeRevision + codec-aware anchor
 -> bounded client-requested encoded ranges
 -> bounded sliding encoded RAM
 -> starvation-aware decoder-worker input
@@ -114,7 +114,7 @@ One physical speaker remains one mono positional source. Lua owns application me
 
 ### Decoder/re-anchor authority
 
-Current protocol v8 retains the server-authoritative `decodeRevision` introduced in v7 and adds shared `playbackId` + `stateRevision` for multispeaker projection.
+Current protocol v9 retains the modern finite semantics introduced in v8: server-authoritative `decodeRevision`, shared `playbackId`, and `stateRevision`. v9 removes the obsolete legacy finite control/status payloads and strips legacy finite state from the old RAW/live audio packet.
 
 - new media playback uses a new generation;
 - semantic seek increments the revision;
@@ -315,9 +315,24 @@ M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 
 Legacy-name MP3/WAV compatibility calls now route through the modern finite engine, including `*All` and `*At`. Their byte payloads use transient MediaAssets and the same analyzer/decoder path as prepared files; `*All` therefore uses the shared M1J playback authority instead of the inherited expected-member barrier. OGG/generic/live paths remain legacy pending separate decisions.
 
+## Post-M1J finite teardown
+
+The supported finite surface now has one engine. Legacy-name `speakMp3`/`speakWav` (including `All`/`At`) route through MediaAsset admission and modern finite playback. Historical OGG/generic whole-file aliases are not exposed on the normal upgraded CC:T speaker.
+
+The inherited complete-file finite implementation has been physically removed:
+
+- no legacy finite server timeline/terminal state remains in `HQSpeakerPeripheral`;
+- no whole-file finite decoder remains in `HQAudioStream` / `HQSpeakerClientHandler`;
+- `FiniteAudioTrack` and its test are removed;
+- legacy finite control/status payloads are removed;
+- `HQSpeakerAudioPacket` is RAW/live-only;
+- network protocol is now v9 with 9 registered payloads.
+
+Checkpoint `fcb6670dd818412c15509129105aa7f54be9d5ba` / CI `35470940030` passed both supported NeoForge targets.
+
 ## Post-M1J dead-code recheck
 
-A branch-local source reference scan confirmed that `FileFiniteAudioStream` and `HQSpeakerCluster` had no live references and they were removed. A follow-up recheck caught that `FiniteAudioTrack` remains live through `HQAudioStream`, so `FiniteAudioTrack` and its focused test remain. `HQAudioStream` likewise stays until inherited finite/live callers are migrated or retired.
+`FileFiniteAudioStream` and `HQSpeakerCluster` were removed as dead code earlier. `FiniteAudioTrack` was initially retained because the old whole-file client used it; after OGG/generic finite retirement and the modern MP3/WAV bridge, that client path was removed and `FiniteAudioTrack` is now removed as well. `HQAudioStream` remains only for RAW/live audio.
 
 ## Read order
 

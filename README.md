@@ -35,7 +35,7 @@ Current finite implementation:
 ComputerCraft file
 -> reusable server MediaAsset
 -> one server-authoritative shared playback
--> protocol v8 playbackId + stateRevision + decodeRevision + codec-aware anchor
+-> protocol v9; shared playbackId + stateRevision + decodeRevision + codec-aware anchor
 -> independent physical speaker endpoints
 -> bounded per-endpoint client range/decode/render path
 -> one shared client-projected timeline per playback
@@ -46,7 +46,7 @@ A multispeaker start snapshots the speakers currently attached to the calling Co
 
 Shared controls are play/pause/resume/seek/loop/stop. Volume and mute are endpoint-local; explicit `*All` and `*At` controls apply them to selected endpoints.
 
-The inherited complete-file JavaSound/mp3spi finite bridge and inherited legacy multispeaker barrier are not the modern prepared engine.
+The inherited complete-file finite bridge and finite expected-member barrier have been removed. The remaining legacy audio path is RAW/live-only.
 
 ## Completed M1G contract
 
@@ -134,7 +134,8 @@ See `docs/LUA-API.md`.
 - **M1H:** listener lifecycle, recovery, and Sable/VS2 moving sources — source/test/CI/package complete; focused runtime backlog deferred.
 - **M1J:** modern finite multispeaker — source/test/CI/package complete; focused runtime acceptance deferred. Shared authority/endpoints, protocol v8 shared client timeline, group playback helpers, independent volume/mute, and modern indexed controls are implemented.
 - **Performance gate:** shared decode/network fan-out is deferred unless realistic runtime profiling proves duplicated client decode work materially expensive.
-- **Current non-runtime work:** API/legacy convergence, followed by optional codec decisions, integrated compatibility/stress, and release cleanup. Radio/ICY/HLS/TS and provider playback are future/optional features, not core blockers.
+- **Finite API/engine convergence:** complete. MP3/WAV compatibility names use the modern engine; OGG/generic whole-file aliases and the duplicate finite engine are removed; current protocol is v9.
+- **Current non-runtime work:** RAW/API and release-oriented cleanup, followed by optional codec decisions and integrated compatibility/stress. Radio/ICY/HLS/TS and provider playback are future/optional features, not core blockers.
 
 ## Build
 

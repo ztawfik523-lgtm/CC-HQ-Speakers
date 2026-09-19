@@ -46,3 +46,16 @@ Lua byte string/table
 The import-owner reference and the playback reference are distinct. Every rejection, supersession, detach, and main-thread commit failure needs an explicit release path.
 
 This bridge is now implemented only for MP3/common WAV. It deliberately does not turn `speakOgg` or generic `speakAudio` into misleading aliases.
+
+
+## Finite teardown complete
+
+Post-M1J convergence now has one finite engine:
+
+- MP3/WAV compatibility names use modern MediaAssets and modern shared playback.
+- OGG/generic whole-file aliases are retired on the normal upgraded CC:T speaker.
+- The old finite server timeline, whole-file client decoder, expected-member finite sync barrier, `FiniteAudioTrack`, and legacy finite control/status payloads are removed.
+- `HQSpeakerAudioPacket` is RAW/live-only.
+- Current network protocol is v9.
+
+RAW PCM remains intentionally separate. Optional radio/ICY/HLS/TS also remains separate and does not justify restoring a second finite engine.

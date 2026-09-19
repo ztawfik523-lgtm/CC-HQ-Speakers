@@ -93,16 +93,26 @@ Current static cost model:
 
 Decision for now: do **not** add shared encoded/decode fan-out without runtime profiling. The server-side bounds already prevent unbounded range amplification, while shared decode would add multi-reader PCM lifetime, lagging-reader, endpoint-leave, seek/recovery, and renderer-pacing complexity. Revisit only if realistic 4/8+ speaker testing shows decoder CPU or memory is materially expensive.
 
-## Active non-runtime work — engine/API convergence
+## Completed non-runtime work — finite engine/API convergence
 
-Modern multispeaker is established. Continue convergence without forcing unsupported legacy formats into the new core:
+The finite convergence decision is complete:
 
-- migrate worthwhile inherited finite APIs onto the modern engine;
-- repair or remove misleading legacy `*All` / `*At` behavior;
-- finish HQ RAW public semantics and truthful capability reporting;
-- remove obsolete whole-file/whole-PCM finite paths only after their retained functionality has a replacement.
+- legacy-name MP3/WAV singular/all/indexed frontends route through the modern MediaAsset/progressive engine;
+- OGG and generic whole-file aliases are retired from the normal upgraded CC:T speaker;
+- the inherited complete-file finite server/client state, decoder, sync barrier, control/status payloads, and finite packet baggage are removed;
+- the old legacy audio packet is now RAW/live-only;
+- current network protocol is v9.
 
-Cleanup follows replacement; it does not delete the old implementation before deciding which behavior survives.
+There is no second supported finite engine.
+
+## Active non-runtime work — RAW/API and release-oriented cleanup
+
+Next, finish the remaining non-finite public contract without mixing optional live-stream work into the core:
+
+- make HQ RAW capability/backpressure semantics concise and truthful;
+- remove or hide obsolete legacy helper names which no longer add supported behavior;
+- keep direct radio/ICY/HLS/TS explicitly optional until separately justified;
+- continue dead-code/dependency cleanup where removal does not break retained RAW/live behavior.
 
 ## Optional media-format expansion
 

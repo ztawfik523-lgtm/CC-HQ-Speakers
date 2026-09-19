@@ -31,11 +31,11 @@ M1H source work and M1J modern finite multispeaker source work are complete at s
 
 `FileFiniteAudioStream` was rechecked against the current branch reference graph and removed as unreferenced dead code during post-M1J convergence.
 
-`FiniteAudioTrack` remains live only until the now-unexposed inherited complete-payload finite implementation is physically removed. MP3/WAV frontends have already migrated to modern playback, and OGG/generic finite frontends are now removed from the normal CC:T speaker surface.
+`FiniteAudioTrack` and its focused test are now removed together with the inherited complete-payload finite client implementation. `HQAudioStream` remains only as the RAW/live stream adapter.
 
-Known old bridge defects include historical mp3spi duration/seek behavior. The modern prepared engine uses JLayer progressively instead.
+Historical mp3spi duration/seek defects no longer affect any finite playback path; modern finite MP3 uses JLayer progressively.
 
-JLayer is required by the modern progressive MP3 path. mp3spi/Tritonus-related dependencies should only be removed after legacy callers are migrated/removed and package/runtime proof confirms they are no longer needed. Those SPI libraries register Java Sound providers globally in the JVM, which is another reason to remove them once no legacy caller needs them.
+JLayer remains required by modern MP3 (and parts of optional live streaming). mp3spi/Tritonus are no longer justified by finite playback, but optional HLS/TS code still invokes JavaSound conversion paths which may depend on installed SPI providers. Do not remove those SPI providers until live-stream dependencies are separately audited or retired.
 
 ## Old client cache artifacts
 
@@ -63,7 +63,7 @@ The bridge prerequisite is architectural, not a request to add a third engine: r
 
 ## Legacy finite engine / advertised format surface
 
-Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared path.
+The duplicate finite engine is removed. `HQAudioStream` and `HQSpeakerAudioPacket` remain only for RAW/live sources; MP3/WAV byte-taking compatibility names route through modern finite playback; OGG/generic whole-file aliases are retired.
 
 Legacy Lua-visible capability lists are not a reliable statement of modern prepared support. For example, `speakSupportedFiles()` advertises `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared analyzer accepts only MP3 + supported common WAV.
 
@@ -89,7 +89,7 @@ Current status:
 
 ## Protocol/state cleanup after M1G
 
-Modern finite protocol is version 8 and includes BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA.
+Current network protocol is version 9. The modern finite payload family remains BEGIN, CONTROL, STATE, STATUS, RANGE_REQUEST, and RANGE_DATA; v9 removed the separate obsolete legacy finite control/status payloads.
 
 STATE carries explicit server-authoritative `decodeRevision`. PAUSE/RESUME/SEEK/SET_VOLUME/SET_LOOP are no longer projected through CONTROL; STATE is the sole nonterminal transition authority. CONTROL remains for explicit STOP.
 
@@ -161,7 +161,7 @@ Target M4: remove it with world/registry migration consideration or explicitly j
 
 ## Dead/parallel implementation cleanup
 
-`FileFiniteAudioStream` and `HQSpeakerCluster` were rechecked against the current branch and removed as unreferenced dead code. `FiniteAudioTrack` was rechecked separately and remains live through `HQAudioStream`.
+`FileFiniteAudioStream`, `HQSpeakerCluster`, and—after finite convergence—`FiniteAudioTrack` were removed. `HQAudioStream` now has only RAW/live responsibilities.
 
 Remaining candidates include stale diagnostic helpers and parts of the separate `HQSpeakerBlockEntity` path. Verify each reference count immediately before deletion; do not delete merely from an old audit note.
 

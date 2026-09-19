@@ -75,7 +75,7 @@ The current build workflow triggers on unfiltered `push` and `pull_request` even
 
 Packaged dependencies include JLayer `1.0.1.4`, mp3spi `1.9.5.4`, and Tritonus Share `0.3.7.4`. Modern progressive MP3 decoding uses JLayer.
 
-The inherited complete-file/legacy surfaces still justify keeping the SPI dependencies for now; they are not evidence that the modern prepared engine uses mp3spi.
+Finite playback no longer justifies mp3spi/Tritonus. They remain packaged for now only because optional HLS/TS code still uses JavaSound conversion paths which may depend on installed SPI providers; remove them when that live-stream surface is audited or retired.
 
 ## CC:T contract facts
 
@@ -390,10 +390,29 @@ Focused real-Minecraft Sable/Aeronautics and VS2 movement testing is not recorde
 
 ## Later milestone facts
 
-M1H-1 membership, M1H-2 reload/loss/starvation recovery, and M1H-3 Sable/VS2 moving-source support are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. M1J modern finite multispeaker is implemented at source/test/CI/package level but still awaits focused Minecraft multispeaker acceptance. Optional codecs such as FLAC remain future decision-gate work. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later integrated compatibility work.
+M1H-1 membership, M1H-2 reload/loss/starvation recovery, and M1H-3 Sable/VS2 moving-source support are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. M1J modern finite multispeaker is implemented at source/test/CI/package level but still awaits focused Minecraft multispeaker acceptance. Post-M1J convergence migrated MP3/WAV compatibility names to modern finite playback and removed the inherited whole-file finite engine. Optional RAW/live code remains separate. Optional codecs such as FLAC/modern OGG remain future decision-gate work. SPR acoustic/range compatibility remains later integrated compatibility work.
 
 ## License
 
 ### FACT-LICENSE-001
 
 Top-level `LICENSE` is MPL-2.0 while `neoforge.mods.toml` declares LGPL-3.0. The provenance mismatch remains unresolved.
+
+
+## Post-M1J convergence facts
+
+### FACT-CONVERGENCE-001
+
+Legacy-name `speakMp3`/`speakWav` singular/all/indexed calls route through the modern MediaAsset + progressive finite engine. Historical OGG/generic whole-file aliases are retired from the normal upgraded CC:T speaker surface.
+
+### FACT-CONVERGENCE-002
+
+The inherited finite server timeline, whole-file finite client decoder, `FiniteAudioTrack`, expected-member finite sync state, and legacy finite control/status payloads are removed. `HQSpeakerAudioPacket` now carries only RAW PCM or optional live-stream starts.
+
+### FACT-CONVERGENCE-003
+
+Current network protocol is v9 with 9 registered payloads. M1J's shared `playbackId` / `stateRevision` semantics were introduced in v8 and remain unchanged in the modern finite payload family.
+
+### FACT-CONVERGENCE-004
+
+Checkpoint `fcb6670dd818412c15509129105aa7f54be9d5ba`, CI `35470940030`, passed both supported NeoForge targets. This is source/test/package evidence, not deferred Minecraft runtime proof.

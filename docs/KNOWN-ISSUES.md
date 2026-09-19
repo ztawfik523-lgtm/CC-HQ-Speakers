@@ -158,8 +158,8 @@ Native ordinary Create contraption assembly/disassembly is outside this resolved
 - Gapless MP3/LAME/Xing delay/padding handling is not an M1G requirement.
 - Continuous-source loop engineering is not an M1G requirement.
 - KI-034: native FLAC is optional codec-expansion work, not the next mandatory milestone.
-- KI-018: **resolved for the supported finite API surface** — protocol v8 shared playback uses no expected-member barrier. MP3/WAV legacy-name wrappers use the modern path; OGG/generic legacy finite frontends are removed from the normal CC:T speaker API. Remaining expected-member code is teardown-only dead/legacy implementation until physically deleted.
-- KI-011 / KI-012 / KI-023: supported MP3/WAV APIs have converged on the modern engine. Remaining inherited finite implementation is teardown work, not a supported second finite product.
+- KI-018: **resolved for the supported finite API surface** — shared modern playback uses no expected-member barrier. MP3/WAV compatibility names use the modern path; OGG/generic finite aliases and the old finite sync implementation are physically removed. Remaining sync-group code belongs only to RAW/live legacy grouping.
+- KI-011 / KI-012 / KI-023: **resolved for finite playback convergence** — supported MP3/WAV APIs use the modern engine and the inherited whole-file finite implementation has been removed.
 - KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues remain legacy/later cleanup. Direct radio/ICY/HLS/TS is not a core roadmap requirement. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
 - inherited capability lists advertise unsupported/broader formats; later migration must make them truthful.
 - inherited `playNoteAll`/`playSoundAll`/`playAudioAll` implementations remain in legacy code, but the composite now intercepts exposed all/indexed standard calls and delegates each endpoint to the real CC:T speaker, preserving requested instrument/sound/DFPWM semantics.
@@ -183,7 +183,7 @@ The repository audit is supporting evidence, not current authority. The followin
 
 The post-M1G hardening pass and M1H source slices are complete. Focused M1H runtime checks are deferred for now, not rejected.
 
-The active engineering milestone is **M1J modern finite multispeaker**. The first implementation checkpoint is `b557773b9c6f6b8029aec132a1706f0d8da914bd` / CI `35466635285`; the modern prepared path now has shared playback authority, protocol v8 shared client timeline, independent endpoints, and no expected-global-member barrier. M1J runtime acceptance remains open.
+The active non-runtime work is **RAW/API and release-oriented cleanup**. M1J source/test/CI/package work is complete; focused M1H/M1J Minecraft runtime acceptance remains deferred. Current protocol is v9 after post-M1J removal of the obsolete legacy finite payloads and whole-file finite engine.
 
 Do not reopen KI-062/063/054/064 without a concrete regression.
 

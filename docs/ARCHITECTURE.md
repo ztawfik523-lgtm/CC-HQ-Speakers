@@ -31,7 +31,7 @@ ComputerCraft file
 -> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-A MediaAsset owns encoded bytes and server-derived facts. Current protocol-v7 source still has one finite server session per physical speaker. M1J is refactoring the canonical playback facts into one shared authority so one-speaker and multispeaker playback use the same model.
+A MediaAsset owns encoded bytes and server-derived facts. Modern finite playback uses one shared authority so one-speaker and multispeaker playback use the same model. Post-M1J convergence removed the inherited complete-file finite engine; the legacy audio path is now RAW/live-only.
 
 The selected M1J boundary is:
 
@@ -211,6 +211,8 @@ KI-062 is resolved. Dynamic legacy stream calls may still block their calling Co
 After validation, the normal single-speaker stream path briefly reacquires command ordering and ownership locking for the actual commit. A mutation revision rejects a normal stream start superseded by a newer playback/control command while DNS was pending. A lifecycle epoch separately rejects a result which returns after detach/cleanup, preventing a stale DNS completion from reviving a removed speaker.
 
 KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
+
+Current protocol v9 preserves the M1J shared playback identity/state/decode semantics introduced in v8. v9 removed the obsolete legacy finite control/status payloads and stripped finite-only state from the RAW/live audio packet.
 
 ## Multispeaker — selected M1J model
 
