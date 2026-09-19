@@ -17,7 +17,7 @@ The selected Option A post-M1G hardening pass is also complete:
 - NeoForge 21.1.247 and 21.1.248 both green with deterministic tests, packaged-mod verification, and artifact upload;
 - KI-062, KI-063, KI-054, and KI-064 resolved.
 
-The active milestone is **M1H — dynamic listener lifecycle/recovery**. M1H-1 is implemented at source/test/CI/package level at `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`; focused Minecraft walk-in/walk-out/re-entry acceptance is still pending.
+The active milestone is **M1H — dynamic listener lifecycle/recovery**. M1H-1 membership and M1H-2 recovery are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the backlog. M1H-3 moving-source/VS2 is next.
 
 ## Foundation
 
@@ -112,11 +112,24 @@ Implemented behavior:
 - clear membership coherently on stop/replacement/natural terminal/error;
 - deterministic tests cover transitions and retry/no-spam behavior.
 
-Remaining M1H-1 evidence: focused real-Minecraft walk-in/walk-out/re-entry/dimension acceptance.
+Remaining M1H-1 evidence: focused real-Minecraft walk-in/walk-out/re-entry/dimension acceptance, explicitly deferred to the backlog.
 
 ### M1H-2 — recovery
 
-Verify resource/sound-engine reload, existing renderer-loss rejoin, long-underrun current-time recovery, and remaining world/dimension lifecycle edges.
+**Implemented at source/test/CI/package level. Focused Minecraft acceptance deferred to backlog.**
+
+Checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`.
+
+Implemented behavior:
+
+- recover instead of failing when SoundEngine/resource reload closes the finite audio stream;
+- keep the existing lost-renderer detection and make READY recovery retry until STATE arrives;
+- after five seconds of continuous renderer starvation, discard the stale local decoder and rejoin current server time;
+- do not let ordinary STATE snapshots hide continuing starvation;
+- preserve protocol v7 and the existing server decode revision;
+- rely on M1H-1 membership for range/dimension cleanup and existing client world-loss cleanup for disconnect/world teardown.
+
+Remaining evidence: focused Minecraft reload/lost-renderer/long-starvation acceptance, deferred to the runtime backlog.
 
 ### M1H-3 — moving source / VS2
 

@@ -22,7 +22,7 @@ Current owner scope is recorded in `M1G-SCOPE-DECISIONS-2026-09-14.md`. Historic
 
 **Resolved as focused M1G runtime evidence on 2026-09-19.** NeoForge 21.1.247 integrated singleplayer recorded audible modern WAV/MP3 playback, pause/resume, seek/reanchor, float32 WAV, natural EOF, ordinary looping, positional attenuation/fixed 32-block range behavior, prepared-asset lifetime, stop, and a dedicated loop-safe global-volume-zero hibernation/unmute PASS. No HQSpeaker WARN/ERROR lines were present during the focused mute/unmute run.
 
-This is not a claim that NeoForge 21.1.248 was manually runtime-tested. KI-062/063/054/064 were subsequently closed by the separate post-M1G hardening pass; M1H recovery/resource-reload/listener lifecycle remains later work.
+This is not a claim that NeoForge 21.1.248 was manually runtime-tested. KI-062/063/054/064 were subsequently closed by the separate post-M1G hardening pass. M1H-1 membership and M1H-2 recovery are now source/test/CI/package complete; their focused Minecraft checks are deferred to the backlog. Moving-source/VS2 remains active M1H work.
 
 ## Resolved by M1E/M1F
 
@@ -67,7 +67,7 @@ M1G is closed at source/test/CI/package/component level, and the focused real-Mi
 
 **Resolved at deterministic/source/component level.** Revision/cancellation ordering, real JLayer decode, bounded range-window progression, renderer-read states, staging cleanup, and the existing transport/PCM/WAV/state-machine suites cover the non-Minecraft portions.
 
-The focused live Minecraft SoundManager/OpenAL path now has a recorded NeoForge 21.1.247 PASS under KI-046. Broader resource-reload, long-underrun, late-entry/rejoin, and moving-source lifecycle remain M1H rather than being folded into this evidence item.
+The focused live Minecraft SoundManager/OpenAL path now has a recorded NeoForge 21.1.247 PASS under KI-046. M1H-1 late-entry/rejoin and M1H-2 resource-reload/long-underrun behavior are source/test/CI/package complete, with focused runtime checks deferred to the backlog. Moving-source lifecycle remains active M1H work.
 
 ### KI-053 — same-anchor STATE could reset a slid window
 

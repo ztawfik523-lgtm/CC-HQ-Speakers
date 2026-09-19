@@ -19,7 +19,8 @@ Important source checkpoints:
 - M1G preparation base: `aa3943ca60e087fef2e6a4fe0cf38f0635dfcffb`;
 - final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`;
 - post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`;
-- M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`.
+- M1H-1 listener-membership source checkpoint: `84e7bab99009e5871934a960908945ceb00a10a9`, CI `35410830197`;
+- M1H-2 recovery source/test checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`.
 
 ### FACT-PLATFORM-001
 
@@ -217,7 +218,7 @@ KI-055 deterministic coverage is resolved: real JLayer MP3 progressive decode an
 
 ### FACT-AUDIT-004
 
-After renderer start, an empty live PCM queue becomes short local silence until PCM returns. General long-underrun current-time rejoin remains M1H.
+After renderer start, a short empty PCM queue still becomes local silence. M1H-2 now treats five seconds of continuous renderer starvation as a recovery condition and rejoins current authoritative server time.
 
 ### FACT-AUDIT-005
 
@@ -325,7 +326,23 @@ READY and finite range requests/completions now require both current relevance a
 
 ### FACT-M1H-LISTENER-005
 
-M1H-1 source checkpoint `84e7bab99009e5871934a960908945ceb00a10a9` passed CI `35410830197` on NeoForge 21.1.247 and 21.1.248, including deterministic tests, packaged-mod verification, and artifact upload. Focused real-Minecraft walk-in/walk-out/re-entry acceptance is not yet recorded.
+M1H-1 source checkpoint `84e7bab99009e5871934a960908945ceb00a10a9` passed CI `35410830197` on NeoForge 21.1.247 and 21.1.248, including deterministic tests, packaged-mod verification, and artifact upload. Focused real-Minecraft walk-in/walk-out/re-entry acceptance was deferred by the owner and remains in the backlog.
+
+### FACT-M1H-RECOVERY-001
+
+M1H-2 source/test checkpoint `aa72f0d2fc9f8cde53cd956389beca1743d06165` passed CI `35411480844` on NeoForge 21.1.247 and 21.1.248, including deterministic tests, packaged-mod verification, and artifact upload.
+
+### FACT-M1H-RECOVERY-002
+
+An unexpected SoundEngine/renderer stream close is treated as local recovery rather than a fatal decode error. Lost-renderer recovery retries READY once per second until an authoritative STATE arrives.
+
+### FACT-M1H-RECOVERY-003
+
+Five seconds of continuous renderer PCM starvation triggers current-time recovery. Ordinary same-revision STATE snapshots do not reset that timer, and same-revision authoritative STATE can rebuild a discarded local decoder without changing server `decodeRevision`.
+
+### FACT-M1H-RECOVERY-004
+
+Focused Minecraft resource-reload, renderer-loss, and long-starvation recovery testing is not recorded and is deferred to the runtime backlog.
 
 ### FACT-M1H-NEXT-001
 
@@ -333,7 +350,7 @@ Modern moving-source/VS2 handling remains M1H. Two source-compatible approaches 
 
 ## Later milestone facts
 
-M1H-1 late-entry/proactive-leave/return-rejoin/dimension membership is implemented at source/test/CI/package level, with focused Minecraft acceptance still pending. Resource reload, general underrun recovery, and final VS2 movement remain later M1H work. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
+M1H-1 membership and M1H-2 reload/loss/starvation recovery are implemented at source/test/CI/package level. Their focused Minecraft checks are deferred to the runtime backlog. Final VS2 moving-source behavior remains M1H. Native FLAC remains gated M1I. Inherited legacy finite/live/multispeaker code remains for later migration/removal. SPR acoustic/range compatibility remains later M2 work.
 
 ## License
 

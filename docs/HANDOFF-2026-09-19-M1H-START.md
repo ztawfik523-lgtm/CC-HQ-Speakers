@@ -84,18 +84,30 @@ Implemented M1H-1 behavior:
 
 The selected late-entry choice is **Option A**: BEGIN + current STATE immediately. The normal client READY can cause one harmless follow-up STATE; no extra suppression bookkeeping was added.
 
-Deterministic membership-transition tests are included. Focused real-Minecraft walk-in/walk-out/re-entry acceptance is still pending and must not be claimed from CI alone.
+Deterministic membership-transition tests are included. Focused real-Minecraft walk-in/walk-out/re-entry acceptance was deferred by the owner on 2026-09-19 and remains in the backlog; it must not be claimed from CI alone.
 
-## M1H-2 — recovery
+## M1H-2 — recovery status
 
-After membership is solid:
+M1H-2 is implemented at source/test/CI/package level.
 
-- resource/sound-engine reload;
-- dimension/world recovery not already covered by membership pruning;
-- verify existing renderer-loss -> READY -> STATE behavior;
-- long starvation/underrun that should rejoin current server time.
+Checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`
 
-Do not add protocol/state until a concrete failure proves v7 is insufficient.
+CI: `35411480844`
+
+- NeoForge 21.1.247: PASS, artifact `10574298203`, SHA-256 `536399fbb03f1b8009f4abc0c1260a116e5376234f125d4ccd43a25c3263e370`;
+- NeoForge 21.1.248: PASS, artifact `10573757634`, SHA-256 `c496b3871cb7dae32d323dbdc3d10dd44efb8f9c012d18043a5a075285293790`.
+
+Implemented:
+
+- SoundEngine/resource-reload stream close recovers instead of becoming a fatal decoder error;
+- lost renderer requests current authoritative STATE;
+- recovery READY retries once per second until STATE arrives;
+- five seconds of continuous renderer starvation triggers current-time recovery;
+- ordinary STATE updates do not hide continuing starvation;
+- same-revision STATE can rebuild the discarded local decoder;
+- no protocol change was needed.
+
+Focused Minecraft reload/loss/starvation testing is deferred to the runtime backlog.
 
 ## M1H-3 — moving source / VS2
 

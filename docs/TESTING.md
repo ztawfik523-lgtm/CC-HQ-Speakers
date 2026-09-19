@@ -28,6 +28,13 @@ M1H-1 artifacts:
 - 21.1.247 artifact `10574726822`, SHA-256 `62e8f090ddfe5466db3807dd1d78fd738c355887e6e938f811834d9630078cc9`;
 - 21.1.248 artifact `10573826903`, SHA-256 `2538111207be632a1253a762f6a45218b6d7ca4b24c2739359b4f56c8e648555`.
 
+M1H-2 recovery checkpoint: `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`. Both NeoForge targets passed build, deterministic tests, packaged-mod verification, and artifact upload.
+
+M1H-2 artifacts:
+
+- 21.1.247 artifact `10574298203`, SHA-256 `536399fbb03f1b8009f4abc0c1260a116e5376234f125d4ccd43a25c3263e370`;
+- 21.1.248 artifact `10573757634`, SHA-256 `c496b3871cb7dae32d323dbdc3d10dd44efb8f9c012d18043a5a075285293790`.
+
 ## What is actually integrated now
 
 M1G is complete at source/test/CI/package/component level.
@@ -196,11 +203,24 @@ Deterministic tests should prove:
 6. unchanged membership does not spam BEGIN/STOP;
 7. stop/replacement/natural terminal clears membership coherently.
 
-Minecraft acceptance should use a long/looping fixture and physically test walk-in, walk-out, and return.
+This focused Minecraft walk-in/walk-out/return test was deferred by the owner on 2026-09-19 and remains in the backlog.
 
 ### M1H-2 — recovery
 
-Verify resource/sound-engine loss and long underrun separately. Reuse existing renderer-loss READY->STATE where sufficient; add new state only for a demonstrated gap.
+**Source/test/CI/package PASS at `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`.**
+
+Deterministic coverage now proves:
+
+- continuous PCM starvation becomes a recovery condition after the selected timeout and real PCM clears it;
+- recovery READY retries at a bounded interval until authoritative STATE arrives;
+- normal STATE snapshots do not hide ongoing starvation;
+- pause/restart/hibernate can clear starvation deliberately;
+- nanoTime negative values/wraparound do not break retry timing;
+- the same server decode revision rebuilds correctly after the local decoder was discarded.
+
+Exact-source review additionally verifies the SoundEngine-close race: an externally closed renderer stream requests recovery instead of reporting a fatal decoder failure.
+
+Focused Minecraft resource reload, renderer-loss, and long-starvation recovery remain in the runtime backlog.
 
 ### M1H-3 — VS2 movement
 
@@ -221,6 +241,8 @@ M1G renderer-read policy coverage: PASS
 M1G staging cleanup: PASS
 M1G ordinary replay: implemented
 M1G focused audible/core runtime PASS: recorded 2026-09-19 on NeoForge 21.1.247 (KI-046 resolved)
+M1H-1 listener membership source/test/CI/package: PASS; focused Minecraft test deferred to backlog
+M1H-2 recovery source/test/CI/package: PASS; focused Minecraft reload/loss/starvation test deferred to backlog
 ```
 
 

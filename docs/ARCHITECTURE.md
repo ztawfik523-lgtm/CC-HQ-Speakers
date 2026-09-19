@@ -164,21 +164,13 @@ Seek/replacement/stop supersede stale local replay through generation/revision c
 
 The client latches renderer start only after `SoundManager.play(...)` returns, observes later activation/physical EOF, and requests authoritative READY/STATE rejoin when the renderer fails to become active or is unexpectedly lost. KI-060 is resolved at source/component level.
 
-## Listener membership at M1H start
+## M1H listener and recovery lifecycle
 
-Modern finite relevance is fixed at 32 blocks, but current source does not track which players have actually been admitted to a session.
+M1H-1 now tracks which players actually own the active modern finite client session. The server checks the fixed 32-block relevance set every tick, sends BEGIN + current STATE when a player enters, sends targeted STOP when they leave, and prunes disconnect/dimension changes. READY and range traffic require current membership.
 
-At session start, BEGIN/STATE are sent to currently relevant players. Later server ticks do not scan for new listeners; they only handle natural EOF. READY and range requests are relevance-checked, but a player who never received BEGIN has no local session/generation to use those paths.
+M1H-2 keeps local playback recoverable without changing protocol v7. Unexpected renderer/SoundEngine close or renderer loss requests a fresh authoritative STATE. READY is retried until STATE arrives. Five seconds of continuous renderer starvation also discards the stale local decoder and rejoins current server time. Ordinary STATE snapshots do not reset that starvation timer.
 
-M1H needs an explicit membership transition layer: outside->inside bootstrap, inside->outside targeted cleanup, return/rejoin at current authoritative time, disconnect/dimension pruning, and no repeated BEGIN/STOP spam while membership is unchanged.
-
-Solve membership before broad recovery or moving-source work.
-
-## Underrun and listener lifecycle
-
-A slow client never pauses canonical playback. M1G currently represents temporary PCM starvation as local silence.
-
-Full late-entry discovery, proactive leave cleanup, return/rejoin, dimension/resource-reload recovery, robust general underrun rejoin, and final moving-source lifecycle remain M1H.
+Focused Minecraft listener/reload/starvation checks are deferred to the runtime backlog.
 
 ### VS2 moving-source note
 

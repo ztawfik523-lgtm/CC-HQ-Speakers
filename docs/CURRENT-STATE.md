@@ -4,9 +4,9 @@ Updated: 2026-09-19
 
 ## Checkpoint
 
-Active branch: `codex/m1h-listener-lifecycle`.
+Active branch: `codex/m1h-recovery`.
 
-M1E, M1F, and M1G are complete. M1H-1 listener membership is complete at source/test/CI/package level and still needs focused Minecraft walk-in/walk-out/re-entry acceptance.
+M1E, M1F, and M1G are complete. M1H-1 listener membership and M1H-2 recovery are complete at source/test/CI/package level. Their focused Minecraft runtime checks are deferred to the backlog.
 
 M1H-1 **source** checkpoint:
 
@@ -16,6 +16,15 @@ M1H-1 CI `35410830197` passed NeoForge 21.1.247 and 21.1.248 with deterministic 
 
 - NeoForge 21.1.247: artifact `10574726822`, SHA-256 `62e8f090ddfe5466db3807dd1d78fd738c355887e6e938f811834d9630078cc9`;
 - NeoForge 21.1.248: artifact `10573826903`, SHA-256 `2538111207be632a1253a762f6a45218b6d7ca4b24c2739359b4f56c8e648555`.
+
+M1H-2 **source/test checkpoint**:
+
+`aa72f0d2fc9f8cde53cd956389beca1743d06165`
+
+M1H-2 CI `35411480844` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
+
+- NeoForge 21.1.247: artifact `10574298203`, SHA-256 `536399fbb03f1b8009f4abc0c1260a116e5376234f125d4ccd43a25c3263e370`;
+- NeoForge 21.1.248: artifact `10573757634`, SHA-256 `c496b3871cb7dae32d323dbdc3d10dd44efb8f9c012d18043a5a075285293790`.
 
 Final M1G **source** checkpoint:
 
@@ -199,7 +208,24 @@ Current behavior:
 
 `FiniteListenerMembershipTest` covers walk-in/stay/leave/return, retry behavior when a projection fails, disconnect/dimension-style pruning, and full clear on stop/replacement/terminal.
 
-Focused real-Minecraft M1H-1 walk-in/walk-out/re-entry acceptance is still pending. CI does not prove audible cleanup/rejoin behavior.
+Focused real-Minecraft M1H-1 walk-in/walk-out/re-entry acceptance was explicitly deferred by the owner on 2026-09-19 and remains in the backlog. CI does not prove audible cleanup/rejoin behavior.
+
+## M1H-2 recovery implemented
+
+M1H-2 is implemented at source/test/CI/package level at `aa72f0d2fc9f8cde53cd956389beca1743d06165`, CI `35411480844`.
+
+Current behavior:
+
+- if Minecraft/SoundEngine closes the active finite audio stream during reload/loss, that expected close no longer becomes a fatal decoder error;
+- an unexpectedly closed or lost renderer requests a fresh authoritative STATE and rebuilds from the current server time;
+- recovery READY is retried once per second until a usable STATE arrives, so one failed recovery send cannot leave playback stuck;
+- five seconds of continuous renderer starvation triggers the same current-time rejoin;
+- normal STATE updates do not hide a continuing starvation problem;
+- pause, decoder restart, and volume-zero hibernation clear the starvation timer correctly;
+- recovery can rebuild from the same server `decodeRevision`; it does not fake a seek or protocol change;
+- client world loss still clears sessions, while dimension/range cleanup is handled by M1H-1 membership.
+
+Focused Minecraft resource-reload/renderer-loss/long-starvation recovery testing is deferred to the runtime backlog. CI does not prove SoundEngine behavior.
 
 ## M1H / VS2 movement boundary
 
@@ -228,8 +254,10 @@ Post-M1G KI-063 replacement admission hardening: PASS
 Post-M1G KI-064 import progress/rename hardening: PASS
 Post-M1G KI-054 shutdown lock/retry hardening: PASS
 M1H-1 listener membership source/test/CI/package: PASS at 84e7bab99009e5871934a960908945ceb00a10a9 / CI 35410830197
-M1H-1 focused Minecraft walk-in/walk-out/re-entry acceptance: pending
-Next slice: M1H-2 recovery
+M1H-1 focused Minecraft walk-in/walk-out/re-entry acceptance: deferred to backlog
+M1H-2 recovery source/test/CI/package: PASS at aa72f0d2fc9f8cde53cd956389beca1743d06165 / CI 35411480844
+M1H-2 focused Minecraft reload/loss/starvation acceptance: deferred to backlog
+Next slice: M1H-3 moving source / VS2
 ```
 
 ## Read order
