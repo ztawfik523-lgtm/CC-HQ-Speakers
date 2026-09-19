@@ -9,14 +9,16 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class HQSpeakerNetwork {
 
-    private static final String PROTOCOL_VERSION = "9";
+    private static final String PROTOCOL_VERSION = "8";
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
 
         registrar.playToClient(HQSpeakerAudioPacket.TYPE, HQSpeakerAudioPacket.STREAM_CODEC, HQSpeakerAudioPacket::handle);
         registrar.playToClient(HQSpeakerStopPacket.TYPE, HQSpeakerStopPacket.STREAM_CODEC, HQSpeakerStopPacket::handle);
+        registrar.playToClient(HQSpeakerControlPacket.TYPE, HQSpeakerControlPacket.STREAM_CODEC, HQSpeakerControlPacket::handle);
         registrar.playToServer(IcyMetaPacket.TYPE, IcyMetaPacket.STREAM_CODEC, IcyMetaPacket::handle);
+        registrar.playToServer(HQSpeakerStatusPacket.TYPE, HQSpeakerStatusPacket.STREAM_CODEC, HQSpeakerStatusPacket::handle);
 
         registrar.playToClient(HQFiniteMediaBeginPacket.TYPE, HQFiniteMediaBeginPacket.STREAM_CODEC, HQFiniteMediaBeginPacket::handle);
         registrar.playToClient(HQFiniteMediaControlPacket.TYPE, HQFiniteMediaControlPacket.STREAM_CODEC, HQFiniteMediaControlPacket::handle);
@@ -25,7 +27,7 @@ public class HQSpeakerNetwork {
         registrar.playToServer(HQFiniteMediaRangeRequestPacket.TYPE, HQFiniteMediaRangeRequestPacket.STREAM_CODEC, HQFiniteMediaRangeRequestPacket::handle);
         registrar.playToClient(HQFiniteMediaRangeDataPacket.TYPE, HQFiniteMediaRangeDataPacket.STREAM_CODEC, HQFiniteMediaRangeDataPacket::handle);
 
-        HQSpeakerMod.log("Network registered with protocol v9 and 9 payloads.");
+        HQSpeakerMod.log("Network registered with protocol v8 and 11 payloads.");
     }
 
     public static void sendToPlayer(HQSpeakerAudioPacket packet, ServerPlayer player) {
