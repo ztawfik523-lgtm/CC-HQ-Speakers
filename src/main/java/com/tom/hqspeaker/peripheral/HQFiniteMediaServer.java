@@ -118,6 +118,7 @@ public final class HQFiniteMediaServer {
         final long totalBytes;
         final FinitePlaybackAuthority playback;
         float volume;
+        boolean muted;
         final FiniteRangeReadService rangeReads;
         final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
@@ -468,6 +469,20 @@ public final class HQFiniteMediaServer {
         return true;
     }
 
+    public synchronized boolean setMuted(boolean muted) {
+        Session s = session;
+        if (s == null || s.playback.terminal()) return false;
+        long now = System.nanoTime();
+        if (finalizeNaturalEnd(s, now)) {
+            s.shared.notifyEndpoints(now);
+            return false;
+        }
+        if (s.muted == muted) return true;
+        s.muted = muted;
+        notifyState(s, now);
+        return true;
+    }
+
     public synchronized boolean setLooping(boolean looping) {
         Session s = session;
         if (s == null || s.playback.terminal()) return false;
@@ -566,7 +581,7 @@ public final class HQFiniteMediaServer {
 
     private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
         Session s = session;
-        if (s == null || player == null || s.playback.terminal() || s.volume <= 0.0f) return;
+        if (s == null || player == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
         if (!FiniteRangeValidation.requestMatches(
                 source, s.mediaId, s.generation, s.totalBytes,
                 packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
@@ -593,7 +608,7 @@ public final class HQFiniteMediaServer {
     private synchronized void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
                                             FiniteRangeReadService.ReadResult result) {
         Session s = session;
-        if (s == null || s.playback.terminal() || s.volume <= 0.0f) return;
+        if (s == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
         if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
         ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
@@ -677,7 +692,7 @@ public final class HQFiniteMediaServer {
 
     private HQFiniteMediaBeginPacket beginPacket(Session s, float[] world) {
         return new HQFiniteMediaBeginPacket(source, s.mediaId, s.generation, s.descriptor,
-            s.volume, world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+            effectiveVolume(s), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
             s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackAuthority.State.PAUSED);
     }
 
@@ -717,7 +732,7 @@ public final class HQFiniteMediaServer {
             FiniteDecodeAnchorSelector.select(s.metadata, s.totalBytes, playback.position());
         return new HQFiniteMediaStatePacket(
             source, s.mediaId, s.generation, playback.decodeRevision(), wireState(playback.state()),
-            playback.position(), playback.duration(), s.volume, playback.looping(),
+            playback.position(), playback.duration(), effectiveVolume(s), playback.looping(),
             anchor.offset(), anchor.seconds(), playback.error()
         );
     }
@@ -772,6 +787,7 @@ public final class HQFiniteMediaServer {
         out.put("channels", s.metadata.channels());
         out.put("bitsPerSample", s.metadata.bitsPerSample());
         out.put("volume", (double) s.volume);
+        out.put("muted", s.muted);
         out.put("looping", playback.looping());
         out.put("totalBytes", s.totalBytes);
         out.put("assetId", s.retainedAssetId.toString());
@@ -780,6 +796,10 @@ public final class HQFiniteMediaServer {
         out.put("canLoop", !terminal);
         if (!playback.error().isBlank()) out.put("error", playback.error());
         return out;
+    }
+
+    private static float effectiveVolume(Session session) {
+        return session.muted ? 0.0f : session.volume;
     }
 
     private static float clampVolume(double volume) {

@@ -224,4 +224,23 @@ function hqspeaker.playFileAll(speaker, path, options)
     return acceptedOrError == true
 end
 
+--- Mute/unmute only this physical speaker endpoint without changing its configured volume.
+function hqspeaker.setMuted(speaker, muted)
+    checkSpeaker(speaker)
+    if type(muted) ~= "boolean" then error("muted must be a boolean", 2) end
+    return speaker.audioSetMuted(muted)
+end
+
+--- Mute/unmute all endpoints from this computer which belong to the same shared playback.
+function hqspeaker.setMutedAll(speaker, muted)
+    checkSpeaker(speaker)
+    if type(muted) ~= "boolean" then error("muted must be a boolean", 2) end
+    return speaker.audioSetMutedAll(muted)
+end
+
+function hqspeaker.mute(speaker) return hqspeaker.setMuted(speaker, true) end
+function hqspeaker.unmute(speaker) return hqspeaker.setMuted(speaker, false) end
+function hqspeaker.muteAll(speaker) return hqspeaker.setMutedAll(speaker, true) end
+function hqspeaker.unmuteAll(speaker) return hqspeaker.setMutedAll(speaker, false) end
+
 return hqspeaker

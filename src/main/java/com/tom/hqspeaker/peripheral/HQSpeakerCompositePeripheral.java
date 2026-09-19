@@ -289,6 +289,36 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @LuaFunction
+    public final boolean audioSetMuted(boolean muted) {
+        commandRevision.incrementAndGet();
+        synchronized (commandLock) {
+            synchronized (this) {
+                return owner == Owner.STAGED_FINITE && finite.setMuted(muted);
+            }
+        }
+    }
+
+    @LuaFunction
+    public final boolean audioSetMutedAll(IComputerAccess computer, boolean muted) {
+        commandRevision.incrementAndGet();
+        synchronized (commandLock) {
+            synchronized (this) {
+                if (owner != Owner.STAGED_FINITE) return false;
+            }
+
+            boolean changed = false;
+            for (HQSpeakerCompositePeripheral member : membersFor(computer)) {
+                synchronized (member) {
+                    if (member.owner == Owner.STAGED_FINITE && finite.sharesPlaybackWith(member.finite)) {
+                        changed = member.finite.setMuted(muted) || changed;
+                    }
+                }
+            }
+            return changed;
+        }
+    }
+
+    @LuaFunction
     public final boolean audioReleasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         return staging.releasePrepared(computer, assetId);
     }
