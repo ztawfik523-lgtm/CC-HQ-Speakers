@@ -54,6 +54,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
         "audioSetVolumeAll", "audioSetLoopingAll", "audioStopAll"
     );
+    private static final Set<String> FINITE_AT_CONTROLS = Set.of(
+        "audioStatusAt", "audioPauseAt", "audioResumeAt", "audioSeekAt",
+        "audioSetVolumeAt", "audioSetLoopingAt", "audioStopAt"
+    );
     /** Dynamic calls which observe state/capabilities but do not supersede an in-flight stream start. */
     private static final Set<String> READ_ONLY_DYNAMIC = Set.of(
         "audioStatus", "audioStatusAll", "audioStatusAt",
@@ -202,8 +206,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         Set<HQSpeakerCompositePeripheral> members = COMPUTER_SPEAKERS.get(computer.getID());
         if (members == null || members.isEmpty()) return List.of();
         ArrayList<HQSpeakerCompositePeripheral> out = new ArrayList<>(members);
-        out.sort(Comparator.comparing(p -> p.finite.source().toString()));
+        out.sort(Comparator
+            .comparingInt((HQSpeakerCompositePeripheral p) -> p.finite.position().getX())
+            .thenComparingInt(p -> p.finite.position().getY())
+            .thenComparingInt(p -> p.finite.position().getZ()));
         return out;
+    }
+
+    private static HQSpeakerCompositePeripheral memberAt(IComputerAccess computer, int index) throws LuaException {
+        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
+        if (index < 1 || index > members.size()) throw new LuaException("speaker index out of range");
+        return members.get(index - 1);
     }
 
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
@@ -319,6 +332,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @LuaFunction
+    public final boolean audioSetMutedAt(IComputerAccess computer, int index, boolean muted) throws LuaException {
+        HQSpeakerCompositePeripheral member = memberAt(computer, index);
+        synchronized (member) {
+            return member.owner == Owner.STAGED_FINITE && member.finite.setMuted(muted);
+        }
+    }
+
+    @LuaFunction
     public final boolean audioReleasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         return staging.releasePrepared(computer, assetId);
     }
@@ -365,6 +386,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
         if (FINITE_ALL_CONTROLS.contains(name)) {
             return callFiniteAllControl(name, computer, context, args);
+        }
+        if (FINITE_AT_CONTROLS.contains(name)) {
+            return callFiniteAtControl(name, computer, context, args);
         }
 
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
@@ -597,6 +621,30 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             default -> invokeLegacy(name, computer, context, args);
         };
+    }
+
+    private MethodResult callFiniteAtControl(String name, IComputerAccess computer, ILuaContext context,
+                                             IArguments args) throws LuaException {
+        int index = args.getInt(0);
+        HQSpeakerCompositePeripheral member = memberAt(computer, index);
+
+        synchronized (member) {
+            if (member.owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
+
+            return switch (name) {
+                case "audioStatusAt" -> MethodResult.of(member.finite.hasStatus() ? member.finite.status() : idleStatus());
+                case "audioPauseAt" -> MethodResult.of(member.finite.pause());
+                case "audioResumeAt" -> MethodResult.of(member.finite.resume());
+                case "audioSeekAt" -> MethodResult.of(member.finite.seek(args.getDouble(1)));
+                case "audioSetVolumeAt" -> MethodResult.of(member.finite.setVolume(args.getDouble(1)));
+                case "audioSetLoopingAt" -> MethodResult.of(member.finite.setLooping(args.getBoolean(1)));
+                case "audioStopAt" -> {
+                    member.stopCurrentHQ();
+                    yield MethodResult.of();
+                }
+                default -> invokeLegacy(name, computer, context, args);
+            };
+        }
     }
 
     private Map<String, Object> rawStatus() {

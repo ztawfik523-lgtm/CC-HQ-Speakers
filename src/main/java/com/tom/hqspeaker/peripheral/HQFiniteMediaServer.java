@@ -160,6 +160,7 @@ public final class HQFiniteMediaServer {
     }
 
     public UUID source() { return source; }
+    BlockPos position() { return pos; }
 
     public static void tickAll() {
         for (HQFiniteMediaServer server : ACTIVE) {
