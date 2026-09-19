@@ -238,9 +238,18 @@ function hqspeaker.setMutedAll(speaker, muted)
     return speaker.audioSetMutedAll(muted)
 end
 
+function hqspeaker.setMutedAt(speaker, index, muted)
+    checkSpeaker(speaker)
+    if type(index) ~= "number" then error("index must be a number", 2) end
+    if type(muted) ~= "boolean" then error("muted must be a boolean", 2) end
+    return speaker.audioSetMutedAt(index, muted)
+end
+
 function hqspeaker.mute(speaker) return hqspeaker.setMuted(speaker, true) end
 function hqspeaker.unmute(speaker) return hqspeaker.setMuted(speaker, false) end
 function hqspeaker.muteAll(speaker) return hqspeaker.setMutedAll(speaker, true) end
 function hqspeaker.unmuteAll(speaker) return hqspeaker.setMutedAll(speaker, false) end
+function hqspeaker.muteAt(speaker, index) return hqspeaker.setMutedAt(speaker, index, true) end
+function hqspeaker.unmuteAt(speaker, index) return hqspeaker.setMutedAt(speaker, index, false) end
 
 return hqspeaker
