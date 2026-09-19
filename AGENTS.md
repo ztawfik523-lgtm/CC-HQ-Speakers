@@ -1,95 +1,103 @@
 # CC:HQ Speakers — agent guide
 
-Updated: 2026-09-19
+Updated: 2026-09-20
 
-## Current state
+## Current authority
 
-Active branch: `codex/m1j-multispeaker`.
+Repository: `ztawfik523-lgtm/CC-HQ-Speakers`  
+Active branch: `codex/m1j-multispeaker`
 
-M1E through M1H are complete at source/test/CI/package level. M1H-1 listener membership, M1H-2 recovery, and M1H-3 Sable/VS2 moving-source support are implemented. Focused M1H Minecraft runtime checks remain deferred to the runtime backlog for now; the owner did not reject later runtime validation. M1J modern finite multispeaker is the active source milestone.
+Latest source checkpoint before this documentation closeout:
 
-Current M1J source checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd`, CI `35466635285`, green on both supported NeoForge targets. Focused Minecraft multispeaker acceptance is not yet recorded.
+- source: `00b07db41c003363cef60ef8ec4134fa387c421c`
+- CI: `35474944518`
+- NeoForge 21.1.247: PASS
+- NeoForge 21.1.248: PASS
 
-## How to make design decisions
+Current network protocol is **v9** with 9 payloads.
 
-Do not default to either the simpler design or the more general design.
+M1E through M1J are complete at source/test/CI/package level. M1G has focused audible/core Minecraft proof on NeoForge 21.1.247. Focused M1H listener/recovery/movement checks and focused M1J multispeaker Minecraft acceptance remain deferred to the runtime backlog; they were not rejected.
 
-When multiple approaches are reasonable, compare what each one actually buys the project. Weigh current implementation cost, maintenance burden, runtime/performance cost, new failure modes, debugging surface, reversibility, and migration cost against the realistic likelihood and value of the future cases the more adaptable design would cover.
+Post-M1J finite convergence is complete. MP3/WAV compatibility names use the modern finite engine. OGG/generic whole-file aliases and the duplicate finite engine are removed. RAW remains separate. Live MP3/HLS/TS/ICY remains optional legacy/future work.
 
-Future flexibility is valuable only when the future need is plausible enough or expensive enough to retrofit later. Treat realistic near-term needs differently from hypothetical edge cases.
+The inherited standalone `hqspeaker:hq_speaker` Minecraft block is removed. The only block product is the normal `computercraft:speaker` upgraded through the mixin/composite. The internal custom-audio sound event is `hqspeaker:hq_audio_source`.
 
-A simple design should not win merely because it is simple. A complex design should not win merely because it is more flexible or elegant.
+License is MPL-2.0. The old LGPL metadata mismatch was inherited from upstream and has been corrected.
 
-Explain which option appears better justified by the tradeoff and why, but for meaningful tradeoffs leave the final choice to the owner. Handle minor implementation details yourself.
+## Read before source changes
 
-The roadmap is a planning tool, not immutable law. Reorder, merge, split, defer, or scrap roadmap items when a fresh comparison shows a better sequence. Explain the reason and preserve completed evidence/history.
+Read in this order:
 
-## Communication style
+1. `docs/HANDOFF-2026-09-20-POST-CONVERGENCE.md`
+2. `docs/CURRENT-STATE.md`
+3. `docs/KNOWN-ISSUES.md`
+4. `docs/TESTING.md`
+5. `docs/VERIFIED-FACTS.md`
+6. `docs/ARCHITECTURE.md`
+7. `docs/ROADMAP.md`
+8. `docs/LUA-API.md`
+9. exact current source and latest CI
 
-Keep explanations practical, concise, and concrete.
-
-Prefer normal paragraphs over tall stacks of one-sentence lines. Do not repeat the same idea in several forms just to make the response longer.
-
-Avoid abstract architecture language and extreme implementation detail unless it is needed for the decision at hand. Explain what changes in-game, what changes in the code, what it costs, and what can go wrong.
-
-The owner can understand technical material; do not over-explain straightforward points.
-
-When presenting options, keep the comparison short enough to scan, but include the tradeoffs that materially affect the choice.
+Dated older milestone/handoff files are historical evidence. Their “current” statements describe the time they were written and do not override the files above.
 
 ## Product rules
 
-This is a programmable ComputerCraft speaker peripheral. Lua owns application meaning and policy. Do not add permanent Java music/effect/notification roles.
+This is a programmable ComputerCraft speaker extension. Lua owns application meaning and policy. Do not add Java music/effect/notification roles or a Java playlist manager.
 
-Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty`. HQ RAW uses separate `hqspeaker_audio_empty`.
+Preserve standard CC:T `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty`.
 
 One physical speaker remains one mono positional source.
 
-Modern prepared finite playback is server-authoritative, bounded, progressive, and currently supports MP3 plus supported common WAV. Protocol v8 uses shared `playbackId`/`stateRevision` plus `decodeRevision`; STATE remains the nonterminal authority and explicit STOP remains endpoint removal.
+Modern finite playback:
 
-The fixed modern core radius is 32 blocks. HQ volume changes gain, not that core radius. Sound Physics Remastered work may intentionally extend acoustics/range later.
+- MP3 + supported common WAV only;
+- server-authoritative canonical state/time;
+- bounded encoded range transport;
+- progressive client decode;
+- normal Minecraft SoundManager positional rendering;
+- fixed 32-block core relevance/delivery radius;
+- shared playback authority for multispeaker;
+- independent physical endpoints;
+- start-time endpoint snapshot;
+- shared play/pause/resume/seek/loop/stop;
+- endpoint-local volume/mute, with explicit All/At controls.
 
-M1H moving-source support uses local Sable/Aeronautics and VS2 transforms. Do not add continuous position packets or a universal movement framework unless a concrete future requirement makes that tradeoff worthwhile.
+RAW:
 
-## Source-work rules
+- signed 16-bit PCM at 48 kHz;
+- maximum 131072 samples per call;
+- bounded queue/backpressure;
+- `hqspeaker_audio_empty` only after a producer observed rejection;
+- singular/All/At;
+- All preflights the complete endpoint snapshot and uses one future start tick without an expected-member barrier.
 
-Before changing source, read:
+Optional live streaming:
 
-1. `docs/CURRENT-STATE.md`
-2. `docs/KNOWN-ISSUES.md`
-3. `docs/TESTING.md`
-4. `docs/VERIFIED-FACTS.md`
-5. `docs/ARCHITECTURE.md`
-6. `docs/ROADMAP.md`
-7. the exact current source and latest CI
-
-Historical milestone/handoff documents preserve history and do not override current records.
-
-For source changes: implement the selected behavior fully, add deterministic tests when they genuinely test the behavior, run both supported NeoForge CI targets, verify packaging when relevant, and adversarially reread the changed lifecycle paths before calling the work complete.
-
-Do not invent artificial test plumbing merely to satisfy a checkbox when compilation/package/runtime evidence is the correct proof.
-
-Green CI is not Minecraft runtime proof. Keep source/CI/package evidence separate from focused in-game acceptance.
+- `speakStream` / MP3 stream, `speakHLS`, `speakTS` and ICY metadata;
+- not a core release requirement;
+- grouped live helpers still use legacy sync-group metadata/client code;
+- do not delete that sync machinery until grouped live streaming is retired or redesigned.
 
 ## Current architecture boundaries
 
-Current protocol-v8 source owns one canonical playback authority across independent physical speaker endpoints. Shared state/time/seek/loop/terminal truth belongs to the authority; endpoint gain/mute/listeners/transport/renderer/recovery remain independent.
+The normal CC:T `SpeakerPeripheral` remains the standard-behavior implementation. `HQSpeakerCompositePeripheral` adds HQ ownership and extensions around it.
 
-Client owns bounded encoded-window consumption, progressive decode, PCM buffering, SoundManager rendering, and local recovery/rejoin.
+Modern finite multispeaker shares one `FinitePlaybackAuthority` and playback asset while each physical speaker keeps its own source UUID, position, listener membership, transport, renderer, recovery, volume and mute.
 
-Temporary starvation is not EOF. Seek/replacement/stop must invalidate stale encoded waits, decoder workers, PCM, and renderer state.
+Protocol v9 is the current wire protocol. v8 introduced `playbackId` / `stateRevision`. v9 removed retired legacy finite payloads; the modern finite semantics remain.
 
-M1H listener admission is dynamic. Late listeners receive the current authoritative state; leaving relevance gets cleanup; returning rejoins at current server time.
+Client shared playback projection must not re-anchor the canonical local clock for every same-revision endpoint packet.
 
-M1H recovery rejoins current server time after renderer loss or sustained starvation without inventing a new server revision.
+M1H movement uses Sable Companion first, then VS2, then static block center. Do not add continuous position packets without a concrete need.
 
-M1H moving-source support resolves Sable/Aeronautics-style sublevels first, VS2 second, otherwise normal block center. Native ordinary Create contraption lifecycle is not part of this support unless a concrete requirement justifies separate work.
+Important unresolved runtime risk: server relevance still requires `player.level() == level` after moving-source position projection. A Sable sublevel speaker projected into a parent world may therefore be geometrically correct but still fail listener admission. Do not mark this resolved without focused runtime/source work.
 
-## Remaining roadmap areas
+## Work style
 
-M1J modern finite multispeaker is active. The selected model is one shared playback authority plus independent physical speaker endpoints. The start-time member set is a snapshot; endpoint loss/removal must not fail the remaining group; there is no expected-global-member client barrier.
+Do not overcomplicate for hypothetical edge cases. When there are multiple meaningful approaches, present the practical tradeoffs and let the owner choose. Handle small implementation choices yourself.
 
-After correctness, multispeaker decode/network sharing is a profiling decision gate rather than a promised milestone. Then converge worthwhile legacy APIs onto the modern engine, evaluate codecs individually, run integrated compatibility/stress work, and perform release cleanup.
+Green CI is not runtime proof. Keep source/test/package evidence separate from Minecraft/SoundManager/OpenAL evidence.
 
-Direct radio/ICY/HLS/TS is no longer a core roadmap requirement. Spotify/YouTube/provider-backed playback is future research and must be treated as provider integration, not generic URL streaming.
+Before deleting “legacy” code, verify exact current references. The recent cleanup intentionally kept live-stream sync code because it is still reachable.
 
-Known later issues include the inherited multispeaker expected-member barrier, misleading legacy capability lists, incorrect legacy `playNoteAll`/`playSoundAll` semantics, inherited live/HLS/TS defects, license provenance, and release hygiene.
+Do not reintroduce a standalone speaker block, a second finite engine, OGG/generic JavaSound aliases, or shared decode fan-out unless a fresh product/performance case justifies it.

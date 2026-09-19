@@ -1,263 +1,107 @@
 # Architecture
 
-## Status and authority
+Updated: 2026-09-20
 
-This file describes the current architecture and selected near-term direction. Exact current source still wins over documentation. For implementation status and open defects, read `CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `TESTING.md`, and `VERIFIED-FACTS.md` first.
+## Product boundary
 
-Final M1G source checkpoint: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542`, CI `35297026277`. Post-M1G hardening source checkpoint: `3d30ce4564de749f32171666df65de739b08ad77`, latest full verification CI `35406595856`.
+The mod upgrades the normal CC:T `computercraft:speaker`. There is no standalone HQ speaker block.
 
-The source now implements modern finite protocol **v8**. It retains the server-authoritative decoder/re-anchor revision and adds shared playback identity/state revision for M1J.
+`ComputerCraftSpeakerBlockEntityMixin` replaces the exposed peripheral with `HQSpeakerCompositePeripheral` while retaining CC:T's real `SpeakerPeripheral` for native behavior.
 
-## Product model
+Internal custom audio uses SoundManager resource `hqspeaker:hq_audio_source`.
 
-CC:HQ Speakers is a programmable ComputerCraft speaker peripheral, not a built-in music player. Lua owns application policy such as music/effects/notifications/playlists; Java models technical audio capabilities only.
+## Output ownership
 
-One physical speaker remains one mono positional source.
+One physical speaker has one HQ continuous owner at a time:
 
-The normal `computercraft:speaker` is the product surface. Standard `playNote`, `playSound`, `playAudio`, `stop`, and native `speaker_audio_empty` remain CC:T behavior. HQ RAW uses separate `hqspeaker_audio_empty` pacing.
+- NONE
+- RAW
+- STAGED_FINITE
+- STREAM
 
-## Modern finite architecture
+Native notes remain separate. Native `playSound` / `playAudio` do not overlap an active HQ continuous source.
 
-```text
-ComputerCraft file
--> temporary per-speaker staging mount
--> immutable server MediaAsset
--> server-authoritative playback state
--> protocol v8 playbackId + STATE stateRevision/decodeRevision + codec-aware anchor
--> bounded client-requested encoded ranges
--> fixed-size sliding encoded window
--> progressive decoder worker
--> bounded mono S16 PCM
--> Minecraft AudioStream / positional BLOCKS renderer
-```
+Replacement paths should validate/admit the new source before ending the current valid one.
 
-A MediaAsset owns encoded bytes and server-derived facts. Modern finite playback uses one shared authority so one-speaker and multispeaker playback use the same model. Post-M1J convergence removed the inherited complete-file finite engine; the legacy audio path is now RAW/live-only.
+## Standard CC:T path
 
-The selected M1J boundary is:
+Standard singular/All/At note, sound and DFPWM calls are handled by the composite and dispatched to actual CC:T speaker peripherals.
 
-```text
-shared playback authority
-  media/playback identity
-  canonical clock + play/pause/seek/loop
-  shared state/decode revisions
-  playback asset lifetime
-        |
-        +--> physical speaker endpoint A -> listeners/transport/renderer/recovery
-        +--> physical speaker endpoint B -> listeners/transport/renderer/recovery
-        +--> physical speaker endpoint C -> listeners/transport/renderer/recovery
-```
+Old fake grouped/indexed implementations remain inside `HQSpeakerPeripheral` only as cleanup debt; they are not the supported behavior.
 
-A renderer remains client-local and never becomes canonical timeline authority. Endpoint loss/removal is not a shared playback failure.
+## Modern finite
 
-The inherited complete-file JavaSound/mp3spi bridge is not the modern prepared engine.
+`HQMediaStaging` / `MediaAssetStore` own immutable encoded assets. `ModernFiniteMediaAnalyzer` accepts MP3 and supported common WAV.
 
-## Modern finite support
+`FinitePlaybackAuthority` owns shared playback facts: playback ID, canonical time/state, looping, state/decode revisions, shared terminal failure and shared playback identity.
 
-Current modern prepared/local playback is deliberately narrow:
+Each endpoint independently owns physical source UUID, position, listener membership, range transport, renderer/recovery state, volume and mute.
 
-- MP3 / MPEG Layer III;
-- common WAV U8/S16/S24/S32/F32, mono/stereo;
-- classic RIFF/WAVE plus the selected narrow PCM/float WAVEX subset;
-- native FLAC only if later M1I proof succeeds.
+A multispeaker group is a start-time endpoint snapshot. There is no expected-global-member barrier. Endpoint removal/replacement detaches only that endpoint.
 
-Historical OGG/AIFF/AU analysis or inherited APIs do not define the modern prepared support surface.
+Shared controls: pause/resume, seek, loop, stop. Endpoint controls: volume, mute. All-volume/all-mute targets the surviving playback endpoint snapshot.
 
-Finite output is mono signed 16-bit PCM at source sample rate. Stereo is downmixed; more-than-stereo input is rejected.
+Protocol v8 added `playbackId` / `stateRevision`. Current protocol v9 removed retired legacy finite payloads while retaining the shared modern finite semantics.
 
-## Server authority
+Client maintains one `FinitePlaybackProjection` per shared playback. Same-revision endpoint packets do not repeatedly re-anchor the shared local clock.
 
-The server owns canonical playback identity, PLAYING/PAUSED/ENDED/shared-ERROR, position/duration, seek, loop, and codec re-anchor state. M1J separates endpoint gain and endpoint-local failure from the shared canonical timeline.
+Each endpoint still has its own decoder/PCM/render path. Shared decode fan-out is intentionally not implemented without profiling evidence.
 
-Successful play starts canonical time immediately. It does not wait for transfer, decoder readiness, or audibility. Client failures are local diagnostics, not canonical clock/EOF authority.
+## Listener/range
 
-Temporary range starvation never becomes canonical EOF.
+Modern finite uses a fixed 32-block core relevance radius.
 
-## Local import and asset ownership
+Listener membership is dynamic: outside at start gets no session, entering gets BEGIN + current STATE, leaving gets targeted STOP, returning rejoins current time, and terminal/replacement clears membership.
 
-The writable CC mount is temporary import plumbing:
+READY/range traffic is admitted only for relevant members.
 
-```text
-CC file -> temporary staging copy -> reusable server MediaAsset -> playback
-```
+## Movement
 
-Recommended helpers are `hq.playFile`, `prepareFile`, `preparedInfo`, `playPrepared`, and `releasePrepared`.
+`MovingSourcePosition` resolves Sable Companion first, VS2 second, static block center otherwise.
 
-`audioPlayStaged()` was a project prototype and was removed in M1F. Do not restore a second direct-staged playback route.
+No continuous x/y/z packet stream exists.
 
-Known lifecycle debt after M1G:
+Known unresolved risk: server relevance also requires `player.level() == level`. A Sable sublevel may project into a parent world while still carrying a different Level object.
 
-- KI-064 was closed by post-M1G hardening: import has bounded no-progress handling and unsupported-`ATOMIC_MOVE` fallback;
-- KI-054 was closed by post-M1G hardening: shutdown starts range-worker cancellation early, retains failed cleanup for retry, and preserves the media-store root lock until cleanup truly succeeds.
+## Recovery
 
-KI-061 was resolved: whole-owner staging cleanup removes persistent staging leftovers after unmount/release.
+Renderer/resource close/loss and sustained starvation are local recovery cases. The client requests authoritative current state and rebuilds from current time.
 
-## Modern transport
+Shared/global failure should be reserved for genuinely shared failures.
 
-The server keeps the complete encoded asset. Relevant clients request bounded encoded ranges.
+## RAW
 
-Current tuning is 128 KiB max range response and 512 KiB active client encoded window, with bounded outstanding work. These are tuning values, not public API guarantees.
+RAW is producer-fed signed-16 PCM at 48 kHz.
 
-Modern prepared playback has no complete client song `.part/.media` file and no modern CHUNK/END whole-file transfer. Server range reads and client codec work stay off Minecraft game/audio threads.
+Composite admission provides max 131072 samples/call, queue limit 16, bounded sample lifetime, non-destructive rejection, `hqspeaker_audio_empty` after observed rejection, singular/All/At, full group preflight for All, and one future group start tick without expected-member synchronization.
 
-## Integrated M1G decoder/render path
+RAW is not a finite MediaAsset and has no real seek/duration/loop model.
 
-Current source wires:
+## Optional live
 
-```text
-FiniteRangeWindow
--> FiniteEncodedInputStream
--> ProgressiveWavDecoder / ProgressiveMp3Decoder
--> FinitePcmQueue
--> FinitePcmAudioStream
--> FiniteSpeakerSound / SoundManager / BLOCKS
-```
+`HQSpeakerPeripheral` / `HQAudioStream` retain optional live MP3/HLS/TS behavior and ICY metadata.
 
-MP3 uses packaged JLayer progressively. Temporary missing range data waits only on a decoder worker and never becomes normal EOF. E1 seek starts from an earlier analyzed seek point and discards pre-target PCM.
+Grouped live helpers still use `SyncDispatch`, packet `syncGroupId` / `syncGroupSize`, and client `SyncGroupState` expected-count logic.
 
-`FiniteDecodeAnchorSelector.Anchor` contains exactly two facts: encoded byte offset and anchor time in seconds. There are no hidden frame-index/skip fields being computed and discarded.
+This live architecture is optional and must not dictate modern finite/RAW design.
 
-WAV layout is normalized server-side and progressively converted to mono S16 without whole-track PCM retention.
+## Storage/workers
 
-`FinitePcmAudioStream` performs no network/disk/codec work. Temporary PCM starvation yields bounded silence rather than terminal EOF.
+Media assets use per-asset and total quotas.
 
-## Decoder/re-anchor semantics
+Range IO: 2 workers, queue 64, max response 128 KiB, per-player 4 outstanding requests / 512 KiB, client encoded window 512 KiB.
 
-Protocol v8 preserves the v7 separation between timeline snapshots and codec restart intent, while adding `playbackId` and `stateRevision` for a shared client timeline.
+## Dependencies
 
-- new media => new generation;
-- semantic seek => `decodeRevision` increments;
-- ordinary STATE/pause/resume/volume/loop snapshots keep the same revision and preserve a healthy decoder/window;
-- local recovery may rebuild a missing decoder without changing server revision;
-- stale lower-revision STATE is ignored;
-- local worker identity is invalidated before cancellation can wake/report;
-- STATE is the sole nonterminal transition authority;
-- explicit STOP remains separate because stop removes the server session.
+Embedded:
 
-This closes KI-053/KI-056/KI-057.
+- JLayer 1.0.1.4
+- Sable Companion 1.6.0
 
-## Volume, attenuation, and range
+No mp3spi or Tritonus.
 
-M1G deliberately uses a **fixed core listening/delivery radius** rather than native CC:T-style volume-dependent range.
+## License/provenance
 
-Current server relevance already uses 32 blocks. The selected target contract is:
+Source is MPL-2.0.
 
-- fixed 32-block M1G core radius unless the owner explicitly changes the number;
-- normal positional attenuation inside that radius;
-- HQ `volume` changes gain/loudness, not the core radius;
-- volume above 1 must not silently enlarge the modern finite attenuation distance;
-- future Sound Physics Remastered compatibility owns any intentional range extension/acoustic behavior and matching transport relevance.
-
-The active Minecraft channel is explicitly assigned the selected fixed 32-block attenuation distance. KI-058 is resolved.
-
-## Volume zero
-
-Global HQ volume zero does not pause canonical server time.
-
-Current behavior:
-
-- keep the server playback/session clock running;
-- cancel local decoder and renderer work;
-- stop client encoded range demand;
-- reject/drop server range delivery while globally muted;
-- retain client session metadata;
-- on unmute, rebuild from the current authoritative position/anchor.
-
-A player's own MASTER/BLOCKS slider is client-local and does not affect server transport. `FiniteSpeakerSound.canStartSilent()` supports that local-muted case.
-
-## Looping
-
-Looping is deliberately ordinary replay, not gapless playback.
-
-At local physical EOF, if authoritative state still says `looping=true`, the client starts a fresh local decoder/render iteration and catches up to the current canonical loop position. A normal restart gap is acceptable.
-
-M1G does **not** include sample-gapless boundaries, LAME/Xing delay/padding trimming, loop-head prefetch solely to hide the boundary, a permanent source across iterations, or SPR-specific loop continuity.
-
-Seek/replacement/stop supersede stale local replay through generation/revision checks.
-
-## Renderer startup
-
-`FiniteSpeakerSound` uses Minecraft `SoundManager`, `SoundSource.BLOCKS`, linear positional attenuation, and `canStartSilent()`.
-
-The client latches renderer start only after `SoundManager.play(...)` returns, observes later activation/physical EOF, and requests authoritative READY/STATE rejoin when the renderer fails to become active or is unexpectedly lost. KI-060 is resolved at source/component level.
-
-## M1H listener and recovery lifecycle
-
-M1H-1 now tracks which players actually own the active modern finite client session. The server checks the fixed 32-block relevance set every tick, sends BEGIN + current STATE when a player enters, sends targeted STOP when they leave, and prunes disconnect/dimension changes. READY and range traffic require current membership.
-
-M1H-2 recovery semantics remain intact under protocol v8. Unexpected renderer/SoundEngine close or renderer loss requests a fresh authoritative STATE. READY is retried until STATE arrives. Five seconds of continuous renderer starvation also discards the stale local decoder and rejoins current server time. Ordinary STATE snapshots do not reset that starvation timer.
-
-Focused Minecraft listener/reload/starvation checks are deferred to the runtime backlog.
-
-### Moving-source handling
-
-M1H-3 uses local position resolution rather than streaming coordinates over the network.
-
-For each active modern finite speaker:
-
-1. Sable Companion projects Sable/Aeronautics-style sublevel block coordinates into current world space when applicable;
-2. otherwise the existing VS2 ship transform is used when applicable;
-3. otherwise the block center is already the world position.
-
-The client updates the existing positional sound from that result. The server uses the same resolved position for fixed-radius listener membership. BEGIN's existing block coordinates remain sufficient, so protocol v8 adds no continuous x/y/z update packet.
-
-This is intentionally not a universal movement abstraction. Native ordinary Create contraption assembly/disassembly has different lifecycle semantics and is outside M1H-3 unless a later concrete requirement justifies that work.
-
-Focused moving-source Minecraft testing remains in the runtime backlog.
-
-## Cross-cutting ownership/threading safety
-
-KI-062 is resolved. Dynamic legacy stream calls may still block their calling ComputerCraft thread during DNS, but blocking URL validation now runs outside both the ownership monitor used by `tickOwnership()`/cleanup and the separate command-order lock. This also matters because `audioPlayPrepared` is a CC:T main-thread method: it cannot be forced to wait behind DNS through that lock.
-
-After validation, the normal single-speaker stream path briefly reacquires command ordering and ownership locking for the actual commit. A mutation revision rejects a normal stream start superseded by a newer playback/control command while DNS was pending. A lifecycle epoch separately rejects a result which returns after detach/cleanup, preventing a stale DNS completion from reviving a removed speaker.
-
-KI-063 is resolved for the known RAW/prepared paths: replacements are validated/admitted before destructive ownership transfer.
-
-Current protocol v9 preserves the M1J shared playback identity/state/decode semantics introduced in v8. v9 removed the obsolete legacy finite control/status payloads and stripped finite-only state from the RAW/live audio packet.
-
-## Multispeaker — selected M1J model
-
-M1J uses one shared playback authority plus independent physical speaker endpoints.
-
-A multispeaker start snapshots the speakers selected by the calling ComputerCraft computer. It does not maintain an expected-global-member count and does not automatically add speakers attached later.
-
-The shared authority owns only facts that must be identical: media/playback identity, canonical time, play/pause/seek/loop, shared revisions, natural EOF/shared failure, and playback asset lifetime. Each endpoint owns its physical source identity, position/movement, listener membership, endpoint gain, range transport, renderer, and recovery.
-
-Group-wide endpoint gain/mute operations iterate the authority's surviving endpoint snapshot. They do not rescan current ComputerCraft attachment membership, so topology changes do not silently redefine an active playback group.
-
-Removing/replacing one endpoint detaches it from the authority without stopping the remaining endpoints. An authority with no endpoints releases its playback ownership.
-
-Single-speaker prepared playback is the same architecture with one endpoint; do not maintain a second semantic engine for the one-speaker case.
-
-Protocol v8 now carries shared `playbackId` and `stateRevision`. Clients keep one `FinitePlaybackProjection` per playback, so equivalent STATE packets arriving later from another endpoint do not create a new packet-arrival clock. Each physical endpoint still owns its decoder/window/renderer and only adopts a newer shared revision after receiving its own matching STATE/codec anchor.
-
-Endpoint volume and mute are independent. Shared pause/resume/seek/loop/stop acts on the canonical playback. Modern prepared `*All` and `*At` controls are routed onto this model; inherited byte-taking/note/sound multispeaker helpers remain legacy.
-
-Encoded-range/decode sharing is deliberately not part of the correctness model. Measure duplicate work after M1J and add fan-out only if profiling justifies it.
-
-Current performance gate notes: every endpoint retains its own 512 KiB encoded window and bounded 32–256 KiB PCM queue. Server range IO is nevertheless capped per player at four requests / 512 KiB outstanding across all endpoints, so the remaining scaling concern is primarily repeated client decode work. No shared decoder/fan-out layer is selected without runtime evidence.
-
-## Raw and optional external/live sources
-
-Standard `playAudio` remains CC:T signed-8 producer-fed audio. HQ `speakPCM` remains open-ended signed-16 producer-fed audio with bounded backpressure; neither is a finite song.
-
-Direct internet-radio/ICY/HLS/TS support is not a core roadmap requirement. Existing inherited live code remains legacy until retained, replaced, or removed during convergence.
-
-Spotify/YouTube/provider-backed playback is future product research and is not equivalent to generic direct-HTTP audio streaming.
-
-## Legacy boundary
-
-Inherited byte-taking finite/live APIs and whole-track classes remain for later M1L/M3 migration/removal. They are compatibility/legacy code, not the modern prepared architecture.
-
-Legacy advertised format lists and legacy multispeaker note/sound helpers are not authoritative descriptions of modern prepared capabilities.
-
-## Lifecycle / storage
-
-Cleanup boundaries include peripheral removal, Level unload, server shutdown, computer detach/unmount, range/decoder worker shutdown, client disconnect/resource lifecycle, and bounded temporary encoded/PCM buffers.
-
-`HQSpeakerPeripheralProvider` intentionally uses a Level-keyed weak map only as a fallback: cached values themselves reference their Level, so deterministic lifecycle eviction is the real design. Do not describe that as an accidental WeakHashMap cycle; verify actual unload/removal hooks when evaluating residual cache lifetime.
-
-## VS2 / SPR / non-goals
-
-VS2 remains reflective and optional. Sound Physics Remastered remains later work. Preserve one physical positional source per speaker.
-
-Do not add permanent Java music/effects/notification channels, Java playlists, persistent client song caches, surround rendering from one speaker block, gapless-loop machinery, or automatic application-priority rules.
+Lineage: `tiktop101/CC-HQ-Speakers -> jvrcruzGAMES/CC-HQ-Speakers -> ztawfik523-lgtm/CC-HQ-Speakers`.
