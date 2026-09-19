@@ -64,16 +64,21 @@ There is no expected-global-member barrier. The member set is a start-time snaps
 
 Removing, replacing, or losing one endpoint must not stop the other endpoints. An empty authority releases its playback asset.
 
-### M1J implementation slices
+### M1J implementation status
 
-1. Extract a thread-safe shared playback authority and route existing single-speaker prepared playback through it. One speaker is simply a playback with one endpoint.
-2. Add explicit endpoint attach/detach ownership and transaction-safe group startup. Validate/reserve every target before destructive replacement.
-3. Add modern prepared multispeaker API/dispatch from the ComputerCraft-visible speaker set. Do not copy the inherited expected-member sync barrier.
-4. Move group pause/resume/seek/loop semantics onto the shared authority and define endpoint versus group volume behavior.
-5. Move protocol to the minimum revision needed for shared playback identity/state revision, then make clients project one shared timeline per playback while preserving one renderer per physical speaker.
-6. Add deterministic group lifecycle tests: partial listener visibility, endpoint removal/replacement, overlapping computer ownership, late listener admission, seek/recovery, and empty-group cleanup.
+First implementation checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd`, CI `35466635285`, green on both supported NeoForge targets.
 
-Focused Minecraft multispeaker acceptance comes after the source/component path is coherent; it is not required before starting M1J.
+Implemented:
+
+1. thread-safe shared playback authority used by both one-speaker and multispeaker prepared playback;
+2. shared asset lifetime plus independent endpoint attach/detach;
+3. transaction-style prepared group start with no expected-member barrier;
+4. modern `playPreparedAll` / `playFileAll`;
+5. shared pause/resume/seek/loop/stop with endpoint-local volume/mute and all/indexed variants;
+6. protocol v8 shared `playbackId` / `stateRevision` and one client-projected timeline per playback;
+7. deterministic authority and shared-timeline projection tests.
+
+Still open before M1J closeout: broader lifecycle/component coverage where it can be tested without artificial Minecraft plumbing, adversarial group cleanup/recovery review, and focused real-Minecraft multispeaker acceptance.
 
 ## Decision gate — multispeaker performance sharing
 

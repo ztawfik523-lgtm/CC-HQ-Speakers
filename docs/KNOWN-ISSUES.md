@@ -158,7 +158,7 @@ Native ordinary Create contraption assembly/disassembly is outside this resolved
 - Gapless MP3/LAME/Xing delay/padding handling is not an M1G requirement.
 - Continuous-source loop engineering is not an M1G requirement.
 - KI-034: native FLAC is optional codec-expansion work, not the next mandatory milestone.
-- KI-018: inherited expected-member multispeaker barrier can deadlock partial listeners — active M1J replaces it with shared playback authority plus independent endpoints.
+- KI-018: **resolved for the modern prepared M1J path** — protocol v8 shared playback uses no expected-member barrier, and each listener receives only relevant physical endpoints while sharing one playback timeline. The inherited legacy multispeaker engine still contains its old barrier until later API/engine convergence.
 - KI-011 / KI-012 / KI-023: inherited finite engine/APIs remain legacy — M1L.
 - KI-013 through KI-019: inherited live/HLS/TS/OpenAL lifecycle/gain issues remain legacy/later cleanup. Direct radio/ICY/HLS/TS is not a core roadmap requirement. A refreshed-live-playlist `currentSegmentIndex` progression bug is confirmed.
 - inherited capability lists advertise unsupported/broader formats; later migration must make them truthful.
@@ -183,7 +183,7 @@ The repository audit is supporting evidence, not current authority. The followin
 
 The post-M1G hardening pass and M1H source slices are complete. Focused M1H runtime checks are deferred for now, not rejected.
 
-The active engineering milestone is **M1J modern finite multispeaker** using one thread-safe shared playback authority plus independent physical speaker endpoints, with no expected-global-member barrier.
+The active engineering milestone is **M1J modern finite multispeaker**. The first implementation checkpoint is `b557773b9c6f6b8029aec132a1706f0d8da914bd` / CI `35466635285`; the modern prepared path now has shared playback authority, protocol v8 shared client timeline, independent endpoints, and no expected-global-member barrier. M1J runtime acceptance remains open.
 
 Do not reopen KI-062/063/054/064 without a concrete regression.
 

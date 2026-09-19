@@ -6,7 +6,7 @@ This is the current user-facing programming reference for CC:HQ Speakers.
 
 The mod upgrades the normal ComputerCraft `speaker`. Lua decides what the audio means; Java exposes technical audio capabilities and playback controls.
 
-M1G and the selected post-M1G hardening pass are implemented. Exact current source still wins over this reference if behavior and documentation disagree.
+M1G, post-M1G hardening, and M1H source work are implemented. M1J modern finite multispeaker is active; its first source/test/CI/package checkpoint is `b557773b9c6f6b8029aec132a1706f0d8da914bd`. Exact current source still wins over this reference if behavior and documentation disagree.
 
 ## Recommended starting point
 
@@ -116,6 +116,16 @@ Start a previously prepared server asset. A successful play creates a server-own
 
 Post-M1G hardening resolved KI-063: failed/rejected prepared replacement is admitted before destructive ownership transfer, so the previous valid HQ source is preserved on normal admission failure.
 
+### `hq.playPreparedAll(speaker, assetId [, options]) -> boolean`
+
+Start one shared prepared playback on the speakers currently attached to the calling ComputerCraft computer. The speaker set is a start-time snapshot.
+
+All endpoints share one canonical play/pause/seek/loop timeline, but each remains a separate positional source with its own listeners, renderer/recovery, configured volume, and mute state. There is no expected-member barrier.
+
+### `hq.playFileAll(speaker, path [, options]) -> boolean`
+
+Convenience form of prepare -> shared multispeaker play -> release preparation ownership.
+
 ### `hq.releasePrepared(speaker, assetId) -> boolean`
 
 Release this computer's preparation reference. Returns false when that computer did not own the preparation. Active playback retains its own reference until stop/end/error.
@@ -130,13 +140,16 @@ Useful modern prepared fields include:
 - `kind = "finite"`
 - `assetId`
 - `generation`
+- `playbackId`
+- `stateRevision`
 - `format`
 - `position`
 - `duration`
 - `sampleRate`
 - `channels`
 - `bitsPerSample`
-- `volume`
+- `volume` (configured endpoint gain)
+- `muted` (endpoint mute flag)
 - `looping`
 - `totalBytes`
 - `canPause`
@@ -189,6 +202,22 @@ Looping means normal “play the same thing again.” At local physical EOF, whi
 
 M1G does **not** promise sample-gapless MP3 looping, LAME/Xing encoder-delay/padding trimming, loop-head prefetch, or a permanent OpenAL source across loop iterations.
 
+### Endpoint mute and multispeaker controls
+
+For modern prepared playback, pause/resume/seek/loop operate on the shared playback. Volume and mute operate on the physical endpoint.
+
+- `speaker.audioSetMuted(boolean) -> boolean`
+- `speaker.audioSetMutedAll(boolean) -> boolean`
+- `speaker.audioSetMutedAt(index, boolean) -> boolean`
+- `hq.mute/unmute`, `hq.muteAll/unmuteAll`, and `hq.muteAt/unmuteAt`
+- modern `audioPauseAll/audioResumeAll/audioSeekAll/audioSetLoopingAll/audioStopAll` address the shared playback;
+- `audioSetVolumeAll` applies volume to all selected endpoints;
+- `audioSetVolumeAt` changes only the indexed endpoint;
+- indexed pause/resume/seek/loop still address the shared timeline;
+- indexed stop detaches only that endpoint.
+
+Muting preserves the endpoint's configured volume. Unmuting rejoins the current shared playback position rather than restarting from where it was muted.
+
 ### `speaker.audioStop()`
 
 Stop the currently owned HQ continuous source.
@@ -235,6 +264,7 @@ Most programs should use the `hqspeaker` module. These remain available because 
 - `speaker.audioPrepareStaged(path [, consume]) -> assetId`
 - `speaker.audioPreparedInfo(assetId) -> table`
 - `speaker.audioPlayPrepared(assetId [, volume]) -> boolean`
+- `speaker.audioPlayPreparedAll(assetId [, volume]) -> boolean`
 - `speaker.audioReleasePrepared(assetId) -> boolean`
 
 The writable mount is import plumbing, not a persistent playback library/cache.
@@ -282,6 +312,6 @@ server MediaAsset
 -> Minecraft AudioStream / positional BLOCKS renderer
 ```
 
-M1G is complete at source/test/CI/package/component level on protocol v7. Focused audible Minecraft M1G acceptance is still not recorded, so the docs do not claim that CI proves real SoundManager/OpenAL audibility or loop-gap perception.
+M1G is complete and has a recorded focused audible/core Minecraft PASS on NeoForge 21.1.247. Current source uses protocol v8 for M1J; green CI/package evidence is not a substitute for the still-unrecorded focused Minecraft multispeaker acceptance.
 
 See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, and `TESTING.md` for the current engineering boundary.
