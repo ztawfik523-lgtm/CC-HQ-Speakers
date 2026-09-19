@@ -115,6 +115,8 @@ public final class HQMediaStaging {
         // program modifying the writable staging file cannot race metadata for one version against bytes from another.
         try (SeekableByteChannel channel = staged.channel()) {
             asset = importAnalyzedAsset(staged.path(), staged.sizeBytes(), channel);
+        } catch (IOException e) {
+            throw new LuaException("cannot prepare staged media: " + safeMessage(e));
         }
 
         // The shared asset is already valid at this point. A temporary staging-delete failure must not destroy or hide
