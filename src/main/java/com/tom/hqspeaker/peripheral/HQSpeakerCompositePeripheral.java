@@ -17,6 +17,8 @@ import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
 import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,6 +50,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> STREAM_DIRECT = Set.of(
         "speakStreamAll", "speakHLSAll", "speakTSAll", "speakStreamAt", "speakHLSAt", "speakTSAt"
     );
+    private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
+        "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
+        "audioSetVolumeAll", "audioSetLoopingAll", "audioStopAll"
+    );
     /** Dynamic calls which observe state/capabilities but do not supersede an in-flight stream start. */
     private static final Set<String> READ_ONLY_DYNAMIC = Set.of(
         "audioStatus", "audioStatusAll", "audioStatusAt",
@@ -66,6 +72,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final long HQ_RAW_BUFFER_SAMPLES = HQ_RAW_MAX_SAMPLES + 2L * RawFeedLifetime.SAMPLES_PER_TICK;
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
+    private static final Map<Integer, Set<HQSpeakerCompositePeripheral>> COMPUTER_SPEAKERS = new ConcurrentHashMap<>();
 
     private enum Owner {
         NONE,
@@ -154,6 +161,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         vanilla.attach(computer);
         staging.attach(computer);
         finite.attach(computer);
+        COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), ignored -> ConcurrentHashMap.newKeySet()).add(this);
         IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, this::filteredLegacyAccess);
         legacy.attach(filtered);
     }
@@ -163,6 +171,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         rawCapacityWaiters.remove(computer);
         finite.detach(computer);
         staging.detach(computer);
+        unregisterComputer(computer.getID(), this);
         IComputerAccess filtered = legacyComputerViews.remove(computer);
         if (filtered != null) legacy.detach(filtered);
         vanilla.detach(computer);
@@ -170,6 +179,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     public synchronized void cleanup() {
         ACTIVE.remove(this);
+        for (IComputerAccess computer : new ArrayList<>(legacyComputerViews.keySet())) {
+            unregisterComputer(computer.getID(), this);
+        }
         rawCapacityWaiters.clear();
         owner = Owner.NONE;
         rawLifetime.clear();
@@ -177,6 +189,21 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         staging.cleanup();
         legacy.cleanup();
         legacyComputerViews.clear();
+    }
+
+    private static void unregisterComputer(int computerId, HQSpeakerCompositePeripheral peripheral) {
+        Set<HQSpeakerCompositePeripheral> members = COMPUTER_SPEAKERS.get(computerId);
+        if (members == null) return;
+        members.remove(peripheral);
+        if (members.isEmpty()) COMPUTER_SPEAKERS.remove(computerId, members);
+    }
+
+    private static List<HQSpeakerCompositePeripheral> membersFor(IComputerAccess computer) {
+        Set<HQSpeakerCompositePeripheral> members = COMPUTER_SPEAKERS.get(computer.getID());
+        if (members == null || members.isEmpty()) return List.of();
+        ArrayList<HQSpeakerCompositePeripheral> out = new ArrayList<>(members);
+        out.sort(Comparator.comparing(p -> p.finite.source().toString()));
+        return out;
     }
 
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
@@ -229,6 +256,38 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
+    @LuaFunction(mainThread = true)
+    public final boolean audioPlayPreparedAll(IComputerAccess computer, String assetId,
+                                              Optional<Double> volume) throws LuaException {
+        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
+        if (members.isEmpty()) members = List.of(this);
+
+        for (HQSpeakerCompositePeripheral member : members) member.commandRevision.incrementAndGet();
+        List<HQFiniteMediaServer> targets = members.stream().map(member -> member.finite).toList();
+
+        try (HQFiniteMediaServer.PreparedGroupStart prepared =
+                 finite.preparePreparedGroupStart(targets, assetId, volume.orElse(1.0))) {
+            // Admission and asset retention succeeded for the complete snapshot before any current output is replaced.
+            for (HQSpeakerCompositePeripheral member : members) {
+                synchronized (member.commandLock) {
+                    synchronized (member) {
+                        member.beginReplacingHQ(Owner.STAGED_FINITE);
+                    }
+                }
+            }
+
+            if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
+                throw new IllegalStateException("admitted prepared multispeaker replacement could not be committed");
+            }
+            for (HQSpeakerCompositePeripheral member : members) {
+                synchronized (member) {
+                    member.owner = Owner.STAGED_FINITE;
+                }
+            }
+            return true;
+        }
+    }
+
     @LuaFunction
     public final boolean audioReleasePrepared(IComputerAccess computer, String assetId) throws LuaException {
         return staging.releasePrepared(computer, assetId);
@@ -273,6 +332,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
         if (FINITE_CONTROLS.contains(name)) {
             synchronized (this) { return callFiniteControl(name, computer, context, args); }
+        }
+        if (FINITE_ALL_CONTROLS.contains(name)) {
+            return callFiniteAllControl(name, computer, context, args);
         }
 
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
@@ -404,11 +466,27 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private void stopEverything() {
         vanilla.stop();
-        finite.stop();
+        if (owner == Owner.STAGED_FINITE) stopFinitePlaybackAndClearOwners();
+        else finite.stop();
         legacy.speakStop();
         rawCapacityWaiters.clear();
         rawLifetime.clear();
         owner = Owner.NONE;
+    }
+
+    private void stopFinitePlaybackAndClearOwners() {
+        List<HQSpeakerCompositePeripheral> affected = new ArrayList<>();
+        for (HQSpeakerCompositePeripheral candidate : ACTIVE) {
+            if (candidate.owner == Owner.STAGED_FINITE && finite.sharesPlaybackWith(candidate.finite)) {
+                affected.add(candidate);
+            }
+        }
+        finite.stopPlayback();
+        for (HQSpeakerCompositePeripheral candidate : affected) {
+            synchronized (candidate) {
+                if (!candidate.finite.isActive()) candidate.owner = Owner.NONE;
+            }
+        }
     }
 
     private boolean isHQContinuousActive() {
@@ -441,7 +519,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
 
         if ("audioStop".equals(name)) {
-            stopCurrentHQ();
+            if (owner == Owner.STAGED_FINITE) stopFinitePlaybackAndClearOwners();
+            else stopCurrentHQ();
             return MethodResult.of();
         }
 
@@ -458,6 +537,36 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         if (owner == Owner.LEGACY_FINITE) return invokeLegacy(name, computer, context, args);
         return MethodResult.of(false);
+    }
+
+    private MethodResult callFiniteAllControl(String name, IComputerAccess computer, ILuaContext context,
+                                              IArguments args) throws LuaException {
+        if (owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
+
+        return switch (name) {
+            case "audioStatusAll" -> MethodResult.of(finite.hasStatus() ? finite.status() : idleStatus());
+            case "audioPauseAll" -> MethodResult.of(finite.pause());
+            case "audioResumeAll" -> MethodResult.of(finite.resume());
+            case "audioSeekAll" -> MethodResult.of(finite.seek(args.getDouble(0)));
+            case "audioSetLoopingAll" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
+            case "audioSetVolumeAll" -> {
+                double volume = args.getDouble(0);
+                boolean changed = false;
+                for (HQSpeakerCompositePeripheral member : membersFor(computer)) {
+                    synchronized (member) {
+                        if (member.owner == Owner.STAGED_FINITE && finite.sharesPlaybackWith(member.finite)) {
+                            changed = member.finite.setVolume(volume) || changed;
+                        }
+                    }
+                }
+                yield MethodResult.of(changed);
+            }
+            case "audioStopAll" -> {
+                stopFinitePlaybackAndClearOwners();
+                yield MethodResult.of();
+            }
+            default -> invokeLegacy(name, computer, context, args);
+        };
     }
 
     private Map<String, Object> rawStatus() {
