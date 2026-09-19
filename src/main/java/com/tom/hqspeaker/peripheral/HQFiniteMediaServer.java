@@ -245,7 +245,14 @@ public final class HQFiniteMediaServer {
         }
 
         FinitePlaybackAuthority.SeekResult result = s.playback.seek(seconds, now);
-        if (!result.accepted()) return false;
+        if (!result.accepted()) {
+            if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
+                releaseAssetReference(s);
+                terminalStatus = statusOf(s, now);
+                notifyState(s, now);
+            }
+            return false;
+        }
         if (result.ended()) {
             releaseAssetReference(s);
             terminalStatus = statusOf(s, now);
@@ -253,10 +260,6 @@ public final class HQFiniteMediaServer {
             return true;
         }
 
-        if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
-            releaseAssetReference(s);
-            terminalStatus = statusOf(s, now);
-        }
         notifyState(s, now);
         return true;
     }
