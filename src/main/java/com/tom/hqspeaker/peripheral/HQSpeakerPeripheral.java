@@ -420,17 +420,8 @@ public boolean playAudioTable(Map<?, ?> table, int len, float volume) throws Lua
     return enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, audioTableToPcmBytes(table, len, "playAudio", -128, 127, 8), volume);
 }
 
-public boolean speakPCMTable(Map<?, ?> table, int len, float volume) throws LuaException {
-    return enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16), volume);
-}
 
-public boolean enqueueAudio(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume) {
-    return enqueue(fmt, data, volume);
-}
 
-public boolean enqueueAudioAtTick(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume, long startTick) {
-    return enqueue(fmt, data, volume, startTick);
-}
 
 
 private static final long MULTI_SPEAKER_SYNC_LEAD_TICKS = 12L;
@@ -468,26 +459,6 @@ private record SyncDispatch(long startTick, java.util.UUID syncGroupId, int sync
 private SyncDispatch nextSyncDispatch(int members) {
     if (members <= 1) return new SyncDispatch(0L, null, 0);
     return new SyncDispatch(nextSyncedStartTick(), java.util.UUID.randomUUID(), members);
-}
-
-@LuaFunction
-public final boolean speakPCMAll(IComputerAccess computer, IArguments args) throws LuaException {
-    java.util.Map<?, ?> table = args.getTable(0);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-    int len = 0;
-    while ((table.containsKey((long) (len + 1)) || table.containsKey((double) (len + 1))) && len <= SPEAKER_MAX_AUDIO_TABLE) len++;
-    boolean ok = false;
-    byte[] pcm = audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16);
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-
-    // RAW has no canonical finite timeline to coordinate. Give all endpoints the same future game tick,
-    // but do not publish a global expected-member count: a listener who receives only a subset must still start.
-    long startTick = members.size() > 1 ? nextSyncedStartTick() : 0L;
-    for (HQSpeakerPeripheral member : members) {
-        ok = anyTrue(ok, member.enqueueAudioAtTick(
-            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, pcm, volume, startTick));
-    }
-    return ok;
 }
 
 @LuaFunction
@@ -575,13 +546,6 @@ public final boolean speakTSAll(IComputerAccess computer, String url, java.util.
     SyncDispatch sync = nextSyncDispatch(members.size());
     for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.startStreamAtTick(url, volume, HQSpeakerAudioPacket.AudioFormat.TS_STREAM, "speakTS", sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
     return ok;
-}
-
-@LuaFunction
-public final boolean speakPCMAt(IComputerAccess computer, int index, java.util.Map<?, ?> audio, java.util.Optional<Double> volume) throws LuaException {
-    int len = 0;
-    while ((audio.containsKey((long) (len + 1)) || audio.containsKey((double) (len + 1))) && len <= SPEAKER_MAX_AUDIO_TABLE) len++;
-    return byIndexFor(computer, index).speakPCMTable(audio, len, clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume"));
 }
 
 @LuaFunction
