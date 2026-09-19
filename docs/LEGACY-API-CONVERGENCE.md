@@ -21,14 +21,14 @@ This file records the current migration boundary after M1J. It is not a promise 
 | Standard `*All` / `*At` | Keep, native dispatch | Composite now dispatches each real CC:T speaker; old fake-sine/HQ-PCM implementations are bypassed. |
 | `speakPCM` | Keep separate | Open-ended signed-16 producer-fed RAW source with bounded backpressure. |
 | `hq.playFile` / prepared APIs | Keep primary | Modern bounded finite MP3/common-WAV path. |
-| `speakMp3` / `speakWav` | Candidate for compatibility bridge | Import exact bytes as a temporary MediaAsset, analyze off-thread, then commit modern playback on the main thread. |
+| `speakMp3` / `speakWav` (+ `All`/`At`) | **Migrated to modern finite** | Exact bytes become a temporary MediaAsset, are analyzed on the ComputerCraft thread, and only the short replacement/commit runs on the main thread. `*All` uses the modern shared playback authority. |
 | `speakOgg` | Hold legacy | Modern OGG requires a deliberate progressive/seek/rejoin implementation. |
 | `speakAudio` / `speakFile` / `speakPacked` | Product decision later | Generic historical aliases have a broader/ambiguous format promise. |
 | Legacy finite `*All` / `*At` | Migrate together with their singular frontend | Do not retain the expected-member barrier for modernized formats. |
 | `speakStream` / HLS / TS / ICY | Future optional | Not part of finite convergence. |
 | `speakSupportedFiles` | Legacy-only capability | Use `hq.preparedFormats(speaker)` for modern support. |
 
-## Safe MP3/WAV bridge shape
+## Implemented MP3/WAV bridge shape
 
 The existing primitives are sufficient; do not create another storage system:
 
@@ -45,4 +45,4 @@ Lua byte string/table
 
 The import-owner reference and the playback reference are distinct. Every rejection, supersession, detach, and main-thread commit failure needs an explicit release path.
 
-This bridge should be implemented only for formats already supported by the modern analyzer/decoder. It must not turn `speakOgg` or generic `speakAudio` into misleading aliases.
+This bridge is now implemented only for MP3/common WAV. It deliberately does not turn `speakOgg` or generic `speakAudio` into misleading aliases.

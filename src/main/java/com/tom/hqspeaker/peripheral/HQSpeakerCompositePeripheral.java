@@ -1,5 +1,7 @@
 package com.tom.hqspeaker.peripheral;
 
+import com.tom.hqspeaker.media.FiniteMediaFormat;
+import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
 import dan200.computercraft.api.lua.IArguments;
 import dan200.computercraft.api.lua.ILuaContext;
@@ -17,9 +19,11 @@ import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
 import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +48,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> FINITE_CONTROLS = Set.of(
         "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetLooping", "audioStop"
     );
+    private static final Set<String> MODERN_BYTE_FINITE = Set.of(
+        "speakMp3", "speakWav", "speakMp3All", "speakWavAll", "speakMp3At", "speakWavAt"
+    );
     private static final Set<String> FINITE_START = Set.of(
-        "speakMp3", "speakOgg", "speakAudio", "speakFile", "speakPacked", "speakWav"
+        "speakOgg", "speakAudio", "speakFile", "speakPacked"
     );
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
@@ -359,6 +366,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
         String name = dynamicNames[method];
 
+        if (MODERN_BYTE_FINITE.contains(name)) {
+            return startModernByteFinite(name, computer, context, args);
+        }
+
         // DNS may block. Keep it outside commandLock as well as the ownership monitor, otherwise a direct
         // main-thread audioPlayPrepared call could wait behind DNS and stall the Minecraft server.
         if (STREAM_START.contains(name)) {
@@ -508,6 +519,119 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 }
                 default -> throw new LuaException("No such indexed standard speaker method " + name);
             };
+        }
+    }
+
+    /**
+     * Compatibility frontend for the old byte-taking MP3/WAV methods.
+     *
+     * <p>Byte copy/import/analyze stays on the ComputerCraft thread. Only the short ownership replacement and modern
+     * finite commit runs through CC:T's main-thread task bridge.</p>
+     */
+    private MethodResult startModernByteFinite(String name, IComputerAccess computer, ILuaContext context,
+                                               IArguments args) throws LuaException {
+        boolean all = name.endsWith("All");
+        boolean at = name.endsWith("At");
+        FiniteMediaFormat expectedFormat = name.startsWith("speakMp3")
+            ? FiniteMediaFormat.MP3 : FiniteMediaFormat.WAV;
+
+        List<HQSpeakerCompositePeripheral> targets;
+        if (all) {
+            targets = membersFor(computer);
+            if (targets.isEmpty()) targets = List.of(this);
+        } else if (at) {
+            targets = List.of(memberAt(computer, args.getInt(0)));
+        } else {
+            targets = List.of(this);
+        }
+
+        int dataIndex = at ? 1 : 0;
+        int volumeIndex = at ? 2 : 1;
+        ByteBuffer source = args.getBytes(dataIndex);
+        byte[] bytes = new byte[source.remaining()];
+        source.duplicate().get(bytes);
+        if (bytes.length == 0) throw new LuaException(name + ": data is empty");
+        if (bytes.length > legacy.speakMaxAudioBytes()) {
+            throw new LuaException(name + ": file too large (max "
+                + (legacy.speakMaxAudioBytes() / 1024 / 1024) + " MB)");
+        }
+
+        double volume = args.optDouble(volumeIndex, legacy.defaultVolume());
+        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        volume = Math.max(0.0, Math.min(3.0, volume));
+
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = new LinkedHashMap<>();
+        for (HQSpeakerCompositePeripheral target : targets) {
+            expectedRevisions.put(target, target.commandRevision.incrementAndGet());
+        }
+
+        MediaAsset asset = staging.importAnalyzedBytes(name, bytes, expectedFormat);
+        String assetId = asset.id().toString();
+        double appliedVolume = volume;
+        List<HQSpeakerCompositePeripheral> snapshot = List.copyOf(targets);
+
+        try {
+            return context.executeMainThreadTask(() -> {
+                try {
+                    for (Map.Entry<HQSpeakerCompositePeripheral, Long> entry : expectedRevisions.entrySet()) {
+                        if (entry.getKey().commandRevision.get() != entry.getValue()
+                                || !ACTIVE.contains(entry.getKey())) {
+                            return new Object[]{ false };
+                        }
+                    }
+
+                    if (all) {
+                        List<HQFiniteMediaServer> finiteTargets =
+                            snapshot.stream().map(member -> member.finite).toList();
+                        HQFiniteMediaServer coordinator = snapshot.getFirst().finite;
+                        try (HQFiniteMediaServer.PreparedGroupStart prepared =
+                                 coordinator.preparePreparedGroupStart(finiteTargets, assetId, appliedVolume)) {
+                            for (HQSpeakerCompositePeripheral member : snapshot) {
+                                synchronized (member.commandLock) {
+                                    synchronized (member) {
+                                        if (member.commandRevision.get() != expectedRevisions.get(member)) {
+                                            return new Object[]{ false };
+                                        }
+                                        member.beginReplacingHQ(Owner.STAGED_FINITE);
+                                    }
+                                }
+                            }
+                            if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
+                                throw new LuaException("admitted " + name + " multispeaker replacement could not be committed");
+                            }
+                            for (HQSpeakerCompositePeripheral member : snapshot) {
+                                synchronized (member) {
+                                    member.owner = Owner.STAGED_FINITE;
+                                }
+                            }
+                            return new Object[]{ true };
+                        }
+                    }
+
+                    HQSpeakerCompositePeripheral target = snapshot.getFirst();
+                    synchronized (target.commandLock) {
+                        synchronized (target) {
+                            if (target.commandRevision.get() != expectedRevisions.get(target)) {
+                                return new Object[]{ false };
+                            }
+                            try (HQFiniteMediaServer.PreparedStart prepared =
+                                     target.finite.preparePreparedStart(assetId, appliedVolume)) {
+                                target.beginReplacingHQ(Owner.STAGED_FINITE);
+                                if (!target.finite.commitPreparedStart(prepared)) {
+                                    throw new LuaException("admitted " + name + " replacement could not be committed");
+                                }
+                                target.owner = Owner.STAGED_FINITE;
+                                return new Object[]{ true };
+                            }
+                        }
+                    }
+                } finally {
+                    staging.releaseImportedAsset(asset.id(), name + " temporary import");
+                }
+            });
+        } catch (LuaException | RuntimeException e) {
+            staging.releaseImportedAsset(asset.id(), name + " unqueued temporary import");
+            throw e;
         }
     }
 

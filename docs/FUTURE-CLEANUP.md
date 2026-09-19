@@ -52,7 +52,7 @@ Rechecked after M1J:
 | Standard `playNote`, `playSound`, `playAudio`, `stop` | Keep native CC:T semantics. Grouped/indexed note/sound/audio calls are intercepted by the composite and delegated to the real CC:T speakers. |
 | HQ `speakPCM` | Keep as a separate producer-fed signed-16 RAW source. It is not a finite MediaAsset song. |
 | Modern `hq.playFile`, `prepareFile`, `playPrepared`, `playPreparedAll` | Keep as the primary finite-file API. MP3 + supported common WAV only today. |
-| Legacy byte-taking `speakMp3` / `speakWav` (+ All/At) | Good compatibility candidates for the modern engine, but not a trivial alias. A safe bridge must copy/validate bytes on the ComputerCraft thread, import/analyze into MediaAsset storage off the Minecraft tick thread, then use CC:T main-thread task execution only for the short playback commit. Temporary import ownership must be released on every success/failure path. |
+| Legacy-name byte-taking `speakMp3` / `speakWav` (+ All/At) | Migrated to the modern finite engine. The wrappers import/analyze temporary MediaAssets on the ComputerCraft thread, commit playback via CC:T's main-thread task bridge, and release temporary import ownership on success/failure. |
 | Legacy `speakOgg` | Keep legacy for now unless OGG is deliberately modernized. Do not silently claim modern OGG support. |
 | Legacy generic `speakAudio`, `speakFile`, `speakPacked` | Ambiguous compatibility aliases. Do not route them blindly until the retained format contract is chosen. |
 | Direct `speakStream` / HLS / TS + ICY | Optional legacy/future external-stream work, not core finite-engine convergence. |

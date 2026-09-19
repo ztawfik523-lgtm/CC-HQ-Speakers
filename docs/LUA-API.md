@@ -325,3 +325,10 @@ server MediaAsset
 M1G is complete and has a recorded focused audible/core Minecraft PASS on NeoForge 21.1.247. Current source uses protocol v8 for M1J; green CI/package evidence is not a substitute for the still-unrecorded focused Minecraft multispeaker acceptance.
 
 See `CURRENT-STATE.md`, `M1G-SCOPE-DECISIONS-2026-09-14.md`, `KNOWN-ISSUES.md`, and `TESTING.md` for the current engineering boundary.
+
+## Modernized legacy-name MP3/WAV calls
+
+`speakMp3`, `speakWav`, `speakMp3All`, `speakWavAll`, `speakMp3At`, and `speakWavAt` now use the modern MediaAsset + progressive finite engine. The names remain for Lua compatibility, but they no longer use the inherited whole-file finite decoder or expected-member multispeaker barrier.
+
+These wrappers are intentionally strict: `speakMp3` expects modern-supported MP3 data and `speakWav` expects modern-supported common WAV data. OGG and generic packed-file aliases remain legacy for now.
+

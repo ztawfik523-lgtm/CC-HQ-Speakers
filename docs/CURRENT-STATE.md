@@ -311,6 +311,10 @@ M1J shared playback/client projection deterministic coverage: PASS
 M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 ```
 
+## API convergence progress
+
+Legacy-name MP3/WAV compatibility calls now route through the modern finite engine, including `*All` and `*At`. Their byte payloads use transient MediaAssets and the same analyzer/decoder path as prepared files; `*All` therefore uses the shared M1J playback authority instead of the inherited expected-member barrier. OGG/generic/live paths remain legacy pending separate decisions.
+
 ## Post-M1J dead-code recheck
 
 A branch-local source reference scan confirmed that `FileFiniteAudioStream` and `HQSpeakerCluster` had no live references and they were removed. A follow-up recheck caught that `FiniteAudioTrack` remains live through `HQAudioStream`, so `FiniteAudioTrack` and its focused test remain. `HQAudioStream` likewise stays until inherited finite/live callers are migrated or retired.

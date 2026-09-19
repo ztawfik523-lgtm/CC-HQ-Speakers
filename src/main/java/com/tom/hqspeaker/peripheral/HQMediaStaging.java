@@ -2,6 +2,7 @@ package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.config.HQSpeakerServerConfig;
+import com.tom.hqspeaker.media.FiniteMediaFormat;
 import com.tom.hqspeaker.media.FiniteMediaPath;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
@@ -19,7 +20,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.util.ArrayList;
@@ -165,6 +168,34 @@ public final class HQMediaStaging {
             releaseReferenceBestEffort(asset.id(), "rejected media asset");
             throw new LuaException("cannot prepare media: " + safeMessage(e));
         }
+    }
+
+    /**
+     * Import a transient byte payload through the same immutable modern admission path as staged files.
+     *
+     * <p>The returned asset owns one temporary importer reference. Callers which hand it to playback must release
+     * that importer reference after the playback has retained its own reference.</p>
+     */
+    MediaAsset importAnalyzedBytes(String sourceName, byte[] bytes, FiniteMediaFormat expectedFormat)
+            throws LuaException {
+        if (bytes == null || bytes.length == 0) throw new LuaException(sourceName + ": data is empty");
+        MediaAsset asset;
+        try (ReadableByteChannel channel = Channels.newChannel(new ByteArrayInputStream(bytes))) {
+            asset = importAnalyzedAsset(sourceName, bytes.length, channel);
+        } catch (IOException e) {
+            throw new LuaException("cannot prepare media: " + safeMessage(e));
+        }
+
+        MediaMetadata metadata = asset.metadata();
+        if (metadata == null || metadata.format() != expectedFormat) {
+            releaseReferenceBestEffort(asset.id(), "wrong-format transient media asset");
+            throw new LuaException(sourceName + ": expected " + expectedFormat.id() + " data");
+        }
+        return asset;
+    }
+
+    void releaseImportedAsset(UUID id, String context) {
+        releaseReferenceBestEffort(id, context);
     }
 
     /** Return server-derived format/duration facts for a prepared asset. */

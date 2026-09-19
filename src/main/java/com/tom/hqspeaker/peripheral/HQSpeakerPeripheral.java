@@ -360,6 +360,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
         speakerDefaultVolume = clampVolChecked(args.getDouble(0), "volume");
     }
 
+    float defaultVolume() {
+        return speakerDefaultVolume;
+    }
+
     @LuaFunction
     public final void setLooping(boolean loop) {
         looping = loop;
