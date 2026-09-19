@@ -23,7 +23,7 @@ One physical speaker remains one mono positional source.
 
 M1E through M1H are complete at source/test/CI/package level. Focused M1H Minecraft listener/recovery/movement checks are deferred for now.
 
-**M1J modern finite multispeaker is active.** First implementation checkpoint:
+**M1J modern finite multispeaker is source/test/CI/package complete; focused Minecraft multispeaker acceptance is deferred.** First implementation checkpoint:
 
 - source: `b557773b9c6f6b8029aec132a1706f0d8da914bd`;
 - CI: `35466635285`;
@@ -83,7 +83,7 @@ Closed:
 - KI-054 — shutdown cleanup/root-lock retry handling;
 - KI-064 — import no-progress and atomic-move fallback.
 
-M1H source work is complete. Its focused Minecraft listener/recovery/movement checks remain in the runtime backlog. M1J modern finite multispeaker is the active milestone.
+M1H source work and M1J modern finite multispeaker source work are complete. Their focused Minecraft checks remain in the runtime backlog. Current non-runtime work is API/engine convergence and cleanup.
 
 ## Audit recheck notes
 
@@ -132,9 +132,9 @@ See `docs/LUA-API.md`.
 
 - **M1E–M1G:** modern bounded progressive finite engine — complete; focused M1G audible/core Minecraft PASS recorded on NeoForge 21.1.247.
 - **M1H:** listener lifecycle, recovery, and Sable/VS2 moving sources — source/test/CI/package complete; focused runtime backlog deferred.
-- **M1J:** modern finite multispeaker — active. Shared authority/endpoints, protocol v8 shared client timeline, group playback helpers, independent volume/mute, and modern indexed controls are implemented at the first source checkpoint.
-- **Next:** finish M1J lifecycle/component coverage, then profile multispeaker cost before deciding whether shared decode/network fan-out is worth implementing.
-- Later work: API/legacy convergence, optional codecs, integrated compatibility/stress, and release cleanup. Radio/ICY/HLS/TS and provider playback are future/optional features, not core blockers.
+- **M1J:** modern finite multispeaker — source/test/CI/package complete; focused runtime acceptance deferred. Shared authority/endpoints, protocol v8 shared client timeline, group playback helpers, independent volume/mute, and modern indexed controls are implemented.
+- **Performance gate:** shared decode/network fan-out is deferred unless realistic runtime profiling proves duplicated client decode work materially expensive.
+- **Current non-runtime work:** API/legacy convergence, followed by optional codec decisions, integrated compatibility/stress, and release cleanup. Radio/ICY/HLS/TS and provider playback are future/optional features, not core blockers.
 
 ## Build
 

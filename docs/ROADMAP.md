@@ -36,7 +36,7 @@ M1H-1 through M1H-3 are complete at source/test/CI/package level:
 
 Focused M1H Minecraft checks remain in the runtime backlog. They are deferred for now, not rejected as future validation.
 
-## Active milestone — M1J modern finite multispeaker
+## Completed source milestone — M1J modern finite multispeaker
 
 ### Selected model
 
@@ -78,7 +78,7 @@ Implemented:
 6. protocol v8 shared `playbackId` / `stateRevision` and one client-projected timeline per playback;
 7. deterministic authority and shared-timeline projection tests.
 
-Still open before M1J closeout: broader lifecycle/component coverage where it can be tested without artificial Minecraft plumbing, adversarial group cleanup/recovery review, and focused real-Minecraft multispeaker acceptance.
+Source/test/package closeout is complete. Focused real-Minecraft multispeaker acceptance remains deferred and must not be claimed as passed.
 
 ## Decision gate — multispeaker performance sharing
 
@@ -93,9 +93,9 @@ Current static cost model:
 
 Decision for now: do **not** add shared encoded/decode fan-out without runtime profiling. The server-side bounds already prevent unbounded range amplification, while shared decode would add multi-reader PCM lifetime, lagging-reader, endpoint-leave, seek/recovery, and renderer-pacing complexity. Revisit only if realistic 4/8+ speaker testing shows decoder CPU or memory is materially expensive.
 
-## Engine/API convergence
+## Active non-runtime work — engine/API convergence
 
-After modern multispeaker is established:
+Modern multispeaker is established. Continue convergence without forcing unsupported legacy formats into the new core:
 
 - migrate worthwhile inherited finite APIs onto the modern engine;
 - repair or remove misleading legacy `*All` / `*At` behavior;

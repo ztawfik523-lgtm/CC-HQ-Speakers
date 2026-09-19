@@ -25,7 +25,7 @@ The M1G closeout resolved KI-051/053/055/056/057/058/060/061.
 
 The post-M1G Option A hardening pass closed KI-062, KI-063, KI-054, and KI-064. Do not carry their old pre-fix descriptions forward as active cleanup work.
 
-Current active engineering is M1H listener/rejoin/movement lifecycle; this file remains a parking lot for later legacy/release cleanup.
+M1H source work and M1J modern finite multispeaker source work are complete at source/test/CI/package level, with focused runtime checks deferred. Current non-runtime work is engine/API convergence and release-oriented cleanup.
 
 ## Old complete-file decoder classes/dependencies
 
@@ -43,13 +43,31 @@ Older development builds may have left an `hqspeaker-cache` directory or `.part/
 
 If one-time cleanup is later added, restrict deletion narrowly to mod-owned old cache paths.
 
+## Legacy API convergence matrix
+
+Rechecked after M1J:
+
+| Surface | Current decision |
+| --- | --- |
+| Standard `playNote`, `playSound`, `playAudio`, `stop` | Keep native CC:T semantics. Grouped/indexed note/sound/audio calls are intercepted by the composite and delegated to the real CC:T speakers. |
+| HQ `speakPCM` | Keep as a separate producer-fed signed-16 RAW source. It is not a finite MediaAsset song. |
+| Modern `hq.playFile`, `prepareFile`, `playPrepared`, `playPreparedAll` | Keep as the primary finite-file API. MP3 + supported common WAV only today. |
+| Legacy byte-taking `speakMp3` / `speakWav` (+ All/At) | Good compatibility candidates for the modern engine, but not a trivial alias. A safe bridge must copy/validate bytes on the ComputerCraft thread, import/analyze into MediaAsset storage off the Minecraft tick thread, then use CC:T main-thread task execution only for the short playback commit. Temporary import ownership must be released on every success/failure path. |
+| Legacy `speakOgg` | Keep legacy for now unless OGG is deliberately modernized. Do not silently claim modern OGG support. |
+| Legacy generic `speakAudio`, `speakFile`, `speakPacked` | Ambiguous compatibility aliases. Do not route them blindly until the retained format contract is chosen. |
+| Direct `speakStream` / HLS / TS + ICY | Optional legacy/future external-stream work, not core finite-engine convergence. |
+| `audioStatus` / pause/resume/seek/loop/stop | Composite already routes to the active modern finite owner when present and otherwise preserves legacy behavior. |
+| `speakSupportedFiles` | Legacy compatibility surface. Modern code should query `hq.preparedFormats(speaker)` instead. |
+
+The bridge prerequisite is architectural, not a request to add a third engine: reuse `MediaAssetStore.importAsset(..., ReadableByteChannel)` and `ModernFiniteMediaAnalyzer`, then commit through the existing prepared finite server. CC:T dynamic peripheral methods run on the computer thread; world/server-state commit must use the main-thread task API rather than moving import/decode work onto the server tick.
+
 ## Legacy finite engine / advertised format surface
 
 Inherited `HQAudioStream`, `FiniteAudioTrack`, `HQSpeakerAudioPacket`, old byte-taking APIs (`speakMp3`, `speakWav`, `speakOgg`, etc.), and duplicate old finite state remain outside the modern prepared path.
 
 Legacy Lua-visible capability lists are not a reliable statement of modern prepared support. For example, `speakSupportedFiles()` advertises `mp2`, `mp4`, `m4a`, and `aac`, while the modern prepared analyzer accepts only MP3 + supported common WAV.
 
-Target M1L:
+Convergence target:
 
 - preserve only compatibility frontends worth keeping;
 - route them into the new asset/transport/decoder engine where sensible;
@@ -63,10 +81,11 @@ Inherited `*All` / `*At` helpers and expected-member shared groups remain legacy
 
 Source recheck confirmed that `playNoteAll(...)` synthesizes a sine and ignores the requested instrument, while `playSoundAll(...)` routes into that sine path and ignores the requested Minecraft sound name. These helpers therefore do not preserve normal CC:T note/sound semantics even though the singular standard methods do.
 
-Target M1J/M1K:
+Current status:
 
-- shared server clocks first, optional active-session sharing second, while retaining one positional renderer per physical speaker;
-- route note/sound helpers through actual standard CC:T semantics or remove/reject misleading helpers rather than emitting the wrong sound.
+- modern prepared multispeaker now uses one shared authority with independent positional endpoints;
+- grouped/indexed standard note/sound/audio calls now route through actual CC:T speaker semantics;
+- inherited expected-member finite/live group code remains only for legacy surfaces not yet migrated.
 
 ## Protocol/state cleanup after M1G
 
