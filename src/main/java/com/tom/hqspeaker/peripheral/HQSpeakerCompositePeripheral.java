@@ -51,14 +51,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> MODERN_BYTE_FINITE = Set.of(
         "speakMp3", "speakWav", "speakMp3All", "speakWavAll", "speakMp3At", "speakWavAt"
     );
-    /** Historical whole-file finite APIs intentionally removed from the normal CC:T speaker surface. */
-    private static final Set<String> RETIRED_LEGACY_FINITE = Set.of(
-        "speakOgg", "speakOggAll", "speakOggAt",
-        "speakAudio", "speakAudioAll", "speakAudioAt",
-        "speakFile", "speakFileAll", "speakFileAt",
-        "speakPacked", "speakPackedAll", "speakPackedAt",
-        "speakMaxFileBytes", "speakMaxOggBytes"
-    );
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> RAW_ALL = Set.of("speakPCMAll");
     private static final Set<String> RAW_AT = Set.of("speakPCMAt");
@@ -133,7 +125,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         this.staging = staging;
         this.legacyMethods = METHOD_SUPPLIER.getSelfMethods(legacy);
         LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
-        names.removeAll(RETIRED_LEGACY_FINITE);
         names.addAll(STANDARD);
         names.addAll(MODERN_BYTE_FINITE);
         names.addAll(RAW_ALL);

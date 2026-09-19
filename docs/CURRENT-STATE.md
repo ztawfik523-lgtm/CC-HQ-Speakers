@@ -315,6 +315,10 @@ M1J focused Minecraft multispeaker acceptance: deferred / not yet recorded
 
 Legacy-name MP3/WAV compatibility calls now route through the modern finite engine, including `*All` and `*At`. Their byte payloads use transient MediaAssets and the same analyzer/decoder path as prepared files; `*All` therefore uses the shared M1J playback authority instead of the inherited expected-member barrier. OGG/generic/live paths remain legacy pending separate decisions.
 
+## Retired finite surface cleanup
+
+The old OGG/generic whole-file methods are physically absent from `HQSpeakerPeripheral`. The composite no longer carries a redundant blacklist for methods that cannot be reflected in the first place.
+
 ## Decoder dependency cleanup
 
 The retired whole-file finite decoder no longer requires Java Sound MP3 SPI support. `mp3spi` and `tritonus-share` are removed from Jar-in-Jar packaging; JLayer remains because both modern progressive MP3 and optional live MP3 streaming use it directly.
