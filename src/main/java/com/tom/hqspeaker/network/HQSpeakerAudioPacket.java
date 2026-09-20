@@ -161,7 +161,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         if (streaming != expectedStreaming) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected mismatched streaming flag for " + format);
             return new HQSpeakerAudioPacket(source, AudioFormat.PCM_S16LE, volume, x, y, z,
-                blockX, blockY, blockZ, new byte[0], startTick, null);
+                blockX, blockY, blockZ, new byte[0], null, startTick, null);
         }
 
         if (streaming) {
@@ -174,7 +174,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         if (length < 0 || length > MAX_BYTES) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected oversized payload (" + length + " bytes)");
             return new HQSpeakerAudioPacket(source, AudioFormat.PCM_S16LE, volume, x, y, z,
-                blockX, blockY, blockZ, new byte[0], startTick, null);
+                blockX, blockY, blockZ, new byte[0], null, startTick, null);
         }
 
         byte[] data = new byte[length];
