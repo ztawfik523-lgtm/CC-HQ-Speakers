@@ -7,7 +7,6 @@ import com.tom.hqspeaker.network.HQSpeakerStopPacket;
 import com.tom.hqspeaker.network.IcyMetaPacket;
 
 import dan200.computercraft.api.lua.IArguments;
-import dan200.computercraft.api.lua.ILuaContext;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 import dan200.computercraft.api.peripheral.IComputerAccess;
@@ -26,7 +25,6 @@ import java.nio.ByteOrder;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 
 public class HQSpeakerPeripheral implements IPeripheral {
