@@ -48,6 +48,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> FINITE_CONTROLS = Set.of(
         "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetLooping", "audioStop"
     );
+    private static final Set<String> FINITE_SHARED_CONTROLS = Set.of(
+        "audioPause", "audioResume", "audioSeek", "audioSetLooping", "audioStop"
+    );
+    private static final Set<String> FINITE_AT_SHARED_CONTROLS = Set.of(
+        "audioPauseAt", "audioResumeAt", "audioSeekAt", "audioSetLoopingAt"
+    );
     private static final Set<String> MODERN_BYTE_FINITE = Set.of(
         "speakMp3", "speakWav", "speakMp3All", "speakWavAll", "speakMp3At", "speakWavAt"
     );
@@ -238,8 +244,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return members.get(index - 1);
     }
 
-    private static <T> T withGroupLocks(List<HQSpeakerCompositePeripheral> members,
-                                        OrderedMultiLock.Operation<T, LuaException> operation) throws LuaException {
+    private static <T, E extends Exception> T withGroupLocks(
+            List<HQSpeakerCompositePeripheral> members, OrderedMultiLock.Operation<T, E> operation) throws E {
         ArrayList<OrderedMultiLock.Target> locks = new ArrayList<>(members.size());
         LinkedHashSet<HQSpeakerCompositePeripheral> unique = new LinkedHashSet<>(members);
         for (HQSpeakerCompositePeripheral member : unique) {
@@ -264,6 +270,27 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
         }
         return true;
+    }
+
+    private static List<HQSpeakerCompositePeripheral> sharedFiniteMembers(HQSpeakerCompositePeripheral anchor) {
+        ArrayList<HQSpeakerCompositePeripheral> members = new ArrayList<>();
+        if (anchor.owner == Owner.STAGED_FINITE) {
+            members.add(anchor);
+            for (HQSpeakerCompositePeripheral candidate : ACTIVE) {
+                if (candidate == anchor || candidate.owner != Owner.STAGED_FINITE) continue;
+                if (anchor.finite.sharesPlaybackWith(candidate.finite)) members.add(candidate);
+            }
+        }
+        if (members.isEmpty()) members.add(anchor);
+        members.sort(Comparator.comparingLong(member -> member.lockOrder));
+        return List.copyOf(members);
+    }
+
+    private static MethodResult supersededControlResult(String name) {
+        return switch (name) {
+            case "stop", "speakStop", "audioStop", "audioStopAll", "audioStopAt" -> MethodResult.of();
+            default -> MethodResult.of(false);
+        };
     }
 
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
@@ -374,20 +401,24 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction
     public final boolean audioSetMutedAll(IComputerAccess computer, boolean muted) {
-        commandRevision.incrementAndGet();
-        synchronized (commandLock) {
-            synchronized (this) {
-                return owner == Owner.STAGED_FINITE && finite.setMutedAll(muted);
-            }
-        }
+        List<HQSpeakerCompositePeripheral> targets =
+            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return false;
+            return owner == Owner.STAGED_FINITE && finite.setMutedAll(muted);
+        });
     }
 
     @LuaFunction
     public final boolean audioSetMutedAt(IComputerAccess computer, int index, boolean muted) throws LuaException {
         HQSpeakerCompositePeripheral member = memberAt(computer, index);
-        synchronized (member) {
+        List<HQSpeakerCompositePeripheral> targets = List.of(member);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return false;
             return member.owner == Owner.STAGED_FINITE && member.finite.setMuted(muted);
-        }
+        });
     }
 
     @LuaFunction
@@ -422,8 +453,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             return invokeLegacy(name, computer, context, args);
         }
 
-        // These commands acquire another endpoint or a whole endpoint snapshot. They must enter without already
-        // holding the caller's command lock, otherwise the stable multi-lock order can be inverted.
+        // Commands which reserve another endpoint or a whole playback snapshot must enter without already holding
+        // the caller's command lock, otherwise the stable multi-lock order can be inverted.
+        if ("stop".equals(name) || "speakStop".equals(name)) {
+            return callStopCoordinated(name, computer, context, args);
+        }
+        if ("setLooping".equals(name)) return callSetLoopingCoordinated(computer, context, args);
+        if (FINITE_SHARED_CONTROLS.contains(name)) {
+            return callFiniteSharedControlCoordinated(name, computer, context, args);
+        }
+        if (STANDARD_ALL.contains(name)) return callStandardAllCoordinated(name, computer, context, args);
+        if (STANDARD_AT.contains(name)) return callStandardAtCoordinated(name, computer, context, args);
+        if (FINITE_ALL_CONTROLS.contains(name) && !"audioStatusAll".equals(name)) {
+            return callFiniteAllControlCoordinated(name, computer, context, args);
+        }
+        if (FINITE_AT_CONTROLS.contains(name) && !"audioStatusAt".equals(name)) {
+            return callFiniteAtControlCoordinated(name, computer, context, args);
+        }
         if (RAW_ALL.contains(name)) return startRawAll(computer, name, args);
         if (RAW_AT.contains(name)) return startRawAt(computer, name, args);
 
@@ -431,6 +477,97 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         synchronized (commandLock) {
             return callMethodOrdered(computer, context, method, args);
         }
+    }
+
+    private MethodResult callStopCoordinated(String name, IComputerAccess computer, ILuaContext context,
+                                             IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> targets =
+            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            if ("stop".equals(name)) return callStandard(name, context, args);
+            stopEverything();
+            return MethodResult.of();
+        });
+    }
+
+    private MethodResult callSetLoopingCoordinated(IComputerAccess computer, ILuaContext context,
+                                                    IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> targets =
+            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
+            if (owner == Owner.STAGED_FINITE) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
+            return invokeLegacy("setLooping", computer, context, args);
+        });
+    }
+
+    private MethodResult callFiniteSharedControlCoordinated(String name, IComputerAccess computer,
+                                                            ILuaContext context, IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> targets =
+            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            return callFiniteControl(name, computer, context, args);
+        });
+    }
+
+    private MethodResult callStandardAllCoordinated(String name, IComputerAccess computer, ILuaContext context,
+                                                    IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> targets = membersFor(computer);
+        if (targets.isEmpty()) targets = List.of(this);
+        targets = List.copyOf(targets);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        List<HQSpeakerCompositePeripheral> snapshot = targets;
+        return withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
+            return callStandardAll(name, computer, context, args);
+        });
+    }
+
+    private MethodResult callStandardAtCoordinated(String name, IComputerAccess computer, ILuaContext context,
+                                                   IArguments args) throws LuaException {
+        HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
+        List<HQSpeakerCompositePeripheral> targets = List.of(member);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
+            return callStandardAtResolved(name, member, context, args);
+        });
+    }
+
+    private MethodResult callFiniteAllControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
+                                                         IArguments args) throws LuaException {
+        List<HQSpeakerCompositePeripheral> targets;
+        if (owner == Owner.STAGED_FINITE) {
+            targets = sharedFiniteMembers(this);
+        } else {
+            targets = membersFor(computer);
+            if (targets.isEmpty()) targets = List.of(this);
+        }
+        targets = List.copyOf(targets);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        List<HQSpeakerCompositePeripheral> snapshot = targets;
+        return withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            return callFiniteAllControl(name, computer, context, args);
+        });
+    }
+
+    private MethodResult callFiniteAtControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
+                                                        IArguments args) throws LuaException {
+        HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
+        List<HQSpeakerCompositePeripheral> targets =
+            member.owner == Owner.STAGED_FINITE && FINITE_AT_SHARED_CONTROLS.contains(name)
+                ? sharedFiniteMembers(member) : List.of(member);
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        return withGroupLocks(targets, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            return callFiniteAtControlResolved(name, member, computer, context, args);
+        });
     }
 
     private MethodResult callMethodOrdered(IComputerAccess computer, ILuaContext context, int method, IArguments args)
@@ -543,9 +680,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult callStandardAt(String name, IComputerAccess computer, ILuaContext context,
                                         IArguments args) throws LuaException {
-        int index = args.getInt(0);
-        HQSpeakerCompositePeripheral member = memberAt(computer, index);
+        return callStandardAtResolved(name, memberAt(computer, args.getInt(0)), context, args);
+    }
 
+    private MethodResult callStandardAtResolved(String name, HQSpeakerCompositePeripheral member,
+                                                ILuaContext context, IArguments args) throws LuaException {
         synchronized (member) {
             return switch (name) {
                 case "playNoteAt" -> MethodResult.of(member.vanilla.playNote(
@@ -901,9 +1040,13 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult callFiniteAtControl(String name, IComputerAccess computer, ILuaContext context,
                                              IArguments args) throws LuaException {
-        int index = args.getInt(0);
-        HQSpeakerCompositePeripheral member = memberAt(computer, index);
+        return callFiniteAtControlResolved(
+            name, memberAt(computer, args.getInt(0)), computer, context, args);
+    }
 
+    private MethodResult callFiniteAtControlResolved(String name, HQSpeakerCompositePeripheral member,
+                                                     IComputerAccess computer, ILuaContext context,
+                                                     IArguments args) throws LuaException {
         synchronized (member) {
             if (member.owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
 
