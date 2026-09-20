@@ -220,7 +220,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
         float volume = clampVolChecked(args.optDouble(volumeIndex, speakerDefaultVolume), "volume");
         int len = 0;
         while ((table.containsKey((long)(len + 1)) || table.containsKey((double)(len + 1))) && len <= SPEAKER_MAX_PCM) len++;
-        byte[] data = audioTableToPcmBytes(table, len, "speakPCM", -32768, 32767, 16);
+        byte[] data = rawTableToPcmBytes(table, len, "speakPCM");
         return new PreparedPcm(data, volume, len);
     }
 
@@ -520,7 +520,7 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
 @LuaFunction public final void audioStopAt(IComputerAccess computer, int index) throws LuaException { byIndexFor(computer, index).audioStop(); }
 
     
-    private byte[] audioTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName, int min, int max, int shiftBits) throws LuaException {
+    private byte[] rawTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName) throws LuaException {
         if (len <= 0) throw new LuaException(fnName + ": table is empty");
         if (len > SPEAKER_MAX_PCM) throw new LuaException(fnName + ": table too large");
         ByteBuffer buf = ByteBuffer.allocate(len * 2).order(ByteOrder.LITTLE_ENDIAN);
@@ -531,9 +531,10 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
             double d = n.doubleValue();
             if (!Double.isFinite(d)) throw new LuaException(fnName + ": table[" + i + "] must be finite");
             int sample = (int) d;
-            if (sample < min || sample > max) throw new LuaException(fnName + ": table[" + i + "] out of range");
-            short pcm = shiftBits == 8 ? (short) (sample << 8) : (short) sample;
-            buf.putShort(pcm);
+            if (sample < -32768 || sample > 32767) {
+                throw new LuaException(fnName + ": table[" + i + "] out of range");
+            }
+            buf.putShort((short) sample);
         }
         buf.flip();
         return buf.array();

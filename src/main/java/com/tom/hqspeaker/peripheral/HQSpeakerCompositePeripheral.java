@@ -620,12 +620,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (STANDARD.contains(name)) {
             synchronized (this) { return callStandard(name, context, args); }
         }
-        if (STANDARD_ALL.contains(name)) {
-            return callStandardAll(name, computer, context, args);
-        }
-        if (STANDARD_AT.contains(name)) {
-            return callStandardAt(name, computer, context, args);
-        }
         if (FINITE_CONTROLS.contains(name)) {
             synchronized (this) { return callFiniteControl(name, computer, context, args); }
         }
@@ -639,28 +633,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
         if ("speakSupportedFiles".equals(name)) return MethodResult.of((Object) SUPPORTED_FINITE_FILES.clone());
 
-        if ("speakStop".equals(name)) {
-            synchronized (this) { stopEverything(); }
-            return MethodResult.of();
-        }
         if ("speakIsPlaying".equals(name)) {
             synchronized (this) { return MethodResult.of(isHQContinuousActive()); }
         }
 
-        if ("setLooping".equals(name)) {
-            synchronized (this) {
-                if (owner == Owner.STAGED_FINITE) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
-            }
-        }
-
         if (RAW_START.contains(name)) {
             synchronized (this) { return startRaw(computer, context, name, args); }
-        }
-        if (RAW_ALL.contains(name)) {
-            return startRawAll(computer, name, args);
-        }
-        if (RAW_AT.contains(name)) {
-            return startRawAt(computer, name, args);
         }
         synchronized (this) { return invokeLegacy(name, computer, context, args); }
     }
@@ -686,13 +664,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             default -> throw new LuaException("No such method " + name);
         };
-    }
-
-    private MethodResult callStandardAll(String name, IComputerAccess computer, ILuaContext context,
-                                         IArguments args) throws LuaException {
-        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
-        if (members.isEmpty()) members = List.of(this);
-        return callStandardAllResolved(name, members, context, args);
     }
 
     private MethodResult callStandardAllResolved(String name, List<HQSpeakerCompositePeripheral> members,
@@ -722,11 +693,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
         }
         return MethodResult.of(accepted);
-    }
-
-    private MethodResult callStandardAt(String name, IComputerAccess computer, ILuaContext context,
-                                        IArguments args) throws LuaException {
-        return callStandardAtResolved(name, memberAt(computer, args.getInt(0)), context, args);
     }
 
     private MethodResult callStandardAtResolved(String name, HQSpeakerCompositePeripheral member,
