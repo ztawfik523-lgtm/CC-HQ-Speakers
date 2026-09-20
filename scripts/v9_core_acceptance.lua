@@ -18,11 +18,11 @@ end
 
 local required = {
   "playNote", "playSound", "playAudio", "stop",
-  "speakMp3", "speakMp3All", "speakMp3At",
-  "speakPCM", "speakPCMAll", "speakPCMAt",
+  "speakMp3", "speakWav", "speakMp3All", "speakMp3At",
+  "speakPCM", "speakPCMAll", "speakPCMAt", "speakStop",
   "speakMaxSamples", "speakSampleRate", "speakSupportedFiles",
-  "audioStatus", "audioPause", "audioResume", "audioSeek",
-  "audioSetVolume", "audioSetLooping", "audioStop", "audioStopAt",
+  "audioStatus", "audioStatusAt", "audioPause", "audioResume", "audioSeek",
+  "audioSetVolume", "audioSetLooping", "audioStop", "audioStopAll", "audioStopAt",
   "getSpeakerCount",
 }
 for _, name in ipairs(required) do
@@ -90,6 +90,7 @@ waitMain("playing", 5)
 local seekTarget = math.min(1.0, math.max(0, playing.duration * 0.25))
 assert(speaker.audioSeek(seekTarget), "audioSeek failed")
 assert(speaker.audioSetVolume(0.35), "audioSetVolume failed")
+assert(speaker.audioSetLooping(true), "audioSetLooping(true) failed")
 assert(speaker.audioSetLooping(false), "audioSetLooping(false) failed")
 speaker.audioStop()
 waitMain("idle", 5)
