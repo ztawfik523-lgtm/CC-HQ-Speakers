@@ -602,7 +602,6 @@ public final class HQFiniteMediaServer {
     }
 
     /**
-     * Drop a retained terminal endpoint before installing a replacement.    /**
      * Drop a retained terminal endpoint before installing a replacement.
      *
      * <p>Terminal status may intentionally remain queryable until ownership changes, but the old shared playback
@@ -807,9 +806,11 @@ public final class HQFiniteMediaServer {
     }
 
     private void notifyShared(SharedNotification notification) {
-        if (notification != null) {
-            notification.shared().notifyEndpoints(notification.nowNanos());
+        if (notification == null) return;
+        if (Thread.holdsLock(this)) {
+            throw new IllegalStateException("shared finite fanout attempted while holding endpoint monitor");
         }
+        notification.shared().notifyEndpoints(notification.nowNanos());
     }
 
     private void refreshListeners(Session s) {
