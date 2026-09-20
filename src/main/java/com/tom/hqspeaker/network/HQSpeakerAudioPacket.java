@@ -38,7 +38,6 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
 
     public static final int MAX_BYTES = 8 * 1024 * 1024;
     public static final int MAX_URL_CHARS = 512;
-    public static final int MAX_SYNC_GROUP = 64;
 
     public final UUID source;
     public final AudioFormat format;
@@ -49,14 +48,13 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     public final String streamUrl;
     public final long startTick;
     public final UUID syncGroupId;
-    public final int syncGroupSize;
 
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
                                 float x, float y, float z,
                                 int blockX, int blockY, int blockZ,
                                 byte[] data) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            data, null, 0L, null, 0);
+            data, null, 0L, null);
     }
 
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
@@ -64,7 +62,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
                                 int blockX, int blockY, int blockZ,
                                 byte[] data, long startTick) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            data, null, startTick, null, 0);
+            data, null, startTick, null);
     }
 
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
@@ -72,7 +70,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
                                 int blockX, int blockY, int blockZ,
                                 String streamUrl) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            new byte[0], streamUrl, 0L, null, 0);
+            new byte[0], streamUrl, 0L, null);
     }
 
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
@@ -80,32 +78,26 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
                                 int blockX, int blockY, int blockZ,
                                 String streamUrl, long startTick) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            new byte[0], streamUrl, startTick, null, 0);
+            new byte[0], streamUrl, startTick, null);
     }
 
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
                                 float x, float y, float z,
                                 int blockX, int blockY, int blockZ,
-                                byte[] data, long startTick,
-                                UUID syncGroupId, int syncGroupSize) {
-        this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            data, null, startTick, syncGroupId, syncGroupSize);
-    }
-
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
                                 float x, float y, float z,
                                 int blockX, int blockY, int blockZ,
                                 String streamUrl, long startTick,
-                                UUID syncGroupId, int syncGroupSize) {
+                                UUID syncGroupId) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
-            new byte[0], streamUrl, startTick, syncGroupId, syncGroupSize);
+            new byte[0], streamUrl, startTick, syncGroupId);
     }
 
     private HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
                                  float x, float y, float z,
                                  int blockX, int blockY, int blockZ,
                                  byte[] data, String streamUrl, long startTick,
-                                 UUID syncGroupId, int syncGroupSize) {
+                                 UUID syncGroupId) {
         this.source = source;
         this.format = format != null ? format : AudioFormat.PCM_S16LE;
         this.volume = Float.isFinite(volume) ? Math.max(0.0f, Math.min(3.0f, volume)) : 1.0f;
@@ -121,7 +113,6 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         this.streamUrl = streamUrl != null && streamUrl.length() <= MAX_URL_CHARS ? streamUrl : "";
         this.startTick = Math.max(0L, startTick);
         this.syncGroupId = syncGroupId;
-        this.syncGroupSize = syncGroupId == null ? 0 : Math.max(1, Math.min(MAX_SYNC_GROUP, syncGroupSize));
     }
 
     public boolean isStreamingFormat() {
@@ -140,10 +131,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         buf.writeInt(packet.blockZ);
         buf.writeVarLong(packet.startTick);
         buf.writeBoolean(packet.syncGroupId != null);
-        if (packet.syncGroupId != null) {
-            buf.writeUUID(packet.syncGroupId);
-            buf.writeVarInt(packet.syncGroupSize);
-        }
+        if (packet.syncGroupId != null) buf.writeUUID(packet.syncGroupId);
 
         boolean streaming = packet.isStreamingFormat();
         buf.writeBoolean(streaming);
@@ -170,33 +158,32 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         int blockZ = buf.readInt();
         long startTick = buf.readVarLong();
         UUID syncGroupId = buf.readBoolean() ? buf.readUUID() : null;
-        int syncGroupSize = syncGroupId != null ? buf.readVarInt() : 0;
         boolean streaming = buf.readBoolean();
 
         boolean expectedStreaming = format == AudioFormat.MP3_STREAM;
         if (streaming != expectedStreaming) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected mismatched streaming flag for " + format);
             return new HQSpeakerAudioPacket(source, AudioFormat.PCM_S16LE, volume, x, y, z,
-                blockX, blockY, blockZ, new byte[0], startTick, null, 0);
+                blockX, blockY, blockZ, new byte[0], startTick, null);
         }
 
         if (streaming) {
             String streamUrl = buf.readUtf(MAX_URL_CHARS);
             return new HQSpeakerAudioPacket(source, format, volume, x, y, z,
-                blockX, blockY, blockZ, streamUrl, startTick, syncGroupId, syncGroupSize);
+                blockX, blockY, blockZ, streamUrl, startTick, syncGroupId);
         }
 
         int length = buf.readVarInt();
         if (length < 0 || length > MAX_BYTES) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected oversized payload (" + length + " bytes)");
             return new HQSpeakerAudioPacket(source, AudioFormat.PCM_S16LE, volume, x, y, z,
-                blockX, blockY, blockZ, new byte[0], startTick, null, 0);
+                blockX, blockY, blockZ, new byte[0], startTick, null);
         }
 
         byte[] data = new byte[length];
         if (length > 0) buf.readBytes(data);
         return new HQSpeakerAudioPacket(source, format, volume, x, y, z,
-            blockX, blockY, blockZ, data, startTick, syncGroupId, syncGroupSize);
+            blockX, blockY, blockZ, data, null, startTick, syncGroupId);
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

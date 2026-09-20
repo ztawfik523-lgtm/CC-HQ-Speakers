@@ -43,7 +43,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private static final int    SPEAKER_MAX_QUEUE   = 16;          
     private static final int    SPEAKER_READY_MARK  = 4;
     private static final double SPEAKER_RADIUS      = 32.0;
-    private static final int    SPEAKER_MAX_SYNC_GROUP = 64;
     private static final long   SPEAKER_MIN_START_DELAY = 0L;
     private static final long   SPEAKER_MAX_START_DELAY = 20L * 60L; 
 
@@ -62,7 +61,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private long lifecycleEpoch;
 
     private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume,
-                                long startTick, java.util.UUID syncGroupId, int syncGroupSize) {}
+                                long startTick) {}
 
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
@@ -182,8 +181,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
             var pkt = new HQSpeakerAudioPacket(
                 speakerSource, chunk.format(), chunk.volume(),
-                wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(),
-                chunk.startTick(), chunk.syncGroupId(), chunk.syncGroupSize()
+                wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(), chunk.startTick()
             );
 
             final float fwx = wx, fwy = wy, fwz = wz;
@@ -224,7 +222,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
         return prepared != null && enqueue(
-            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume(), startTick, null, 0);
+            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume(), startTick);
     }
 
     long nextGroupStartTick() {
@@ -479,24 +477,24 @@ public final void audioStopAll(IComputerAccess computer) {
 
     boolean startValidatedStream(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
                                  String method, long expectedLifecycle) throws LuaException {
-        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, 0, expectedLifecycle);
+        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, expectedLifecycle);
     }
 
     synchronized boolean startValidatedStreamAtTick(
             String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method,
-            long startTick, java.util.UUID syncGroupId, int syncGroupSize, long expectedLifecycle) throws LuaException {
+            long startTick, java.util.UUID syncGroupId, long expectedLifecycle) throws LuaException {
         if (lifecycleEpoch != expectedLifecycle) return false;
         float vol = clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume");
         speakStop();
         clearIcyMeta();
 
         if (startTick < 0L) startTick = 0L;
-        if (syncGroupId == null) syncGroupSize = 0;
-        else syncGroupSize = Math.max(1, Math.min(SPEAKER_MAX_SYNC_GROUP, syncGroupSize));
 
         if (world instanceof ServerLevel sl) {
             float[] wp = computeWorldPos(method);
-            var pkt = new HQSpeakerAudioPacket(speakerSource, format, vol, wp[0], wp[1], wp[2], pos.getX(), pos.getY(), pos.getZ(), url, startTick, syncGroupId, syncGroupSize);
+            var pkt = new HQSpeakerAudioPacket(
+                speakerSource, format, vol, wp[0], wp[1], wp[2],
+                pos.getX(), pos.getY(), pos.getZ(), url, startTick, syncGroupId);
             sendToNearby(sl, pkt, wp[0], wp[1], wp[2]);
         }
 
@@ -508,7 +506,7 @@ public final void audioStopAll(IComputerAccess computer) {
     }
 
     private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume,
-                            long startTick, java.util.UUID syncGroupId, int syncGroupSize) {
+                            long startTick) {
         // The legacy queue is now RAW-only. Finite MP3/WAV uses HQFiniteMediaServer; retired packed formats
         // must not recreate a second whole-file playback engine through this queue.
         if (fmt != HQSpeakerAudioPacket.AudioFormat.PCM_S16LE) return false;
@@ -516,13 +514,10 @@ public final void audioStopAll(IComputerAccess computer) {
         if (!Float.isFinite(volume)) volume = 1.0f;
         volume = Math.max(0.0f, Math.min(3.0f, volume));
         if (startTick < SPEAKER_MIN_START_DELAY) startTick = 0L;
-        if (syncGroupId == null) syncGroupSize = 0;
-        else syncGroupSize = Math.max(1, Math.min(SPEAKER_MAX_SYNC_GROUP, syncGroupSize));
         if (speakerQueue.size() >= SPEAKER_MAX_QUEUE) return false;
 
         byte[] safe = java.util.Arrays.copyOf(data, data.length);
-        boolean offered = speakerQueue.offer(new SpeakerChunk(
-            fmt, safe, volume, startTick, syncGroupId, syncGroupSize));
+        boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume, startTick));
         if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return offered;
     }

@@ -949,7 +949,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             for (HQSpeakerCompositePeripheral member : snapshot) {
                 boolean started = member.legacy.startValidatedStreamAtTick(
                     url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
-                    sealTick, groupId, snapshot.size(), expectedLifecycles.get(member));
+                    sealTick, groupId, expectedLifecycles.get(member));
                 if (!started) {
                     complete = false;
                     break;
@@ -989,7 +989,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             target.beginReplacingHQ(Owner.STREAM);
             boolean started = target.legacy.startValidatedStreamAtTick(
                 url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
-                0L, null, 0, expectedLifecycle);
+                0L, null, expectedLifecycle);
             if (started) target.owner = Owner.STREAM;
             return MethodResult.of(started);
         });

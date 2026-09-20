@@ -157,7 +157,7 @@ public class HQAudioStream implements AudioStream {
         hasRealData = true;
 
         java.util.UUID source = packet.source;
-        if (packet.syncGroupId != null && packet.syncGroupSize > 1) {
+        if (packet.syncGroupId != null) {
             sharedStreamingTap = SharedStreamingGroup.open(
                 packet.syncGroupId, packet.streamUrl, packet.volume, source);
             streamingSource = null;
