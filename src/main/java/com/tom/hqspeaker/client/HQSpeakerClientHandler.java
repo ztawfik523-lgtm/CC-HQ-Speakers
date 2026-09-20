@@ -255,7 +255,6 @@ public final class HQSpeakerClientHandler {
         }
 
         UUID currentSyncGroupId() { return packet == null ? null : packet.syncGroupId; }
-        long currentStartTick() { return packet == null ? 0L : packet.startTick; }
 
         void stop() { resetPlayback(); }
 
