@@ -155,6 +155,8 @@ public final class HQFiniteMediaServer {
         }
     }
 
+    private record SharedNotification(SharedPlayback shared, long nowNanos) {}
+
     private final ServerLevel level;
     private final BlockPos pos;
     private final UUID source = UUID.randomUUID();
@@ -424,82 +426,105 @@ public final class HQFiniteMediaServer {
         }
     }
 
-    public synchronized boolean pause() {
-        Session s = session;
-        if (s == null) return false;
+    public boolean pause() {
         long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return false;
-        }
-        if (!s.playback.pause(now)) return false;
-        s.shared.notifyEndpoints(now);
-        return true;
-    }
-
-    public synchronized boolean resume() {
-        Session s = session;
-        if (s == null) return false;
-        long now = System.nanoTime();
-        if (!s.playback.resume(now)) return false;
-        s.shared.notifyEndpoints(now);
-        return true;
-    }
-
-    public synchronized boolean seek(double seconds) throws LuaException {
-        if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
-        Session s = session;
-        if (s == null || s.playback.terminal() || s.playback.duration() <= 0.0) return false;
-        long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return false;
-        }
-
-        FinitePlaybackAuthority.SeekResult result = s.playback.seek(seconds, now);
-        if (!result.accepted()) {
-            if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
-                releaseAssetReference(s);
-                s.shared.notifyEndpoints(now);
+        SharedNotification notification;
+        boolean paused;
+        synchronized (this) {
+            Session s = session;
+            if (s == null) return false;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+                paused = false;
+            } else {
+                if (!s.playback.pause(now)) return false;
+                notification = new SharedNotification(s.shared, now);
+                paused = true;
             }
-            return false;
         }
-        if (result.ended()) {
-            releaseAssetReference(s);
-            s.shared.notifyEndpoints(now);
-            return true;
-        }
+        notifyShared(notification);
+        return paused;
+    }
 
-        s.shared.notifyEndpoints(now);
+    public boolean resume() {
+        long now = System.nanoTime();
+        SharedNotification notification;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || !s.playback.resume(now)) return false;
+            notification = new SharedNotification(s.shared, now);
+        }
+        notifyShared(notification);
         return true;
     }
 
-    public synchronized boolean setVolume(double volume) throws LuaException {
+    public boolean seek(double seconds) throws LuaException {
+        if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
+
+        long now = System.nanoTime();
+        SharedNotification notification = null;
+        boolean accepted = false;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal() || s.playback.duration() <= 0.0) return false;
+
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            } else {
+                FinitePlaybackAuthority.SeekResult result = s.playback.seek(seconds, now);
+                if (!result.accepted()) {
+                    if (s.playback.state() == FinitePlaybackAuthority.State.ERROR) {
+                        releaseAssetReference(s);
+                        notification = new SharedNotification(s.shared, now);
+                    }
+                } else {
+                    if (result.ended()) releaseAssetReference(s);
+                    notification = new SharedNotification(s.shared, now);
+                    accepted = true;
+                }
+            }
+        }
+        notifyShared(notification);
+        return accepted;
+    }
+
+    public boolean setVolume(double volume) throws LuaException {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
-        Session s = session;
-        if (s == null || s.playback.terminal()) return false;
+
         long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return false;
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            } else {
+                s.volume = clampVolume(volume);
+                notifyState(s, now);
+                return true;
+            }
         }
-        s.volume = clampVolume(volume);
-        notifyState(s, now);
-        return true;
+        notifyShared(notification);
+        return false;
     }
 
-    public synchronized boolean setMuted(boolean muted) {
-        Session s = session;
-        if (s == null || s.playback.terminal()) return false;
+    public boolean setMuted(boolean muted) {
         long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return false;
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            } else {
+                if (s.muted == muted) return true;
+                s.muted = muted;
+                notifyState(s, now);
+                return true;
+            }
         }
-        if (s.muted == muted) return true;
-        s.muted = muted;
-        notifyState(s, now);
-        return true;
+        notifyShared(notification);
+        return false;
     }
 
     /** Apply endpoint gain to the complete start-time playback snapshot, not current computer attachments. */
@@ -556,20 +581,28 @@ public final class HQFiniteMediaServer {
         return true;
     }
 
-    public synchronized boolean setLooping(boolean looping) {
-        Session s = session;
-        if (s == null || s.playback.terminal()) return false;
+    public boolean setLooping(boolean looping) {
         long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return false;
+        SharedNotification notification;
+        boolean changed;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+                changed = false;
+            } else {
+                if (!s.playback.setLooping(looping, now)) return false;
+                notification = new SharedNotification(s.shared, now);
+                changed = true;
+            }
         }
-        if (!s.playback.setLooping(looping, now)) return false;
-        s.shared.notifyEndpoints(now);
-        return true;
+        notifyShared(notification);
+        return changed;
     }
 
     /**
+     * Drop a retained terminal endpoint before installing a replacement.    /**
      * Drop a retained terminal endpoint before installing a replacement.
      *
      * <p>Terminal status may intentionally remain queryable until ownership changes, but the old shared playback
@@ -627,15 +660,23 @@ public final class HQFiniteMediaServer {
         notifyState(s, nowNanos);
     }
 
-    public synchronized Map<String, Object> status() {
-        Session s = session;
-        if (s == null) {
-            if (terminalStatus != null) return new HashMap<>(terminalStatus);
-            return idleStatus();
+    public Map<String, Object> status() {
+        SharedNotification notification = null;
+        Map<String, Object> status;
+        synchronized (this) {
+            Session s = session;
+            if (s == null) {
+                if (terminalStatus != null) return new HashMap<>(terminalStatus);
+                return idleStatus();
+            }
+            long now = System.nanoTime();
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            }
+            status = statusOf(s, now);
         }
-        long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
-        return statusOf(s, now);
+        notifyShared(notification);
+        return status;
     }
 
     public synchronized boolean hasStatus() { return session != null || terminalStatus != null; }
@@ -647,19 +688,26 @@ public final class HQFiniteMediaServer {
         BY_SOURCE.remove(source, this);
     }
 
-    private synchronized void tick() {
-        Session s = session;
-        if (s == null) return;
-        long now = System.nanoTime();
-        if (s.playback.terminal()) {
-            if (!s.listeners.isEmpty()) {
-                sendStateToAdmitted(s, now, false);
-                s.listeners.clear();
+    private void tick() {
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null) return;
+            long now = System.nanoTime();
+            if (s.playback.terminal()) {
+                if (!s.listeners.isEmpty()) {
+                    sendStateToAdmitted(s, now, false);
+                    s.listeners.clear();
+                }
+                return;
             }
-            return;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            } else {
+                refreshListeners(s);
+            }
         }
-        if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
-        else refreshListeners(s);
+        notifyShared(notification);
     }
 
     private boolean finalizeNaturalEnd(Session s, long now) {
@@ -669,84 +717,99 @@ public final class HQFiniteMediaServer {
         return true;
     }
 
-    private synchronized void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
-        Session s = session;
-        if (s == null || player == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
-        if (!FiniteRangeValidation.requestMatches(
-                source, s.mediaId, s.generation, s.totalBytes,
-                packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
-        if (!s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+    private void acceptRangeRequest0(ServerPlayer player, HQFiniteMediaRangeRequestPacket packet) {
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || player == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
+            if (!FiniteRangeValidation.requestMatches(
+                    source, s.mediaId, s.generation, s.totalBytes,
+                    packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
+            if (!s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
 
-        UUID playerId = player.getUUID();
-        UUID assetId = s.mediaId;
-        long generation = s.generation;
-        int requestedLength = packet.length();
-        FiniteRangeReadService.Submission submission = s.rangeReads.submit(
-            playerId, assetId, s.totalBytes, packet.offset(), requestedLength,
-            result -> {
-                if (!ACTIVE.contains(this)) return;
-                level.getServer().execute(() -> completeRange(playerId, assetId, generation, requestedLength, result));
+            UUID playerId = player.getUUID();
+            UUID assetId = s.mediaId;
+            long generation = s.generation;
+            int requestedLength = packet.length();
+            FiniteRangeReadService.Submission submission = s.rangeReads.submit(
+                playerId, assetId, s.totalBytes, packet.offset(), requestedLength,
+                result -> {
+                    if (!ACTIVE.contains(this)) return;
+                    level.getServer().execute(() -> completeRange(playerId, assetId, generation, requestedLength, result));
+                }
+            );
+
+            if (submission == FiniteRangeReadService.Submission.CLOSED
+                    || submission == FiniteRangeReadService.Submission.UNKNOWN_ASSET) {
+                notification = failServerSessionLocked(
+                    s, "media range service lost the active asset", System.nanoTime());
             }
-        );
-
-        if (submission == FiniteRangeReadService.Submission.CLOSED
-                || submission == FiniteRangeReadService.Submission.UNKNOWN_ASSET) {
-            failServerSession(s, "media range service lost the active asset");
         }
+        notifyShared(notification);
     }
 
-    private synchronized void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
-                                            FiniteRangeReadService.ReadResult result) {
-        Session s = session;
-        if (s == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
-        if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
+    private void completeRange(UUID playerId, UUID assetId, long generation, int requestedLength,
+                               FiniteRangeReadService.ReadResult result) {
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
+            if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
-        ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-        if (player == null || !s.listeners.contains(playerId) || !isRelevant(player)) return;
-        if (!result.success()) {
-            failServerSession(s, "media range read failed: " + result.error());
-            return;
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if (player == null || !s.listeners.contains(playerId) || !isRelevant(player)) return;
+            if (!result.success()) {
+                notification = failServerSessionLocked(
+                    s, "media range read failed: " + result.error(), System.nanoTime());
+            } else if (result.data().length != requestedLength || result.offset() < 0L
+                    || result.offset() + result.data().length > s.totalBytes) {
+                notification = failServerSessionLocked(
+                    s, "media range read returned invalid bounds", System.nanoTime());
+            } else {
+                projectToClients(HQFiniteMediaRangeDataPacket.class.getSimpleName(), () ->
+                    HQSpeakerNetwork.sendToPlayer(new HQFiniteMediaRangeDataPacket(
+                        source, assetId, generation, result.offset(), result.data()), player));
+            }
         }
-        if (result.data().length != requestedLength || result.offset() < 0L
-                || result.offset() + result.data().length > s.totalBytes) {
-            failServerSession(s, "media range read returned invalid bounds");
-            return;
-        }
-
-        projectToClients(HQFiniteMediaRangeDataPacket.class.getSimpleName(), () ->
-            HQSpeakerNetwork.sendToPlayer(new HQFiniteMediaRangeDataPacket(
-                source, assetId, generation, result.offset(), result.data()), player));
+        notifyShared(notification);
     }
 
-    private synchronized void acceptStatus0(ServerPlayer player, HQFiniteMediaStatusPacket packet) {
-        Session s = session;
-        if (s == null || player == null || packet.generation() != s.generation
-                || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+    private void acceptStatus0(ServerPlayer player, HQFiniteMediaStatusPacket packet) {
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || player == null || packet.generation() != s.generation
+                    || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
 
-        if (packet.transition() == HQFiniteMediaStatusPacket.Transition.READY) {
-            long now = System.nanoTime();
-            if (finalizeNaturalEnd(s, now)) s.shared.notifyEndpoints(now);
-            else sendState(s, player);
-            return;
+            if (packet.transition() == HQFiniteMediaStatusPacket.Transition.READY) {
+                long now = System.nanoTime();
+                if (finalizeNaturalEnd(s, now)) {
+                    notification = new SharedNotification(s.shared, now);
+                } else {
+                    sendState(s, player);
+                }
+            } else if (packet.transition() == HQFiniteMediaStatusPacket.Transition.ERROR) {
+                String detail = packet.error() == null || packet.error().isBlank()
+                    ? "client transport error" : packet.error();
+                HQSpeakerMod.warn("finite client diagnostic from " + player.getUUID() + " for generation "
+                    + s.generation + ": " + detail);
+            }
         }
-
-        if (packet.transition() == HQFiniteMediaStatusPacket.Transition.ERROR) {
-            String detail = packet.error() == null || packet.error().isBlank() ? "client transport error" : packet.error();
-            HQSpeakerMod.warn("finite client diagnostic from " + player.getUUID() + " for generation "
-                + s.generation + ": " + detail);
-        }
+        notifyShared(notification);
     }
 
-    private void failServerSession(Session s, String error) {
-        if (session != s || s.playback.terminal()) return;
-        long now = System.nanoTime();
-        if (finalizeNaturalEnd(s, now)) {
-            s.shared.notifyEndpoints(now);
-            return;
-        }
-        if (!s.playback.fail(error, now)) return;
+    private SharedNotification failServerSessionLocked(Session s, String error, long now) {
+        if (session != s || s.playback.terminal()) return null;
+        if (finalizeNaturalEnd(s, now)) return new SharedNotification(s.shared, now);
+        if (!s.playback.fail(error, now)) return null;
         releaseAssetReference(s);
-        s.shared.notifyEndpoints(now);
+        return new SharedNotification(s.shared, now);
+    }
+
+    private void notifyShared(SharedNotification notification) {
+        if (notification != null) {
+            notification.shared().notifyEndpoints(notification.nowNanos());
+        }
     }
 
     private void refreshListeners(Session s) {
