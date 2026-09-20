@@ -33,9 +33,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
 
     public enum AudioFormat {
         PCM_S16LE,
-        MP3_STREAM,
-        HLS_STREAM,
-        TS_STREAM
+        MP3_STREAM
     }
 
     public static final int MAX_BYTES = 8 * 1024 * 1024;
@@ -127,9 +125,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     }
 
     public boolean isStreamingFormat() {
-        return format == AudioFormat.MP3_STREAM
-            || format == AudioFormat.HLS_STREAM
-            || format == AudioFormat.TS_STREAM;
+        return format == AudioFormat.MP3_STREAM;
     }
 
     public static void encode(HQSpeakerAudioPacket packet, FriendlyByteBuf buf) {
@@ -177,9 +173,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         int syncGroupSize = syncGroupId != null ? buf.readVarInt() : 0;
         boolean streaming = buf.readBoolean();
 
-        boolean expectedStreaming = format == AudioFormat.MP3_STREAM
-            || format == AudioFormat.HLS_STREAM
-            || format == AudioFormat.TS_STREAM;
+        boolean expectedStreaming = format == AudioFormat.MP3_STREAM;
         if (streaming != expectedStreaming) {
             HQSpeakerMod.warn("HQSpeakerAudioPacket: rejected mismatched streaming flag for " + format);
             return new HQSpeakerAudioPacket(source, AudioFormat.PCM_S16LE, volume, x, y, z,

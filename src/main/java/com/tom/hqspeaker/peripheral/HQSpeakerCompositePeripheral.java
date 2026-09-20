@@ -61,12 +61,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> RAW_START = Set.of("speakPCM");
     private static final Set<String> RAW_ALL = Set.of("speakPCMAll");
     private static final Set<String> RAW_AT = Set.of("speakPCMAt");
-    private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
+    private static final Set<String> STREAM_START = Set.of("speakStream");
     private static final Set<String> STREAM_ALL = Set.of("speakStreamAll");
     private static final Set<String> STREAM_AT = Set.of("speakStreamAt");
-    private static final Set<String> STREAM_DIRECT = Set.of(
-        "speakHLSAll", "speakTSAll", "speakHLSAt", "speakTSAt"
-    );
     private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
         "audioSetVolumeAll", "audioSetLoopingAll", "audioStopAll"
@@ -144,6 +141,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.addAll(RAW_START);
         names.addAll(RAW_ALL);
         names.addAll(RAW_AT);
+        names.addAll(STREAM_START);
+        names.addAll(STREAM_ALL);
+        names.addAll(STREAM_AT);
         names.addAll(FINITE_CONTROLS);
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
@@ -471,10 +471,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
         if (STREAM_ALL.contains(name)) return startStreamAllReplacing(name, computer, args);
         if (STREAM_AT.contains(name)) return startStreamAtReplacing(name, computer, args);
-        if (STREAM_DIRECT.contains(name)) {
-            commandRevision.incrementAndGet();
-            return invokeLegacy(name, computer, context, args);
-        }
 
         // Commands which reserve another endpoint or a whole playback snapshot must enter without already holding
         // the caller's command lock, otherwise the stable multi-lock order can be inverted.
@@ -1005,12 +1001,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         long expectedLifecycle = legacy.lifecycleEpochSnapshot();
         HQSpeakerPeripheral.validateStreamUrl(url, name);
 
-        HQSpeakerAudioPacket.AudioFormat format = switch (name) {
-            case "speakStream" -> HQSpeakerAudioPacket.AudioFormat.MP3_STREAM;
-            case "speakHLS" -> HQSpeakerAudioPacket.AudioFormat.HLS_STREAM;
-            case "speakTS" -> HQSpeakerAudioPacket.AudioFormat.TS_STREAM;
-            default -> throw new LuaException("No such stream method " + name);
-        };
+        if (!"speakStream".equals(name)) throw new LuaException("No such stream method " + name);
+        HQSpeakerAudioPacket.AudioFormat format = HQSpeakerAudioPacket.AudioFormat.MP3_STREAM;
 
         // Validation is complete, so the remaining commit is short and may safely rejoin normal command ordering.
         synchronized (commandLock) {

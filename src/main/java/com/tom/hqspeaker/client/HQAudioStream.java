@@ -66,7 +66,7 @@ public class HQAudioStream implements AudioStream {
         if (closed || packet == null || packet.format == null) return;
         switch (packet.format) {
             case PCM_S16LE -> pushPCM(packet.data);
-            case MP3_STREAM, HLS_STREAM, TS_STREAM -> startStreaming(packet);
+            case MP3_STREAM -> startStreaming(packet);
         }
     }
 
@@ -156,17 +156,10 @@ public class HQAudioStream implements AudioStream {
         streamReady = false;
         hasRealData = true;
 
-        StreamingAudioSource.StreamType type = switch (packet.format) {
-            case MP3_STREAM -> StreamingAudioSource.StreamType.MP3_STREAM;
-            case HLS_STREAM -> StreamingAudioSource.StreamType.HLS_STREAM;
-            case TS_STREAM -> StreamingAudioSource.StreamType.TS_STREAM;
-            default -> throw new IllegalArgumentException("not a streaming format: " + packet.format);
-        };
-
         java.util.UUID source = packet.source;
         if (packet.syncGroupId != null && packet.syncGroupSize > 1) {
             sharedStreamingTap = SharedStreamingGroup.open(
-                packet.syncGroupId, packet.streamUrl, type, packet.volume, source);
+                packet.syncGroupId, packet.streamUrl, packet.volume, source);
             streamingSource = null;
             if (sharedStreamingTap == null) {
                 HQSpeakerMod.warn("HQAudioStream: rejected late shared " + packet.format + " group tap "
@@ -178,7 +171,7 @@ public class HQAudioStream implements AudioStream {
             HQSpeakerMod.log("HQAudioStream: collected shared " + packet.format + " group "
                 + packet.syncGroupId + " from " + packet.streamUrl);
         } else {
-            streamingSource = new StreamingAudioSource(packet.streamUrl, type, packet.volume);
+            streamingSource = new StreamingAudioSource(packet.streamUrl, packet.volume);
             streamingSource.setMetadataListener((rawTitle, station, genre, description) -> {
                 try {
                     com.tom.hqspeaker.network.HQSpeakerNetwork.sendToServer(

@@ -17,12 +17,11 @@ public final class SharedStreamingGroup {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
     private SharedStreamingGroup() {}
 
-    public static Tap open(UUID groupId, String url, StreamingAudioSource.StreamType type,
-                           float volume, UUID metadataSourceId) {
+    public static Tap open(UUID groupId, String url, float volume, UUID metadataSourceId) {
         Session session = SESSIONS.compute(groupId, (id, existing) -> {
-            if (existing != null && existing.matches(url, type)) return existing;
+            if (existing != null && existing.matches(url)) return existing;
             if (existing != null) existing.forceClose();
-            return new Session(groupId, url, type, volume, metadataSourceId);
+            return new Session(groupId, url, volume, metadataSourceId);
         });
         return session.addTap();
     }
@@ -95,7 +94,6 @@ public final class SharedStreamingGroup {
         private static final int DISTRIBUTION_CHUNK_BYTES = 9600; 
         private final UUID groupId;
         private final String url;
-        private final StreamingAudioSource.StreamType type;
         private final float volume;
         private final UUID metadataSourceId;
         private final StreamingAudioSource source;
@@ -106,14 +104,12 @@ public final class SharedStreamingGroup {
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private Thread distributorThread;
 
-        private Session(UUID groupId, String url, StreamingAudioSource.StreamType type,
-                        float volume, UUID metadataSourceId) {
+        private Session(UUID groupId, String url, float volume, UUID metadataSourceId) {
             this.groupId = groupId;
             this.url = url;
-            this.type = type;
             this.volume = volume;
             this.metadataSourceId = metadataSourceId;
-            this.source = new StreamingAudioSource(url, type, volume);
+            this.source = new StreamingAudioSource(url, volume);
             this.source.setMetadataListener((rawTitle, station, genre, desc) -> {
                 try {
                     com.tom.hqspeaker.network.HQSpeakerNetwork.sendToServer(
@@ -124,8 +120,8 @@ public final class SharedStreamingGroup {
             });
         }
 
-        private boolean matches(String url, StreamingAudioSource.StreamType type) {
-            return this.type == type && this.url.equals(url);
+        private boolean matches(String url) {
+            return this.url.equals(url);
         }
 
         private void startDecode() {
@@ -135,8 +131,8 @@ public final class SharedStreamingGroup {
                 distributorThread = new Thread(this::distributeLoop, "HQSpeaker-SharedStream-" + groupId);
                 distributorThread.setDaemon(true);
                 distributorThread.start();
-                HQSpeakerMod.log("SharedStreamingGroup: sealed and started shared session " + groupId
-                    + " for " + type + " " + url + " with " + taps.size() + " taps");
+                HQSpeakerMod.log("SharedStreamingGroup: sealed and started MP3 radio session " + groupId
+                    + " from " + url + " with " + taps.size() + " taps");
             }
         }
 

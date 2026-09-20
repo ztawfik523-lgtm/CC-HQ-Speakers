@@ -291,9 +291,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     @LuaFunction public final int speakMaxAudioBytes() { return SPEAKER_MAX_AUDIO; }
     @LuaFunction public final String[] speakSupportedFiles() { return new String[]{"mp3", "wav"}; }
 
-    @LuaFunction public final boolean speakStream(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream"); }
-    @LuaFunction public final boolean speakHLS(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.HLS_STREAM, "speakHLS"); }
-    @LuaFunction public final boolean speakTS(String url, Optional<Double> volume) throws LuaException { return startStream(url, volume, HQSpeakerAudioPacket.AudioFormat.TS_STREAM, "speakTS"); }
 
     @LuaFunction public final boolean isStreaming() { return streamActive.get(); }
     @LuaFunction public final Optional<String> getStreamUrl() { return Optional.ofNullable(streamUrl); }
@@ -302,10 +299,13 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public final Map<String, Object> getStreamFormats() {
         Map<String, Object> info = new HashMap<>();
         
-        Map<String, Object> mp3 = new HashMap<>(); mp3.put("name","MP3 Stream"); mp3.put("method","speakStream"); mp3.put("extensions",new String[]{".mp3",".mp2"}); mp3.put("protocols",new String[]{"http","https"}); mp3.put("supportsICY",true);
-        Map<String, Object> hls = new HashMap<>(); hls.put("name","HLS Stream"); hls.put("method","speakHLS"); hls.put("extensions",new String[]{".m3u8",".m3u"}); hls.put("protocols",new String[]{"http","https"}); hls.put("supportsLive",true); hls.put("supportsVOD",true);
-        Map<String, Object> ts = new HashMap<>(); ts.put("name","MPEG-TS Stream"); ts.put("method","speakTS"); ts.put("extensions",new String[]{".ts"}); ts.put("protocols",new String[]{"http","https"}); ts.put("audioCodecs",new String[]{"AAC","MP3"});
-        info.put("mp3",mp3); info.put("hls",hls); info.put("ts",ts);
+        Map<String, Object> mp3 = new HashMap<>();
+        mp3.put("name", "MP3/ICY Radio");
+        mp3.put("method", "speakStream");
+        mp3.put("extensions", new String[]{".mp3", ".mp2"});
+        mp3.put("protocols", new String[]{"http", "https"});
+        mp3.put("supportsICY", true);
+        info.put("mp3", mp3);
         return info;
     }
 
@@ -395,13 +395,6 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
 }
 
 
-private record SyncDispatch(long startTick, java.util.UUID syncGroupId, int syncGroupSize) {}
-
-private SyncDispatch nextSyncDispatch(int members) {
-    if (members <= 1) return new SyncDispatch(0L, null, 0);
-    return new SyncDispatch(nextSyncedStartTick(), java.util.UUID.randomUUID(), members);
-}
-
 @LuaFunction
 public final Map<String, Object> audioStatusAll(IComputerAccess computer) throws LuaException {
     return leaderFor(computer).audioStatus();
@@ -447,48 +440,6 @@ public final void audioStopAll(IComputerAccess computer) {
     for (HQSpeakerPeripheral p : membersFor(computer)) p.audioStop();
 }
 
-@LuaFunction
-public final boolean speakStreamAll(IComputerAccess computer, String url, java.util.Optional<Double> volume) throws LuaException {
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.startStreamAtTick(url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream", sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean speakHLSAll(IComputerAccess computer, String url, java.util.Optional<Double> volume) throws LuaException {
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.startStreamAtTick(url, volume, HQSpeakerAudioPacket.AudioFormat.HLS_STREAM, "speakHLS", sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean speakTSAll(IComputerAccess computer, String url, java.util.Optional<Double> volume) throws LuaException {
-    boolean ok = false;
-    java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-    SyncDispatch sync = nextSyncDispatch(members.size());
-    for (HQSpeakerPeripheral p : members) ok = anyTrue(ok, p.startStreamAtTick(url, volume, HQSpeakerAudioPacket.AudioFormat.TS_STREAM, "speakTS", sync.startTick(), sync.syncGroupId(), sync.syncGroupSize()));
-    return ok;
-}
-
-@LuaFunction
-public final boolean speakStreamAt(IComputerAccess computer, int index, String url, java.util.Optional<Double> volume) throws LuaException {
-    return byIndexFor(computer, index).speakStream(url, volume);
-}
-
-@LuaFunction
-public final boolean speakHLSAt(IComputerAccess computer, int index, String url, java.util.Optional<Double> volume) throws LuaException {
-    return byIndexFor(computer, index).speakHLS(url, volume);
-}
-
-@LuaFunction
-public final boolean speakTSAt(IComputerAccess computer, int index, String url, java.util.Optional<Double> volume) throws LuaException {
-    return byIndexFor(computer, index).speakTS(url, volume);
-}
-
 @LuaFunction public final Map<String, Object> audioStatusAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioStatus(); }
 @LuaFunction public final boolean audioPauseAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioPause(); }
 @LuaFunction public final boolean audioResumeAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioResume(); }
@@ -516,21 +467,6 @@ public final boolean speakTSAt(IComputerAccess computer, int index, String url, 
         }
         buf.flip();
         return buf.array();
-    }
-
-    private boolean startStream(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method) throws LuaException {
-        return startStreamAtTick(url, volume, format, method, 0L, null, 0);
-    }
-
-    private boolean startStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method, long startTick) throws LuaException {
-        return startStreamAtTick(url, volume, format, method, startTick, null, 0);
-    }
-
-    private boolean startStreamAtTick(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method, long startTick, java.util.UUID syncGroupId, int syncGroupSize) throws LuaException {
-        long expectedLifecycle = lifecycleEpochSnapshot();
-        validateStreamUrl(url, method);
-        return startValidatedStreamAtTick(
-            url, volume, format, method, startTick, syncGroupId, syncGroupSize, expectedLifecycle);
     }
 
     synchronized long lifecycleEpochSnapshot() {

@@ -3,15 +3,10 @@ package com.tom.hqspeaker.client.audio;
 import com.tom.hqspeaker.HQSpeakerMod;
 
 import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,14 +19,7 @@ public class StreamingAudioSource {
         void onMetadata(String rawTitle, String stationName, String genre, String description);
     }
 
-    public enum StreamType {
-        MP3_STREAM,
-        HLS_STREAM,
-        TS_STREAM
-    }
-
     private final String url;
-    private final StreamType type;
     private final float volume;
     private MetadataListener metadataListener;
 
@@ -52,14 +40,8 @@ public class StreamingAudioSource {
 
     private Thread streamThread;
 
-    
-    private HLSPlaylistParser.Playlist currentPlaylist;
-    private int  currentSegmentIndex = 0;
-    private long lastPlaylistFetch   = 0;
-
-    public StreamingAudioSource(String url, StreamType type, float volume) {
-        this.url    = url;
-        this.type   = type;
+    public StreamingAudioSource(String url, float volume) {
+        this.url = url;
         this.volume = volume;
     }
 
@@ -69,10 +51,10 @@ public class StreamingAudioSource {
     public void start() {
         if (running.compareAndSet(false, true)) {
             stopped.set(false);
-            streamThread = new Thread(this::streamLoop, "StreamingAudio-" + type);
+            streamThread = new Thread(this::streamLoop, "HQSpeaker-MP3-Radio");
             streamThread.setDaemon(true);
             streamThread.start();
-            HQSpeakerMod.log("StreamingAudio: Started " + type + " from " + url);
+            HQSpeakerMod.log("StreamingAudio: started MP3/ICY radio from " + url);
         }
     }
 
@@ -135,14 +117,10 @@ public class StreamingAudioSource {
     
     private void streamLoop() {
         try {
-            switch (type) {
-                case MP3_STREAM -> streamMP3();
-                case HLS_STREAM -> streamHLS();
-                case TS_STREAM  -> streamTS();
-            }
+            streamMP3();
         } catch (Exception e) {
             if (!stopped.get()) {
-                HQSpeakerMod.error("StreamingAudio: Stream error — " + e.getMessage());
+                HQSpeakerMod.error("StreamingAudio: stream error — " + e.getMessage());
             }
         } finally {
             running.set(false);
@@ -238,165 +216,6 @@ public class StreamingAudioSource {
             try { rawStream.close(); } catch (IOException ignored) {}
             flushRemainingPCM(); 
         }
-    }
-
-    
-    private void streamHLS() throws Exception {
-        while (!stopped.get()) {
-            long now = System.currentTimeMillis();
-            if (currentPlaylist == null ||
-                    (currentPlaylist.isLive() && now - lastPlaylistFetch > 5000)) {
-
-                currentPlaylist   = HLSPlaylistParser.fetchAndParse(url);
-                lastPlaylistFetch = now;
-
-                if (currentPlaylist.type == HLSPlaylistParser.PlaylistType.MASTER) {
-                    HLSPlaylistParser.VariantStream variant =
-                            HLSPlaylistParser.selectBestVariant(currentPlaylist.variants, 128_000);
-                    if (variant == null) {
-                        HQSpeakerMod.error("StreamingAudio: No suitable HLS variant");
-                        return;
-                    }
-                    HQSpeakerMod.log("StreamingAudio: HLS variant " + variant.bandwidth + " bps");
-                    currentPlaylist = HLSPlaylistParser.fetchAndParse(variant.url);
-                }
-            }
-
-            List<HLSPlaylistParser.MediaSegment> segs = currentPlaylist.segments;
-            while (currentSegmentIndex < segs.size() && !stopped.get()) {
-                HLSPlaylistParser.MediaSegment seg = segs.get(currentSegmentIndex);
-                if (seg.url.toLowerCase().endsWith(".aac")) {
-                    playAACSegment(seg.url);
-                } else {
-                    playTSSegment(seg.url);
-                }
-                currentSegmentIndex++;
-            }
-
-            if (currentPlaylist.isLive()) {
-                Thread.sleep((long)(currentPlaylist.targetDuration * 500));
-                currentPlaylist = null;
-            } else {
-                break;
-            }
-        }
-    }
-
-    
-    private void streamTS() throws IOException {
-        HttpURLConnection conn = openConnection(url);
-        try (InputStream is = conn.getInputStream()) {
-            TSDemuxer demuxer = new TSDemuxer();
-            List<TSDemuxer.AudioFrame> frames = demuxer.demux(is);
-            HQSpeakerMod.log("StreamingAudio: Demuxed " + frames.size() + " TS frames");
-            for (TSDemuxer.AudioFrame frame : frames) {
-                if (stopped.get()) break;
-                byte[] pcm = decodeAudioFrame(frame);
-                if (pcm != null) queuePCM(pcm);
-            }
-        }
-    }
-
-    private void playTSSegment(String segUrl) {
-        try {
-            List<TSDemuxer.AudioFrame> frames = TSDemuxer.fetchAndDemux(segUrl);
-            for (TSDemuxer.AudioFrame frame : frames) {
-                if (stopped.get()) break;
-                byte[] pcm = decodeAudioFrame(frame);
-                if (pcm != null) queuePCM(pcm);
-            }
-        } catch (Exception e) {
-            HQSpeakerMod.warn("StreamingAudio: TS segment failed — " + e.getMessage());
-        }
-    }
-
-    private void playAACSegment(String segUrl) {
-        try {
-            HttpURLConnection conn = openConnection(segUrl);
-            byte[] data;
-            try (InputStream is = conn.getInputStream();
-                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                byte[] buf = new byte[8192];
-                int r;
-                while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
-                data = baos.toByteArray();
-            }
-
-            AudioInputStream ais = AudioSystem.getAudioInputStream(
-                    new ByteArrayInputStream(data));
-            AudioFormat fmt = ais.getFormat();
-            if (detectedFormat.get() == null) {
-                detectedFormat.set(new AudioFormat(
-                        AudioFormat.Encoding.PCM_SIGNED,
-                        fmt.getSampleRate(), 16, 1, 2, fmt.getSampleRate(), false));
-            }
-            AudioFormat pcmFmt = new AudioFormat(
-                    AudioFormat.Encoding.PCM_SIGNED,
-                    fmt.getSampleRate(), 16, fmt.getChannels(),
-                    fmt.getChannels() * 2, fmt.getSampleRate(), false);
-            byte[] pcm = AudioSystem.getAudioInputStream(pcmFmt, ais).readAllBytes();
-            queuePCM(toMono16LE(pcm, 0, pcm.length, fmt.getChannels(), fmt.isBigEndian()));
-        } catch (Exception e) {
-            HQSpeakerMod.warn("StreamingAudio: AAC segment failed — " + e.getMessage());
-        }
-    }
-
-    
-    private byte[] decodeAudioFrame(TSDemuxer.AudioFrame frame) {
-        try {
-            AudioInputStream ais = AudioSystem.getAudioInputStream(
-                    new ByteArrayInputStream(frame.data));
-            AudioFormat fmt = ais.getFormat();
-            if (detectedFormat.get() == null) {
-                detectedFormat.set(new AudioFormat(
-                        AudioFormat.Encoding.PCM_SIGNED,
-                        fmt.getSampleRate(), 16, 1, 2, fmt.getSampleRate(), false));
-            }
-            AudioFormat pcmFmt = new AudioFormat(
-                    AudioFormat.Encoding.PCM_SIGNED,
-                    fmt.getSampleRate(), 16, fmt.getChannels(),
-                    fmt.getChannels() * 2, fmt.getSampleRate(), false);
-            byte[] raw = AudioSystem.getAudioInputStream(pcmFmt, ais).readAllBytes();
-            return toMono16LE(raw, 0, raw.length, fmt.getChannels(), false);
-        } catch (UnsupportedAudioFileException e) {
-            return frame.data; 
-        } catch (Exception e) {
-            HQSpeakerMod.warn("StreamingAudio: frame decode failed — " + e.getMessage());
-            return null;
-        }
-    }
-
-    
-    private static byte[] toMono16LE(byte[] src, int off, int len,
-                                     int channels, boolean bigEndian) {
-        if (channels <= 0) channels = 1;
-        int frames = len / (channels * 2);
-
-        if (channels == 1 && !bigEndian) {
-            byte[] out = new byte[frames * 2];
-            System.arraycopy(src, off, out, 0, frames * 2);
-            return out;
-        }
-
-        byte[] out = new byte[frames * 2];
-        for (int i = 0; i < frames; i++) {
-            long sum = 0;
-            for (int ch = 0; ch < channels; ch++) {
-                int idx = off + (i * channels + ch) * 2;
-                short s;
-                if (bigEndian) {
-                    
-                    s = (short)(((src[idx] & 0xFF) << 8) | (src[idx + 1] & 0xFF));
-                } else {
-                    s = (short)((src[idx] & 0xFF) | ((src[idx + 1] & 0xFF) << 8));
-                }
-                sum += s;
-            }
-            short mono = (short)(sum / channels);
-            out[i * 2]     = (byte)(mono & 0xFF);
-            out[i * 2 + 1] = (byte)((mono >> 8) & 0xFF);
-        }
-        return out;
     }
 
     
