@@ -32,6 +32,11 @@ final class OrderedMultiLock {
 
         ArrayList<Target> ordered = new ArrayList<>(targets);
         ordered.sort(Comparator.comparingLong(Target::order));
+        for (Target target : ordered) {
+            if (Thread.holdsLock(target.commandLock()) || Thread.holdsLock(target.stateLock())) {
+                throw new IllegalStateException("multi-lock entry must not already hold a target lock");
+            }
+        }
         for (int i = 1; i < ordered.size(); i++) {
             if (ordered.get(i - 1).order() == ordered.get(i).order()) {
                 throw new IllegalArgumentException("duplicate multi-lock order");

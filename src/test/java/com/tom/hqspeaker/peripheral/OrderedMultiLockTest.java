@@ -113,4 +113,14 @@ class OrderedMultiLockTest {
         assertThrows(IllegalArgumentException.class, () ->
             OrderedMultiLock.run(List.of(a, b), () -> null));
     }
+
+    @Test
+    void enteringWithATargetLockAlreadyHeldIsRejected() {
+        Object command = new Object();
+        OrderedMultiLock.Target target = new OrderedMultiLock.Target(1, command, new Object());
+        synchronized (command) {
+            assertThrows(IllegalStateException.class, () ->
+                OrderedMultiLock.run(List.of(target), () -> null));
+        }
+    }
 }

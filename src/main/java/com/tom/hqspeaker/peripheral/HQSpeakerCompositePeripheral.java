@@ -422,6 +422,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             return invokeLegacy(name, computer, context, args);
         }
 
+        // These commands acquire another endpoint or a whole endpoint snapshot. They must enter without already
+        // holding the caller's command lock, otherwise the stable multi-lock order can be inverted.
+        if (RAW_ALL.contains(name)) return startRawAll(computer, name, args);
+        if (RAW_AT.contains(name)) return startRawAt(computer, name, args);
+
         if (!READ_ONLY_DYNAMIC.contains(name)) commandRevision.incrementAndGet();
         synchronized (commandLock) {
             return callMethodOrdered(computer, context, method, args);
