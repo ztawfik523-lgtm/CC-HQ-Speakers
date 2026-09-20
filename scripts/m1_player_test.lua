@@ -1,3 +1,6 @@
+-- HISTORICAL: targets retired pre-v9 finite APIs and old queued-finite behavior.
+-- Do not use this for current acceptance; use v9_core_acceptance.lua instead.
+
 local args = {...}
 if #args < 3 then
   error("usage: m1_player_test <mp3> <ogg> <wav>")

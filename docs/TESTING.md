@@ -86,6 +86,14 @@ Verify normal SoundManager processing and profile many simultaneous sources. Do 
 
 Only if live features remain supported/promoted: MP3 URL/ICY, HLS refresh across windows, TS, grouped-stream partial-listener behavior, shutdown/DNS failure.
 
+## Current runtime scripts
+
+- `scripts/v9_core_acceptance.lua <mp3> [wav]`: current v9 automated API/core lifecycle check, including the endpoint-local `audioStopAt` contract when 2+ speakers are attached.
+- `scripts/p0_cc_speaker_contract.lua`: focused native CC:T behavior/backpressure regression.
+- `scripts/p0_finite_regression.lua <mp3>`: focused finite looping/end-state regression.
+
+These scripts still do not replace manual audibility/spatial, movement, reload/recovery or Sound Physics checks.
+
 ## Historical scripts
 
-Older scripts may target retired APIs. Treat them as historical until reviewed against the current v9 API. Before release, create/refresh a concise current acceptance script set.
+`m0-smoke.lua` and `m1_player_test.lua` are explicitly marked historical because they target retired OGG/generic/old finite behavior. Other dated M1 scripts should be treated as milestone-specific unless reviewed for the current v9 surface.
