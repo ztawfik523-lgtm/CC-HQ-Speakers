@@ -421,9 +421,12 @@ public final class HQFiniteMediaServer {
             mine = session == null ? null : session.shared;
         }
         if (mine == null) return false;
+
+        SharedPlayback theirs;
         synchronized (other) {
-            return other.session != null && other.session.shared == mine;
+            theirs = other.session == null ? null : other.session.shared;
         }
+        return theirs == mine;
     }
 
     public boolean pause() {
@@ -540,7 +543,7 @@ public final class HQFiniteMediaServer {
             ended = finalizeNaturalEnd(s, now);
         }
         if (ended) {
-            shared.notifyEndpoints(now);
+            notifyShared(new SharedNotification(shared, now));
             return false;
         }
         return shared.setAllEndpointVolumes(volume, now);
@@ -558,7 +561,7 @@ public final class HQFiniteMediaServer {
             ended = finalizeNaturalEnd(s, now);
         }
         if (ended) {
-            shared.notifyEndpoints(now);
+            notifyShared(new SharedNotification(shared, now));
             return false;
         }
         return shared.setAllEndpointMuted(muted, now);
