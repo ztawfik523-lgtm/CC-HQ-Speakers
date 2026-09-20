@@ -11,9 +11,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`395a41c1c91a4d1efa41cee9db89ba02fe767785` — `cleanup: remove dead legacy raw grouped bodies`
+`68314efe2e7ccbaa73e273044389ea43fea70530` — `fix: preserve finite mute ownership guard`
 
-CI `35476526511`:
+CI `35478810268`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS
@@ -252,7 +252,16 @@ Each audible modern finite endpoint decodes independently. Do not optimize witho
 
 ## What should happen next
 
-### A. RAW/public API compatibility-control decision
+Core multispeaker concurrency hardening is complete in source through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`. Relevant speakers are reserved together in a stable order for modern/core group transactions and controls; shared playback snapshots are rechecked under reservation. Keep real concurrent-control stress in the runtime acceptance batch.
+
+### A. `audioStopAt` API decision
+
+Current source detaches only the selected endpoint from a shared finite playback. Existing authority wording says stop is shared. Choose one meaning and make source/docs agree:
+
+- shared stop: `audioStopAt` stops the whole shared playback;
+- endpoint detach: keep current behavior and document `audioStopAt` as the explicit detach operation.
+
+### B. RAW/public API compatibility-control decision
 
 The dead standard and RAW grouped/indexed implementation duplicates are gone.
 
@@ -266,17 +275,17 @@ Choose between removing these undocumented compatibility aliases or preserving t
 
 Do **not** delete `SyncDispatch` / packet sync-group fields / client `SyncGroupState` wholesale because optional grouped live streams still use them.
 
-### B. RAW/public API release cleanup
+### C. RAW/public API release cleanup
 
 Audit status names, queue helpers, limits, backpressure wording, obsolete aliases, ownership cleanup and events.
 
 Keep behavior simple and truthful.
 
-### C. Repository/release hygiene
+### D. Repository/release hygiene
 
 Exact dead-code sweep, dependencies/package, docs/API freeze, CI optimization if useful, default-branch/release hygiene, refresh runtime scripts.
 
-### D. Deferred integrated runtime pass
+### E. Deferred integrated runtime pass
 
 When owner is ready:
 

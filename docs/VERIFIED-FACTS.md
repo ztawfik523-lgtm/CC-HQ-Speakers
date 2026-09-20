@@ -2,7 +2,7 @@
 
 Updated: 2026-09-20
 
-Checked against current `codex/m1j-multispeaker` source at/through `395a41c1c91a4d1efa41cee9db89ba02fe767785` unless explicitly historical.
+Checked against current `codex/m1j-multispeaker` source at/through `68314efe2e7ccbaa73e273044389ea43fea70530` unless explicitly historical.
 
 ## Product/repository
 
@@ -17,7 +17,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `395a41c1c91a
 - FACT-010: current network protocol is v9 with 9 registered payloads.
 - FACT-011: JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded.
 - FACT-012: mp3spi and tritonus-share are removed.
-- FACT-013: `395a41c1c91a4d1efa41cee9db89ba02fe767785` passed CI `35476526511` on both supported NeoForge targets, including packaged-mod verification and artifact upload.
+- FACT-013: `68314efe2e7ccbaa73e273044389ea43fea70530` passed CI `35478810268` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
 
 ## Standard CC:T
 
@@ -36,6 +36,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `395a41c1c91a
 - FACT-036: client shared playback projection does not re-anchor on every same-revision endpoint packet.
 - FACT-037: modern finite uses a fixed 32-block core server relevance radius; finite volume changes gain, not that radius.
 - FACT-038: M1G focused audible/core Minecraft acceptance passed on NeoForge 21.1.247 on 2026-09-19.
+- FACT-039: modern/core multispeaker command coordination uses stable ordered target reservations. Prepared finite All, compatibility MP3/WAV All and RAW All reserve the complete target snapshot through replacement/commit; shared/All/At controls invalidate delayed older stream starts on affected modern endpoints and revalidate shared playback identity under reservation.
 
 ## Listener/recovery/movement
 

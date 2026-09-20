@@ -30,14 +30,6 @@ This is a concrete source risk, not a proven runtime bug. Test/fix before claimi
 
 Need real 2/4/8+ speaker tests for audibility/sync, pause/seek/loop, endpoint removal/replacement and per-endpoint volume/mute.
 
-### KI-CONC-013 — composite multi-endpoint commands are not yet transactionally coordinated
-
-The finite-server endpoint-monitor fanout cycle was removed at `8349d0883c2521506bbfdaac4546981c1e31af3e`.
-
-A separate composite-level race remains: finite All-start, compatibility-byte All-start, RAW All preflight/commit, and shared-stop ownership cleanup acquire per-endpoint command/owner locks in separate phases. Concurrent commands from another attached computer can therefore interleave between endpoints.
-
-The shared-stop cleanup path can also acquire another composite monitor while the initiating composite monitor/command lock is already held, so the remaining fix should establish one consistent multi-endpoint coordination rule rather than add ad-hoc nested locks.
-
 ### KI-PERF-006 — multispeaker client decode duplication is unprofiled
 
 Every audible endpoint keeps an independent decoder/PCM/render path. Server range traffic is already bounded per player.
@@ -83,7 +75,8 @@ Possible non-functional cleanup: docs-only CI path, concurrency cancellation, de
 - grouped/indexed standard semantics corrected at the composite surface.
 - dead legacy standard grouped/indexed bodies removed at `ef2a917de429c34409ae7866f59cb50f3c191aa1`.
 - dead legacy RAW `speakPCMAll/speakPCMAt` duplicates/helpers removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`;
-- nested finite endpoint-monitor fanout and `sharesPlaybackWith` lock nesting removed at `8349d0883c2521506bbfdaac4546981c1e31af3e`.
+- nested finite endpoint-monitor fanout and `sharesPlaybackWith` lock nesting removed at `8349d0883c2521506bbfdaac4546981c1e31af3e`;
+- KI-CONC-013: modern/core multi-endpoint command coordination resolved through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`; stable ordered target locks cover finite/RAW group replacement and targeted/shared controls, with deterministic lock-order tests.
 - inherited standalone HQ block removed.
 - license metadata mismatch corrected to MPL-2.0.
 

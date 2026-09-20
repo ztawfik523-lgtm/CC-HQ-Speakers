@@ -22,9 +22,9 @@ Start with:
 
 Active branch at handoff: `codex/m1j-multispeaker`.
 
-Current source checkpoint: `395a41c1c91a4d1efa41cee9db89ba02fe767785`.
+Current source checkpoint: `68314efe2e7ccbaa73e273044389ea43fea70530`.
 
-CI `35476526511` passed NeoForge 21.1.247 and 21.1.248 with tests, packaged-mod verification, and artifact upload.
+CI `35478810268` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
 
 Current network protocol is v9 with 9 payloads.
 
@@ -56,7 +56,11 @@ Dead grouped/indexed implementation cleanup is now complete:
 - the composite remains the public standard/RAW All/At authority;
 - `SyncDispatch` / packet sync fields / client `SyncGroupState` remain because grouped optional live helpers still use them.
 
-Likely next non-runtime task is the RAW/public API compatibility-control decision: inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Decide whether to remove these undocumented aliases or preserve them with explicit ownership-aware semantics, then continue exact dead-code/dependency/docs/repository hygiene.
+Core modern/multispeaker concurrency hardening is complete in source through `68314efe2e7ccbaa73e273044389ea43fea70530`: relevant target speakers are reserved together in one stable order for finite/RAW group replacement and modern/core targeted controls, delayed older stream starts are invalidated on affected targets, and shared playback identity is rechecked after reservation.
+
+Next API decision: current `audioStopAt` detaches only the selected endpoint, while authority docs currently describe stop as shared. Choose shared-stop semantics or explicitly document endpoint-detach semantics.
+
+After that, decide the stale inherited compatibility aliases: `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Then continue exact dead-code/dependency/docs/repository hygiene.
 
 Do not start FLAC/OGG/provider playback/shared decode fan-out unless a fresh decision justifies it.
 

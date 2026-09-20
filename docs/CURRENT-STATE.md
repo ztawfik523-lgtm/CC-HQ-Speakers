@@ -9,9 +9,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`8349d0883c2521506bbfdaac4546981c1e31af3e`
+`68314efe2e7ccbaa73e273044389ea43fea70530`
 
-CI `35477934035` passed:
+CI `35478810268` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248
@@ -76,17 +76,22 @@ Group-wide volume/mute targets the surviving playback endpoint snapshot, not a f
 
 Focused real-Minecraft multispeaker acceptance remains deferred.
 
-## Concurrency hardening started
+## Core concurrency hardening complete in source
 
-Checkpoint: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
+Current checkpoint: `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`.
 
-Resolved in this slice:
+Resolved across the hardening sequence:
 
-- shared finite pause/resume/seek/loop/terminal fanout no longer traverses other endpoint monitors while the initiating `HQFiniteMediaServer` monitor is held;
-- `sharesPlaybackWith(...)` no longer nests one finite endpoint monitor inside another;
-- both supported NeoForge targets pass build/tests/package verification after the change.
+- shared finite fanout no longer traverses other endpoint monitors while the initiating finite endpoint monitor is held;
+- finite playback identity comparison no longer nests endpoint monitors;
+- multispeaker replacement/admission uses one stable per-speaker lock order;
+- prepared finite All, compatibility MP3/WAV All and RAW All keep the complete target snapshot reserved through replacement/commit;
+- standard All/At and finite shared/All/At controls reserve the actual target speakers and invalidate delayed older stream starts on those targets;
+- shared playback snapshots are revalidated after locks are acquired, so a concurrent group replacement cannot redirect a control onto an unreserved group;
+- shared-stop owner cleanup no longer nests composite monitors;
+- deterministic `OrderedMultiLockTest` covers opposite-order callers, overlapping groups and invalid pre-held-lock entry.
 
-Still unresolved: composite-level multi-endpoint commands are not yet one atomic transaction. All-start/RAW-All and shared-stop ownership cleanup currently acquire target command/owner locks separately, so concurrent commands can still interleave across endpoints. This is the next core source-hardening item.
+Focused real-Minecraft concurrent-control/stress acceptance is still deferred. Optional grouped live helpers and stale inherited compatibility aliases remain separate known debt; they are not part of this modern/core coordination guarantee.
 
 ## Finite API convergence complete
 
@@ -160,13 +165,13 @@ Known HLS refresh/index progression concerns remain.
 
 Near-term non-runtime:
 
-1. finish composite multi-endpoint command/ownership coordination so All-start, RAW-All and shared-stop cannot interleave across endpoint locks;
+1. decide whether `audioStopAt` means shared-playback stop or intentional endpoint detach, then make docs/source agree;
 2. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
-3. keep live-stream sync machinery while grouped live helpers still depend on it;
+3. keep live-stream sync machinery while grouped live helpers still depend on it, and decide later whether to trim or repair optional grouped live;
 4. finish RAW/public API truthfulness and obsolete-helper cleanup;
 5. continue exact dead-code/import/dependency cleanup;
-6. freeze truthful docs/API/capabilities;
-7. CI/default-branch/release hygiene where worthwhile.
+6. fix/validate the Sable parent-world relevance risk;
+7. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
 
 Deferred runtime/integration:
 
