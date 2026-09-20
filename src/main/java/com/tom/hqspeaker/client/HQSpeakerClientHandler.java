@@ -82,7 +82,10 @@ public final class HQSpeakerClientHandler {
         tickSyncGroups(level);
         states.forEach((id, state) -> {
             state.tick(level);
-            if (state.isDone() && states.remove(id, state)) state.stop();
+            if (state.isDone() && states.remove(id, state)) {
+                state.stop();
+                syncGroups.forEach((groupId, group) -> group.remove(id));
+            }
         });
     }
 
@@ -201,7 +204,7 @@ public final class HQSpeakerClientHandler {
         }
 
         private void tryStart(Level level) {
-            if (stream == null || packet == null || !stream.isStreamReady()) return;
+            if (stream == null || packet == null || stream.isDrained() || !stream.isStreamReady()) return;
             if (packet.syncGroupId != null) return;
             if (packet.startTick > 0L && level.getGameTime() < packet.startTick) return;
             Minecraft minecraft = Minecraft.getInstance();
@@ -222,7 +225,7 @@ public final class HQSpeakerClientHandler {
         }
 
         void forceStart(Level level) {
-            if (stream == null || packet == null || !stream.isStreamReady()) return;
+            if (stream == null || packet == null || stream.isDrained() || !stream.isStreamReady()) return;
             Minecraft minecraft = Minecraft.getInstance();
             if (sound != null && minecraft.getSoundManager().isActive(sound)) return;
             sound = new HQSpeakerSound(stream, packet, packet.volume,
@@ -267,7 +270,7 @@ public final class HQSpeakerClientHandler {
         }
 
         boolean isDone() {
-            if (mode == Mode.STREAM) return false;
+            if (mode == Mode.STREAM) return stream == null || stream.isDrained();
             return mode == Mode.NONE;
         }
     }
