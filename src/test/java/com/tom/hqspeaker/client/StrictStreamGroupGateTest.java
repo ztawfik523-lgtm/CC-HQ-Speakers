@@ -42,8 +42,22 @@ class StrictStreamGroupGateTest {
     void packetArrivingAtTheCutoffIsAlreadyLate() {
         StrictStreamGroupGate gate = new StrictStreamGroupGate(UUID.randomUUID());
         assertFalse(gate.accept(UUID.randomUUID(), 25, 25));
+        assertFalse(gate.isSealed());
+        assertTrue(gate.sealIfDue(25));
         assertTrue(gate.isSealed());
         assertTrue(gate.members().isEmpty());
+    }
+
+    @Test
+    void latePacketCannotSkipTheSealTransitionForExistingMembers() {
+        StrictStreamGroupGate gate = new StrictStreamGroupGate(UUID.randomUUID());
+        UUID early = UUID.randomUUID();
+
+        assertTrue(gate.accept(early, 40, 30));
+        assertFalse(gate.accept(UUID.randomUUID(), 40, 40));
+        assertFalse(gate.isSealed());
+        assertTrue(gate.sealIfDue(40));
+        assertEquals(java.util.List.of(early), gate.members());
     }
 
     @Test

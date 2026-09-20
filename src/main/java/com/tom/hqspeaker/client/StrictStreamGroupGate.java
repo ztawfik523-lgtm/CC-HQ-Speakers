@@ -26,10 +26,7 @@ final class StrictStreamGroupGate {
         long requested = Math.max(0L, requestedSealTick);
         if (sealTick < 0L) sealTick = requested;
         else sealTick = Math.max(sealTick, requested);
-        if (nowTick >= sealTick) {
-            sealed = true;
-            return false;
-        }
+        if (nowTick >= sealTick) return false;
         return members.add(source) || members.contains(source);
     }
 
