@@ -22,9 +22,9 @@ Start with:
 
 Active branch at handoff: `codex/m1j-multispeaker`.
 
-Current source checkpoint: `fe880002b387f329d39a7372af521f1eacce559a`.
+Current source checkpoint: `b3005f8b33525c237df53f08bb5b09c6b96809fc`.
 
-CI `35529480491` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
+CI `35529710352` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
 
 Current network protocol is v9 with 9 payloads.
 

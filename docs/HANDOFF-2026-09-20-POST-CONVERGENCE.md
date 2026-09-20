@@ -11,9 +11,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`fe880002b387f329d39a7372af521f1eacce559a` — `cleanup: remove obsolete compatibility control aliases`
+`b3005f8b33525c237df53f08bb5b09c6b96809fc` — `cleanup: remove stale legacy imports`
 
-CI `35529480491`:
+CI `35529710352`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS
