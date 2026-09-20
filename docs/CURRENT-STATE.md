@@ -9,9 +9,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`68314efe2e7ccbaa73e273044389ea43fea70530`
+`2377aae3bde94d3393f21525697198fb8645f354`
 
-CI `35478810268` passed:
+CI `35480935418` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248
@@ -67,8 +67,9 @@ Current behavior:
 - shared asset lifetime;
 - independent physical source/listener/transport/renderer/recovery endpoints;
 - endpoint removal/replacement does not kill remaining endpoints;
-- shared pause/resume/seek/loop/stop;
+- shared pause/resume/seek/loop and ordinary/All stop;
 - endpoint-local volume and mute;
+- `audioStopAt(index)` intentionally detaches/stops only the selected physical endpoint; the remaining shared playback continues;
 - explicit All/At controls;
 - one client `FinitePlaybackProjection` per shared playback.
 
@@ -145,6 +146,8 @@ The obsolete fake sine/HQ-PCM standard grouped/indexed implementations were remo
 
 The obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and now-unreferenced helper wrappers were removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`; composite RAW admission remains authoritative.
 
+At `2377aae3bde94d3393f21525697198fb8645f354`, the remaining dead singular legacy fake `playNote/playSound/playAudio` bodies and the shadowed legacy `speakPCM` body were removed. The composite explicitly preserves `speakPCM` and `speakMaxSamples` in its dynamic method surface. The legacy RAW table limit is now the same 131072-sample cap as the public contract.
+
 ## Optional live path
 
 Still present:
@@ -165,13 +168,11 @@ Known HLS refresh/index progression concerns remain.
 
 Near-term non-runtime:
 
-1. decide whether `audioStopAt` means shared-playback stop or intentional endpoint detach, then make docs/source agree;
-2. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
-3. keep live-stream sync machinery while grouped live helpers still depend on it, and decide later whether to trim or repair optional grouped live;
-4. finish RAW/public API truthfulness and obsolete-helper cleanup;
-5. continue exact dead-code/import/dependency cleanup;
-6. fix/validate the Sable parent-world relevance risk;
-7. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
+1. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
+2. keep live-stream sync machinery while grouped live helpers still depend on it, and decide later whether to trim or repair optional grouped live;
+3. continue exact dead-code/import/dependency cleanup;
+4. fix/validate the Sable parent-world relevance risk;
+5. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
 
 Deferred runtime/integration:
 

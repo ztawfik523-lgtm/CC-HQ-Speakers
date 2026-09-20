@@ -2,7 +2,7 @@
 
 Updated: 2026-09-20
 
-Checked against current `codex/m1j-multispeaker` source at/through `68314efe2e7ccbaa73e273044389ea43fea70530` unless explicitly historical.
+Checked against current `codex/m1j-multispeaker` source at/through `2377aae3bde94d3393f21525697198fb8645f354` unless explicitly historical.
 
 ## Product/repository
 
@@ -17,7 +17,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `68314efe2e7c
 - FACT-010: current network protocol is v9 with 9 registered payloads.
 - FACT-011: JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded.
 - FACT-012: mp3spi and tritonus-share are removed.
-- FACT-013: `68314efe2e7ccbaa73e273044389ea43fea70530` passed CI `35478810268` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
+- FACT-013: `2377aae3bde94d3393f21525697198fb8645f354` passed CI `35480935418` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
 
 ## Standard CC:T
 
@@ -31,7 +31,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `68314efe2e7c
 - FACT-031: modern finite uses one server-authoritative `FinitePlaybackAuthority` per playback and bounded client range/decode/render work.
 - FACT-032: modern multispeaker uses one shared authority with independent physical endpoints and no expected-global-member barrier.
 - FACT-033: group membership is a start-time endpoint snapshot; endpoint removal/replacement does not fail remaining endpoints.
-- FACT-034: play/pause/resume/seek/loop/stop are shared playback operations; volume/mute are endpoint-local; All gain/mute operates on the surviving endpoint snapshot.
+- FACT-034: play/pause/resume/seek/loop and ordinary/All stop are shared playback operations; volume/mute are endpoint-local; `audioStopAt(index)` is the explicit endpoint-local detach/stop operation; All gain/mute operates on the surviving endpoint snapshot.
 - FACT-035: protocol v8 introduced `playbackId/stateRevision`; current v9 retains those semantics and removes retired finite payloads.
 - FACT-036: client shared playback projection does not re-anchor on every same-revision endpoint packet.
 - FACT-037: modern finite uses a fixed 32-block core server relevance radius; finite volume changes gain, not that radius.
@@ -59,6 +59,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `68314efe2e7c
 - FACT-062: RAW backpressure uses boolean rejection plus `hqspeaker_audio_empty` only for a producer that observed rejection.
 - FACT-063: `speakPCMAll` preflights the target snapshot and uses a common future start tick without expected-member synchronization.
 - FACT-064: obsolete legacy `speakPCMAll/speakPCMAt` duplicates and their now-unreferenced wrappers are removed; public RAW All/At admission is composite-owned.
+- FACT-065: dead singular legacy fake standard audio bodies and the shadowed legacy `speakPCM` body are removed at `2377aae3bde94d3393f21525697198fb8645f354`; the composite explicitly preserves public `speakPCM` and `speakMaxSamples`; the RAW table cap is consistently 131072 samples.
 
 ## Optional live
 

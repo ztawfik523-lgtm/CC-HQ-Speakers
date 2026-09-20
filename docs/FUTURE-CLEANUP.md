@@ -6,20 +6,11 @@ This is the current cleanup parking lot after finite convergence.
 
 ## Near-term source cleanup
 
-### Dead grouped/indexed standard implementations
+The dead standard grouped/indexed bodies, dead singular fake standard bodies, shadowed singular legacy `speakPCM`, and their newly unreferenced wrappers are removed. The composite explicitly owns the supported standard and RAW public names.
 
-The supported product surface always goes through `HQSpeakerCompositePeripheral`, which intercepts:
+Remaining source cleanup should be exact-reference-driven: remove only helpers/aliases proven unreachable or obsolete.
 
-- `playNoteAll` / `playSoundAll` / `playAudioAll`
-- `playNoteAt` / `playSoundAt` / `playAudioAt`
-
-and dispatches to actual CC:T speakers.
-
-The old implementations still exist inside `HQSpeakerPeripheral`. The removed standalone HQ block was the last known direct `HQSpeakerPeripheral` exposure.
-
-Next cleanup should re-verify references and then remove these dead bodies plus helpers that become unreferenced.
-
-Do **not** mechanically delete `SyncDispatch` / client sync-group code at the same time: grouped optional live-stream helpers still use it.
+Do **not** mechanically delete `SyncDispatch` / client sync-group code: grouped optional live-stream helpers still use it.
 
 ## RAW/API cleanup
 
@@ -27,9 +18,9 @@ Current RAW admission is already bounded and unified.
 
 Remaining goals:
 
-- make signed-16/48-kHz behavior concise and truthful;
+- keep signed-16/48-kHz behavior concise and truthful (public and legacy RAW table caps are now consistently 131072 samples);
 - keep `hqspeaker_audio_empty` tied to observed backpressure;
-- remove obsolete status/helper aliases which no longer add supported behavior;
+- decide/remove-or-repair obsolete compatibility aliases which no longer match composite ownership;
 - keep native `speaker_audio_empty` separate;
 - avoid fake seek/duration/loop for RAW.
 

@@ -16,12 +16,12 @@ Target stack:
 
 ## Current green source checkpoint
 
-`68314efe2e7ccbaa73e273044389ea43fea70530`  
-CI `35478810268`
+`2377aae3bde94d3393f21525697198fb8645f354`  
+CI `35480935418`
 
 Both supported NeoForge targets passed build/tests/package verification/artifact upload.
 
-This checkpoint includes modern finite v9, M1H/M1J source work, finite convergence/teardown, RAW admission refactor, dependency cleanup, standalone-block removal, MPL metadata correction, internal sound-resource rename, and the completed modern/core multi-endpoint coordination hardening.
+This checkpoint includes modern finite v9, M1H/M1J source work, finite convergence/teardown, RAW admission refactor, dependency cleanup, standalone-block removal, MPL metadata correction, internal sound-resource rename, completed modern/core multi-endpoint coordination hardening, and dead singular legacy playback cleanup with the public composite method surface preserved.
 
 `OrderedMultiLockTest` deterministically covers opposite target ordering, overlapping target groups, complete lock ownership during the transaction, and fail-fast rejection when a caller enters with a target lock already held. Full `HQSpeakerCompositePeripheral` behavior still depends on Minecraft/CC:T integration, so green CI is not a substitute for the deferred real concurrent-control stress pass.
 
@@ -39,6 +39,7 @@ This checkpoint includes modern finite v9, M1H/M1J source work, finite convergen
 - internal sound rename: `00b07db41c003363cef60ef8ec4134fa387c421c` / CI `35474944518`.
 - finite endpoint lock-order hardening: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
 - composite multispeaker transaction/control hardening: `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`.
+- dead singular legacy playback cleanup / RAW cap normalization: `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
 
 ## Package verification
 

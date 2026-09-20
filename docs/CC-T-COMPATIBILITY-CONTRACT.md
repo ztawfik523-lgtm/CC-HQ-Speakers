@@ -26,7 +26,7 @@ The mixin retains CC:T's actual `SpeakerPeripheral` and wraps it with `HQSpeaker
 
 The composite intercepts `playNoteAll/playSoundAll/playAudioAll` and `playNoteAt/playSoundAt/playAudioAt` and invokes the real CC:T speaker at each selected endpoint.
 
-Old fake grouped/indexed bodies remain in `HQSpeakerPeripheral` only as cleanup debt.
+The old fake grouped/indexed standard bodies and the dead singular fake standard bodies have been removed from `HQSpeakerPeripheral`; the composite is the supported standard CC:T surface.
 
 ## Native vs HQ backpressure
 
@@ -62,7 +62,8 @@ Separate extension:
 - MP3/common WAV;
 - fixed 32-block core relevance/delivery;
 - volume affects gain, not core radius;
-- pause/resume/seek/loop/stop;
+- pause/resume/seek/loop and ordinary/All stop;
+- `audioStopAt(index)` intentionally detaches only the selected physical endpoint;
 - multispeaker shared authority;
 - endpoint-local volume/mute.
 

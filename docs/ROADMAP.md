@@ -52,17 +52,18 @@ Complete: standalone HQ block removed, normal CC:T speaker is sole block surface
 
 Complete: obsolete legacy standard All/At bodies were removed while the composite explicitly retained the public method names; obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and their now-unreferenced wrappers were also removed. Optional live sync machinery remains because grouped live helpers still use it.
 
+Dead singular legacy fake standard playback and shadowed legacy `speakPCM` were also removed at `2377aae3bde94d3393f21525697198fb8645f354`, while the composite explicitly retains the supported public names.
+
 ## Active non-runtime phase — release/API cleanup
 
 Priorities:
 
-1. resolve the `audioStopAt` contract: shared stop vs intentional endpoint detach;
-2. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
-3. finish RAW/public contract and dead singular legacy cleanup;
-4. contain optional live code without letting it drive core architecture;
-5. fix/validate Sable parent-world relevance;
-6. exact dead-code/dependency/package cleanup and docs/API freeze;
-7. CI/default-branch/repository hygiene where useful.
+1. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
+2. contain optional live code without letting it drive core architecture;
+3. continue exact dead-code/dependency/package cleanup;
+4. fix/validate Sable parent-world relevance;
+5. docs/API freeze;
+6. CI/default-branch/repository hygiene where useful.
 
 Do not delete live sync-group code while grouped `speakStreamAll` / `speakHLSAll` / `speakTSAll` still use it.
 

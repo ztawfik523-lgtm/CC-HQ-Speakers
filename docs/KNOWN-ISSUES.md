@@ -77,6 +77,8 @@ Possible non-functional cleanup: docs-only CI path, concurrency cancellation, de
 - dead legacy RAW `speakPCMAll/speakPCMAt` duplicates/helpers removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`;
 - nested finite endpoint-monitor fanout and `sharesPlaybackWith` lock nesting removed at `8349d0883c2521506bbfdaac4546981c1e31af3e`;
 - KI-CONC-013: modern/core multi-endpoint command coordination resolved through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`; stable ordered target locks cover finite/RAW group replacement and targeted/shared controls, with deterministic lock-order tests.
+- `audioStopAt(index)` semantics are resolved as endpoint-local detach/stop; ordinary `audioStop` and `audioStopAll` remain shared-playback stops.
+- dead singular legacy fake standard/RAW bodies removed and RAW cap normalized at `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
 - inherited standalone HQ block removed.
 - license metadata mismatch corrected to MPL-2.0.
 

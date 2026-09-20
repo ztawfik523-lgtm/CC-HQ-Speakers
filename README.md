@@ -29,10 +29,10 @@ One physical speaker remains one mono positional source.
 
 ## Current status
 
-Latest source checkpoint before documentation closeout:
+Current green source checkpoint:
 
-- `00b07db41c003363cef60ef8ec4134fa387c421c`
-- CI `35474944518`
+- `2377aae3bde94d3393f21525697198fb8645f354`
+- CI `35480935418`
 - NeoForge 21.1.247: PASS
 - NeoForge 21.1.248: PASS
 
@@ -52,7 +52,9 @@ Completed at source/test/CI/package level:
 - obsolete JavaSound MP3 SPI dependency removal;
 - standalone speaker block removal;
 - MPL metadata correction;
-- internal sound-resource rename.
+- internal sound-resource rename;
+- finite/multispeaker concurrency hardening;
+- dead legacy singular standard/RAW implementation cleanup while preserving the public composite API.
 
 Focused M1H/M1J Minecraft checks remain in the runtime backlog.
 
@@ -138,9 +140,9 @@ Core finite architecture is no longer the main task.
 
 Near-term non-runtime work:
 
-1. remove truly dead legacy standard All/At implementations from `HQSpeakerPeripheral` **only after exact reference verification**;
-2. keep live-stream sync machinery while grouped live helpers still use it;
-3. finish RAW/public API truthfulness and dead-helper cleanup;
+1. decide the stale inherited compatibility aliases `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
+2. keep live-stream sync machinery while grouped live helpers still use it and decide later whether optional grouped live is worth repairing;
+3. continue exact dead-code/API cleanup and fix/validate Sable parent-world relevance;
 4. packaging/dependency/docs/CI/default-branch release hygiene.
 
 Then run the deferred integrated Minecraft acceptance/stress pass covering listener lifecycle, recovery, movement, multispeaker behavior, endpoint replacement, malformed media, bounds, Sound Physics Remastered, and realistic 2/4/8+ speaker cost.

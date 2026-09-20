@@ -39,7 +39,7 @@ Each endpoint independently owns physical source UUID, position, listener member
 
 A multispeaker group is a start-time endpoint snapshot. There is no expected-global-member barrier. Endpoint removal/replacement detaches only that endpoint.
 
-Shared controls: pause/resume, seek, loop, stop. Endpoint controls: volume, mute. All-volume/all-mute targets the surviving playback endpoint snapshot.
+Shared controls: pause/resume, seek, loop, and ordinary/All stop. Endpoint controls: volume, mute. `audioStopAt(index)` is an explicit endpoint detach/stop and leaves the other shared-playback endpoints running. All-volume/all-mute targets the surviving playback endpoint snapshot.
 
 Protocol v8 added `playbackId` / `stateRevision`. Current protocol v9 removed retired legacy finite payloads while retaining the shared modern finite semantics.
 

@@ -88,7 +88,9 @@ Singular:
 
 Grouped/indexed equivalents exist for the modern finite surface, including status, pause/resume, seek, loop, stop, volume and mute All/At variants.
 
-Shared playback controls affect the shared authority.
+Pause/resume/seek/loop and ordinary/All stop affect the shared playback authority.
+
+`audioStopAt(index)` is intentionally different: it detaches/stops only that selected physical speaker. The other endpoints continue the same shared playback.
 
 Volume/mute are endpoint-local. All-volume/all-mute targets the surviving playback endpoint snapshot.
 

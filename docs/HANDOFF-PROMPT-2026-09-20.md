@@ -22,9 +22,9 @@ Start with:
 
 Active branch at handoff: `codex/m1j-multispeaker`.
 
-Current source checkpoint: `68314efe2e7ccbaa73e273044389ea43fea70530`.
+Current source checkpoint: `2377aae3bde94d3393f21525697198fb8645f354`.
 
-CI `35478810268` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
+CI `35480935418` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
 
 Current network protocol is v9 with 9 payloads.
 
@@ -38,7 +38,7 @@ Preserve these core facts:
 - `speakMp3/speakWav` singular/All/At are modern-engine compatibility frontends;
 - OGG/generic whole-file aliases and duplicate finite engine are removed;
 - modern multispeaker uses one shared authority with independent physical endpoints and no expected-global-member barrier;
-- play/pause/resume/seek/loop/stop are shared;
+- play/pause/resume/seek/loop and ordinary/All stop are shared; `audioStopAt(index)` intentionally detaches/stops only that selected endpoint;
 - volume/mute are endpoint-local; All applies to the surviving playback snapshot;
 - RAW is separate signed-16 48-kHz producer-fed PCM with bounded backpressure;
 - RAW All preflights the group and has no expected-member barrier;
@@ -58,9 +58,11 @@ Dead grouped/indexed implementation cleanup is now complete:
 
 Core modern/multispeaker concurrency hardening is complete in source through `68314efe2e7ccbaa73e273044389ea43fea70530`: relevant target speakers are reserved together in one stable order for finite/RAW group replacement and modern/core targeted controls, delayed older stream starts are invalidated on affected targets, and shared playback identity is rechecked after reservation.
 
-Next API decision: current `audioStopAt` detaches only the selected endpoint, while authority docs currently describe stop as shared. Choose shared-stop semantics or explicitly document endpoint-detach semantics.
+`audioStopAt(index)` is resolved as endpoint-local detach/stop; do not change it back to a shared stop.
 
-After that, decide the stale inherited compatibility aliases: `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Then continue exact dead-code/dependency/docs/repository hygiene.
+Dead singular legacy fake standard playback and the shadowed legacy `speakPCM` body were removed at `2377aae3bde94d3393f21525697198fb8645f354`; the composite explicitly preserves the supported public method names and RAW max is 131072 throughout.
+
+Next decide the stale inherited compatibility aliases: `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Then continue exact dead-code/dependency/docs/repository hygiene.
 
 Do not start FLAC/OGG/provider playback/shared decode fan-out unless a fresh decision justifies it.
 

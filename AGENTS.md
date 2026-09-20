@@ -7,10 +7,10 @@ Updated: 2026-09-20
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`  
 Active branch: `codex/m1j-multispeaker`
 
-Latest source checkpoint before this documentation closeout:
+Current green source checkpoint:
 
-- source: `00b07db41c003363cef60ef8ec4134fa387c421c`
-- CI: `35474944518`
+- source: `2377aae3bde94d3393f21525697198fb8645f354`
+- CI: `35480935418`
 - NeoForge 21.1.247: PASS
 - NeoForge 21.1.248: PASS
 
@@ -18,7 +18,7 @@ Current network protocol is **v9** with 9 payloads.
 
 M1E through M1J are complete at source/test/CI/package level. M1G has focused audible/core Minecraft proof on NeoForge 21.1.247. Focused M1H listener/recovery/movement checks and focused M1J multispeaker Minecraft acceptance remain deferred to the runtime backlog; they were not rejected.
 
-Post-M1J finite convergence is complete. MP3/WAV compatibility names use the modern finite engine. OGG/generic whole-file aliases and the duplicate finite engine are removed. RAW remains separate. Live MP3/HLS/TS/ICY remains optional legacy/future work.
+Post-M1J finite convergence and modern/core multispeaker concurrency hardening are complete. MP3/WAV compatibility names use the modern finite engine. OGG/generic whole-file aliases and the duplicate finite engine are removed. Dead singular/grouped fake standard/RAW implementation bodies are removed from the legacy peripheral while the composite preserves the supported public API. RAW remains separate. Live MP3/HLS/TS/ICY remains optional legacy/future work.
 
 The inherited standalone `hqspeaker:hq_speaker` Minecraft block is removed. The only block product is the normal `computercraft:speaker` upgraded through the mixin/composite. The internal custom-audio sound event is `hqspeaker:hq_audio_source`.
 

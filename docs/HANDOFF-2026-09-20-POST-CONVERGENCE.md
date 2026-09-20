@@ -11,9 +11,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`68314efe2e7ccbaa73e273044389ea43fea70530` — `fix: preserve finite mute ownership guard`
+`2377aae3bde94d3393f21525697198fb8645f354` — `cleanup: remove dead singular legacy audio bodies`
 
-CI `35478810268`:
+CI `35480935418`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS
@@ -115,7 +115,7 @@ Client uses one `FinitePlaybackProjection` per shared playback. Same-revision en
 
 ### Controls
 
-Shared: play/pause/resume/seek/loop/stop.
+Shared: play/pause/resume/seek/loop and ordinary/All stop. `audioStopAt(index)` is the explicit endpoint-local detach/stop.
 
 Per physical speaker: volume/mute.
 
@@ -254,14 +254,13 @@ Each audible modern finite endpoint decodes independently. Do not optimize witho
 
 Core multispeaker concurrency hardening is complete in source through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`. Relevant speakers are reserved together in a stable order for modern/core group transactions and controls; shared playback snapshots are rechecked under reservation. Keep real concurrent-control stress in the runtime acceptance batch.
 
-### A. `audioStopAt` API decision
+### A. RAW/public API compatibility-control decision
 
-Current source detaches only the selected endpoint from a shared finite playback. Existing authority wording says stop is shared. Choose one meaning and make source/docs agree:
+`audioStopAt(index)` is resolved/documented as endpoint-local detach/stop. The remaining shared playback continues.
 
-- shared stop: `audioStopAt` stops the whole shared playback;
-- endpoint detach: keep current behavior and document `audioStopAt` as the explicit detach operation.
+At `2377aae3bde94d3393f21525697198fb8645f354`, dead singular legacy fake standard playback plus the shadowed legacy `speakPCM` body were removed; the composite explicitly preserves supported method names and the RAW cap is consistently 131072 samples.
 
-### B. RAW/public API compatibility-control decision
+The next compatibility decision is the stale inherited alias set:
 
 The dead standard and RAW grouped/indexed implementation duplicates are gone.
 
@@ -275,17 +274,17 @@ Choose between removing these undocumented compatibility aliases or preserving t
 
 Do **not** delete `SyncDispatch` / packet sync-group fields / client `SyncGroupState` wholesale because optional grouped live streams still use them.
 
-### C. RAW/public API release cleanup
+### B. RAW/public API release cleanup
 
 Audit status names, queue helpers, limits, backpressure wording, obsolete aliases, ownership cleanup and events.
 
 Keep behavior simple and truthful.
 
-### D. Repository/release hygiene
+### C. Repository/release hygiene
 
 Exact dead-code sweep, dependencies/package, docs/API freeze, CI optimization if useful, default-branch/release hygiene, refresh runtime scripts.
 
-### E. Deferred integrated runtime pass
+### D. Deferred integrated runtime pass
 
 When owner is ready:
 
