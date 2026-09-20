@@ -9,9 +9,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`395a41c1c91a4d1efa41cee9db89ba02fe767785`
+`8349d0883c2521506bbfdaac4546981c1e31af3e`
 
-CI `35476526511` passed:
+CI `35477934035` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248
@@ -75,6 +75,18 @@ Current behavior:
 Group-wide volume/mute targets the surviving playback endpoint snapshot, not a fresh scan of current ComputerCraft attachments.
 
 Focused real-Minecraft multispeaker acceptance remains deferred.
+
+## Concurrency hardening started
+
+Checkpoint: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
+
+Resolved in this slice:
+
+- shared finite pause/resume/seek/loop/terminal fanout no longer traverses other endpoint monitors while the initiating `HQFiniteMediaServer` monitor is held;
+- `sharesPlaybackWith(...)` no longer nests one finite endpoint monitor inside another;
+- both supported NeoForge targets pass build/tests/package verification after the change.
+
+Still unresolved: composite-level multi-endpoint commands are not yet one atomic transaction. All-start/RAW-All and shared-stop ownership cleanup currently acquire target command/owner locks separately, so concurrent commands can still interleave across endpoints. This is the next core source-hardening item.
 
 ## Finite API convergence complete
 
@@ -148,12 +160,13 @@ Known HLS refresh/index progression concerns remain.
 
 Near-term non-runtime:
 
-1. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
-2. keep live-stream sync machinery while grouped live helpers still depend on it;
-3. finish RAW/public API truthfulness and obsolete-helper cleanup;
-4. continue exact dead-code/import/dependency cleanup;
-5. freeze truthful docs/API/capabilities;
-6. CI/default-branch/release hygiene where worthwhile.
+1. finish composite multi-endpoint command/ownership coordination so All-start, RAW-All and shared-stop cannot interleave across endpoint locks;
+2. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
+3. keep live-stream sync machinery while grouped live helpers still depend on it;
+4. finish RAW/public API truthfulness and obsolete-helper cleanup;
+5. continue exact dead-code/import/dependency cleanup;
+6. freeze truthful docs/API/capabilities;
+7. CI/default-branch/release hygiene where worthwhile.
 
 Deferred runtime/integration:
 

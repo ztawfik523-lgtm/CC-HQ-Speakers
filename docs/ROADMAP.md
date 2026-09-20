@@ -28,6 +28,12 @@ Source/test/CI/package complete: one shared playback authority, independent phys
 
 Focused runtime acceptance remains deferred.
 
+### Finite endpoint concurrency hardening
+
+First slice complete at `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`: shared finite state fanout no longer nests endpoint monitors, and playback-identity comparison no longer locks two finite endpoints at once.
+
+Composite-level multi-endpoint command transactions remain active work.
+
 ### Post-M1J finite convergence
 
 Complete: MP3/WAV compatibility names moved to modern engine, OGG/generic whole-file aliases retired, duplicate finite engine/payloads removed, protocol v9, mp3spi/Tritonus removed.
@@ -48,12 +54,13 @@ Complete: obsolete legacy standard All/At bodies were removed while the composit
 
 Priorities:
 
-1. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
-2. finish RAW/public contract cleanup;
-3. contain optional live code without letting it drive core architecture;
-4. exact dead-code/dependency/package cleanup;
-5. docs/API freeze;
-6. CI/default-branch/repository hygiene where useful.
+1. establish one deadlock-safe, atomic coordination rule for composite multi-endpoint starts/stops/RAW admission;
+2. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
+3. finish RAW/public contract cleanup;
+4. contain optional live code without letting it drive core architecture;
+5. exact dead-code/dependency/package cleanup;
+6. docs/API freeze;
+7. CI/default-branch/repository hygiene where useful.
 
 Do not delete live sync-group code while grouped `speakStreamAll` / `speakHLSAll` / `speakTSAll` still use it.
 

@@ -16,12 +16,14 @@ Target stack:
 
 ## Current green source checkpoint
 
-`00b07db41c003363cef60ef8ec4134fa387c421c`  
-CI `35474944518`
+`8349d0883c2521506bbfdaac4546981c1e31af3e`  
+CI `35477934035`
 
 Both supported NeoForge targets passed build/tests/package verification/artifact upload.
 
-This checkpoint includes modern finite v9, M1H/M1J source work, finite convergence/teardown, RAW admission refactor, dependency cleanup, standalone-block removal, MPL metadata correction, and internal sound-resource rename.
+This checkpoint includes modern finite v9, M1H/M1J source work, finite convergence/teardown, RAW admission refactor, dependency cleanup, standalone-block removal, MPL metadata correction, internal sound-resource rename, and the first finite endpoint lock-order hardening slice.
+
+The deterministic suite still does not directly exercise `HQSpeakerCompositePeripheral` multi-endpoint command transactions. Green CI therefore does not close KI-CONC-013.
 
 ## Major checkpoints
 
@@ -35,6 +37,7 @@ This checkpoint includes modern finite v9, M1H/M1J source work, finite convergen
 - RAW barrier/admission: `b6866ce99810f1b449d0066c3d25cf6bc7d3baaf` / CI `35471254482` and `c728a9076073e7a19a7a016f8eaf8e82c6ce68ac` / CI `35471357327`.
 - standalone block/license: `ce12a8bca2d68e7a6ebfaf106c4206508c26bb98` / CI `35474632162`.
 - internal sound rename: `00b07db41c003363cef60ef8ec4134fa387c421c` / CI `35474944518`.
+- finite endpoint lock-order hardening: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
 
 ## Package verification
 
