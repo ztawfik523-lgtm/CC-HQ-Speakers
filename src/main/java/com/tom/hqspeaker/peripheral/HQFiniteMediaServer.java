@@ -923,6 +923,8 @@ public final class HQFiniteMediaServer {
     private boolean isRelevant(ServerPlayer player, float[] world) {
         if (player == null || world == null || world.length < 3) return false;
         double distanceSquared = player.distanceToSqr(world[0], world[1], world[2]);
+        // Sable sub-levels are plots owned by the parent Minecraft Level, not separate Level instances.
+        // Keep this equality as the normal same-dimension guard after projecting the speaker into world space.
         return FiniteRangeValidation.listenerRelevant(
             player.level() == level, player.isRemoved(), distanceSquared, SPEAKER_RADIUS);
     }

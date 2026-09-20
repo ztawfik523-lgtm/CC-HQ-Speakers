@@ -47,7 +47,7 @@ Preserve these core facts:
 - JLayer and Sable Companion remain embedded; mp3spi/Tritonus are removed;
 - M1H/M1J focused Minecraft runtime checks are deferred, not rejected.
 
-Important unresolved source/runtime risk: `HQFiniteMediaServer.isRelevant(...)` still requires `player.level() == level` after projecting moving speaker coordinates. A Sable sublevel speaker may fail listener membership for a parent-world player even if projected geometry is correct. Do not claim this is resolved without testing/fixing it.
+The earlier Sable parent-world Level-identity concern has been closed by source-model verification: Sable sub-level contents live in plots owned by the parent Minecraft `Level`, so `player.level() == level` is the correct same-dimension guard after position projection. Focused Sable/Aeronautics movement runtime testing is still deferred.
 
 Dead grouped/indexed implementation cleanup is now complete:
 

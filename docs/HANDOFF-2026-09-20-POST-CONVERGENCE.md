@@ -291,7 +291,6 @@ When owner is ready:
 - M1H listener entry/leave/re-entry;
 - reload/renderer/starvation recovery;
 - Sable/Aeronautics + VS2;
-- Sable Level-identity risk;
 - 2/4/8+ multispeaker;
 - endpoint detach/replace;
 - pause/seek/loop;

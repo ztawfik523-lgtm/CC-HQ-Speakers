@@ -53,7 +53,7 @@ M1H-3 movement checkpoint: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c` / CI `3545
 
 Focused M1H Minecraft checks remain deferred.
 
-Important runtime risk: `HQFiniteMediaServer.isRelevant(...)` still requires `player.level() == level` even after `MovingSourcePosition.resolve(...)` projects the speaker position. A Sable sublevel speaker projected into a parent world may therefore still fail listener admission. This is not proven broken, but CI does not prove it correct.
+The earlier Sable parent-world Level-identity concern was rechecked against Sable Companion/Sable's model and is not a source bug: sub-level contents live in plots owned by the parent Minecraft `Level`; the sub-level object returns that parent level. `player.level() == level` remains the correct same-dimension guard after position projection. Focused in-game Sable/Aeronautics movement acceptance is still deferred.
 
 ## M1J modern finite multispeaker complete in source
 
@@ -171,15 +171,13 @@ Near-term non-runtime:
 1. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
 2. keep live-stream sync machinery while grouped live helpers still depend on it, and decide later whether to trim or repair optional grouped live;
 3. continue exact dead-code/import/dependency cleanup;
-4. fix/validate the Sable parent-world relevance risk;
-5. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
+4. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
 
 Deferred runtime/integration:
 
 - M1H listener walk-in/out/re-entry;
 - resource reload / renderer loss / sustained starvation;
 - Sable/Aeronautics + VS2 movement;
-- Sable sublevel parent-world relevance risk;
 - modern 2/4/8+ multispeaker behavior;
 - replacement/seek/loop stress;
 - malformed/extreme media;

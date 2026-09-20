@@ -14,7 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Resolves one speaker block center into current world space without movement packets.
  *
  * <p>Sable Companion is the first path because it is a lightweight embedded compatibility API with a safe
- * no-Sable fallback. VS2 remains the second optional path. Otherwise the block center is already world space.</p>
+ * no-Sable fallback. Sable stores sub-level contents in plots owned by the parent Minecraft Level, so this
+ * transforms plot-space coordinates without changing the Level/dimension identity. VS2 remains the second optional
+ * path. Otherwise the block center is already world space.</p>
  */
 public final class MovingSourcePosition {
     private static final AtomicBoolean SABLE_WARNING_EMITTED = new AtomicBoolean();

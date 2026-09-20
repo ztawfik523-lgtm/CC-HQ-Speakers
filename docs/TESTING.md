@@ -64,7 +64,7 @@ Resource reload, renderer/SoundEngine loss, READY retry, sustained starvation, p
 
 ### Movement
 
-Sable/Aeronautics moving sublevel, VS2, static regression, server relevance follows movement, and specifically parent-world listener membership for a Sable sublevel because current source still checks `player.level() == level`.
+Sable/Aeronautics moving sublevel, VS2, static regression, and server relevance following movement. The prior parent-world Level-identity concern is closed at source-model level; runtime still needs to prove the projected movement path behaves correctly in Minecraft.
 
 ### Multispeaker
 

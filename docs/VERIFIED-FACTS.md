@@ -44,7 +44,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `2377aae3bde9
 - FACT-041: M1H renderer/resource/starvation recovery is source/test/CI/package implemented.
 - FACT-042: movement resolution uses Sable Companion first, VS2 second, static block center otherwise; no continuous position packet stream.
 - FACT-043: focused M1H runtime acceptance remains deferred.
-- FACT-044: current server relevance still requires `player.level() == level` after position projection; this is an unresolved Sable sublevel risk.
+- FACT-044: Sable sub-level contents are stored in plots owned by the parent Minecraft `Level`; the sub-level object refers back to that parent level. After world-space position projection, `player.level() == level` is the intended same-dimension guard rather than a parent-world rejection bug.
 
 ## Convergence
 

@@ -61,9 +61,8 @@ Priorities:
 1. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
 2. contain optional live code without letting it drive core architecture;
 3. continue exact dead-code/dependency/package cleanup;
-4. fix/validate Sable parent-world relevance;
-5. docs/API freeze;
-6. CI/default-branch/repository hygiene where useful.
+4. docs/API freeze;
+5. CI/default-branch/repository hygiene where useful.
 
 Do not delete live sync-group code while grouped `speakStreamAll` / `speakHLSAll` / `speakTSAll` still use it.
 
@@ -74,7 +73,6 @@ When the owner is ready, batch:
 - M1H range entry/leave/re-entry;
 - reload/renderer-loss/starvation recovery;
 - Sable/Aeronautics + VS2;
-- Sable sublevel parent-world relevance;
 - 2/4/8+ modern multispeaker;
 - endpoint remove/replace;
 - pause/resume/seek/loop;
