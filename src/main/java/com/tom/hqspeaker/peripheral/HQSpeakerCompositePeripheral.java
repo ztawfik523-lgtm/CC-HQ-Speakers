@@ -293,6 +293,21 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         };
     }
 
+    private static boolean sameMembers(List<HQSpeakerCompositePeripheral> left,
+                                       List<HQSpeakerCompositePeripheral> right) {
+        if (left.size() != right.size()) return false;
+        for (int i = 0; i < left.size(); i++) {
+            if (left.get(i) != right.get(i)) return false;
+        }
+        return true;
+    }
+
+    private static boolean finiteGroupStillMatches(HQSpeakerCompositePeripheral anchor, boolean expectedShared,
+                                                   List<HQSpeakerCompositePeripheral> expectedMembers) {
+        if ((anchor.owner == Owner.STAGED_FINITE) != expectedShared) return false;
+        return !expectedShared || sameMembers(expectedMembers, sharedFiniteMembers(anchor));
+    }
+
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
             IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
@@ -401,12 +416,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction
     public final boolean audioSetMutedAll(IComputerAccess computer, boolean muted) {
+        boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
-            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+            expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)) return false;
-            return owner == Owner.STAGED_FINITE && finite.setMutedAll(muted);
+            if (!revisionsMatch(expectedRevisions)
+                    || !finiteGroupStillMatches(this, expectedShared, targets)) return false;
+            return finite.setMutedAll(muted);
         });
     }
 
@@ -481,11 +498,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult callStopCoordinated(String name, IComputerAccess computer, ILuaContext context,
                                              IArguments args) throws LuaException {
+        boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
-            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+            expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            if (!revisionsMatch(expectedRevisions)
+                    || !finiteGroupStillMatches(this, expectedShared, targets)) {
+                return supersededControlResult(name);
+            }
             if ("stop".equals(name)) return callStandard(name, context, args);
             stopEverything();
             return MethodResult.of();
@@ -494,23 +515,29 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult callSetLoopingCoordinated(IComputerAccess computer, ILuaContext context,
                                                     IArguments args) throws LuaException {
+        boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
-            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+            expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
-            if (owner == Owner.STAGED_FINITE) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
+            if (!revisionsMatch(expectedRevisions)
+                    || !finiteGroupStillMatches(this, expectedShared, targets)) return MethodResult.of(false);
+            if (expectedShared) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
             return invokeLegacy("setLooping", computer, context, args);
         });
     }
 
     private MethodResult callFiniteSharedControlCoordinated(String name, IComputerAccess computer,
                                                             ILuaContext context, IArguments args) throws LuaException {
+        boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
-            owner == Owner.STAGED_FINITE ? sharedFiniteMembers(this) : List.of(this);
+            expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            if (!revisionsMatch(expectedRevisions)
+                    || !finiteGroupStillMatches(this, expectedShared, targets)) {
+                return supersededControlResult(name);
+            }
             return callFiniteControl(name, computer, context, args);
         });
     }
@@ -541,8 +568,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult callFiniteAllControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
                                                          IArguments args) throws LuaException {
+        boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets;
-        if (owner == Owner.STAGED_FINITE) {
+        if (expectedShared) {
             targets = sharedFiniteMembers(this);
         } else {
             targets = membersFor(computer);
@@ -553,6 +581,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         List<HQSpeakerCompositePeripheral> snapshot = targets;
         return withGroupLocks(snapshot, () -> {
             if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            if (expectedShared && !finiteGroupStillMatches(this, true, snapshot)) {
+                return supersededControlResult(name);
+            }
+            if (!expectedShared && owner == Owner.STAGED_FINITE) {
+                return supersededControlResult(name);
+            }
             return callFiniteAllControl(name, computer, context, args);
         });
     }
@@ -560,12 +594,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private MethodResult callFiniteAtControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
                                                         IArguments args) throws LuaException {
         HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
+        boolean expectedShared =
+            member.owner == Owner.STAGED_FINITE && FINITE_AT_SHARED_CONTROLS.contains(name);
         List<HQSpeakerCompositePeripheral> targets =
-            member.owner == Owner.STAGED_FINITE && FINITE_AT_SHARED_CONTROLS.contains(name)
-                ? sharedFiniteMembers(member) : List.of(member);
+            expectedShared ? sharedFiniteMembers(member) : List.of(member);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
             if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+            if (FINITE_AT_SHARED_CONTROLS.contains(name)
+                    && !finiteGroupStillMatches(member, expectedShared, targets)) {
+                return supersededControlResult(name);
+            }
             return callFiniteAtControlResolved(name, member, computer, context, args);
         });
     }
