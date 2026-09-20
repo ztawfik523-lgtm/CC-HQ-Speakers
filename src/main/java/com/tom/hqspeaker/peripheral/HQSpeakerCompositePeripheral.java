@@ -138,12 +138,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.addAll(STANDARD_ALL);
         names.addAll(STANDARD_AT);
         names.addAll(MODERN_BYTE_FINITE);
+        names.addAll(RAW_START);
         names.addAll(RAW_ALL);
         names.addAll(RAW_AT);
         names.addAll(FINITE_CONTROLS);
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
         names.add("setLooping");
+        names.add("speakMaxSamples");
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
     }
@@ -1102,6 +1104,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 case "audioSetVolumeAt" -> MethodResult.of(member.finite.setVolume(args.getDouble(1)));
                 case "audioSetLoopingAt" -> MethodResult.of(member.finite.setLooping(args.getBoolean(1)));
                 case "audioStopAt" -> {
+                    // Indexed stop is intentionally endpoint-local: detach only this physical speaker.
                     member.stopCurrentHQ();
                     yield MethodResult.of();
                 }
@@ -1130,21 +1133,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         status.put("canSeek", false);
         status.put("canLoop", false);
         return status;
-    }
-
-    private static int contiguousRawSamples(IArguments args) throws LuaException {
-        Map<?, ?> table = args.getTable(0);
-        int length = 0;
-        while (length <= HQ_RAW_MAX_SAMPLES
-                && (table.containsKey((long) (length + 1)) || table.containsKey((double) (length + 1)))) {
-            length++;
-        }
-        return length;
-    }
-
-    private static boolean immediateTrue(MethodResult result) {
-        Object[] values = result.getResult();
-        return values != null && values.length > 0 && Boolean.TRUE.equals(values[0]);
     }
 
     private MethodResult invokeLegacy(String name, IComputerAccess computer, ILuaContext context, IArguments args) throws LuaException {

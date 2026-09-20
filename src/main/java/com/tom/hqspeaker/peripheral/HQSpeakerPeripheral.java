@@ -40,12 +40,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     
     private static final int    SPEAKER_SAMPLE_RATE = 48_000;
-    private static final int    SPEAKER_MAX_PCM     = 192_000;
+    private static final int    SPEAKER_MAX_PCM     = 131_072;
     private static final int    SPEAKER_MAX_AUDIO   = 8 * 1024 * 1024;
     private static final int    SPEAKER_MAX_QUEUE   = 16;          
     private static final int    SPEAKER_READY_MARK  = 4;
     private static final double SPEAKER_RADIUS      = 32.0;
-    private static final int    SPEAKER_MAX_AUDIO_TABLE = 131_072; 
     private static final int    SPEAKER_MAX_SYNC_GROUP = 64;
     private static final long   SPEAKER_MIN_START_DELAY = 0L;
     private static final long   SPEAKER_MAX_START_DELAY = 20L * 60L; 
@@ -206,32 +205,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     
-    @LuaFunction
-    public final boolean playNote(String instrument, double volume, double pitch) throws LuaException {
-        
-        float vol = clampVolChecked(volume, "volume");
-        if (!Double.isFinite(pitch)) throw new LuaException("pitch must be finite");
-        pitch = Math.max(0.0, Math.min(24.0, pitch));
-
-        int samples = (int)(SPEAKER_SAMPLE_RATE * 0.8); 
-        float freq = (float)(440.0 * Math.pow(2.0, (pitch - 9.0) / 12.0));
-
-        ByteBuffer buf = ByteBuffer.allocate(samples * 2).order(ByteOrder.LITTLE_ENDIAN);
-        for (int i = 0; i < samples; i++) {
-            double angle = 2 * Math.PI * freq * i / SPEAKER_SAMPLE_RATE;
-            short sample = (short)(Math.sin(angle) * 32767 * 0.6);
-            buf.putShort(sample);
-        }
-        buf.flip();
-        return enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, buf.array(), vol);
-    }
-
-    @LuaFunction
-    public final boolean playSound(String soundName, Optional<Double> volume, Optional<Double> pitch) throws LuaException {
-        return playNote("harp", volume.orElse(1.0), pitch.orElse(1.0));
-    }
-
-    
     static record PreparedPcm(byte[] data, float volume, int samples) {
         PreparedPcm {
             data = java.util.Arrays.copyOf(data, data.length);
@@ -251,10 +224,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         return new PreparedPcm(data, volume, len);
     }
 
-    boolean enqueuePreparedPcm(PreparedPcm prepared) {
-        return enqueuePreparedPcmAtTick(prepared, 0L);
-    }
-
     boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
         return prepared != null && enqueue(
             HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume(), startTick, null, 0);
@@ -262,11 +231,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     long nextGroupStartTick() {
         return nextSyncedStartTick();
-    }
-
-    @LuaFunction
-    public final boolean speakPCM(IArguments args) throws LuaException {
-        return enqueuePreparedPcm(preparePcm(args));
     }
 
     @LuaFunction
@@ -326,7 +290,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     @LuaFunction public final int speakQueueSize() { return speakerQueue.size(); }
     @LuaFunction public final int speakSampleRate() { return SPEAKER_SAMPLE_RATE; }
-    @LuaFunction public final int speakMaxSamples() { return SPEAKER_MAX_PCM; }
     @LuaFunction public final int speakMaxAudioBytes() { return SPEAKER_MAX_AUDIO; }
     @LuaFunction public final String[] speakSupportedFiles() { return new String[]{"mp3", "wav"}; }
 
@@ -403,26 +366,6 @@ public Map<String, Object> getPosMap() {
     out.put("z", pos.getZ());
     return out;
 }
-
-@LuaFunction
-public final boolean playAudio(IArguments args) throws LuaException {
-    Map<?, ?> table = args.getTable(0);
-    float volume = clampVolChecked(args.optDouble(1, speakerDefaultVolume), "volume");
-
-    int len = 0;
-    while ((table.containsKey((long) (len + 1)) || table.containsKey((double) (len + 1))) && len <= SPEAKER_MAX_AUDIO_TABLE) len++;
-    if (len <= 0) throw new LuaException("playAudio: table is empty");
-    if (len > SPEAKER_MAX_AUDIO_TABLE) throw new LuaException("playAudio: table too large");
-    return playAudioTable(table, len, volume);
-}
-
-public boolean playAudioTable(Map<?, ?> table, int len, float volume) throws LuaException {
-    return enqueue(HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, audioTableToPcmBytes(table, len, "playAudio", -128, 127, 8), volume);
-}
-
-
-
-
 
 private static final long MULTI_SPEAKER_SYNC_LEAD_TICKS = 12L;
 
@@ -579,7 +522,7 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
     
     private byte[] audioTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName, int min, int max, int shiftBits) throws LuaException {
         if (len <= 0) throw new LuaException(fnName + ": table is empty");
-        if (len > SPEAKER_MAX_AUDIO_TABLE) throw new LuaException(fnName + ": table too large");
+        if (len > SPEAKER_MAX_PCM) throw new LuaException(fnName + ": table too large");
         ByteBuffer buf = ByteBuffer.allocate(len * 2).order(ByteOrder.LITTLE_ENDIAN);
         for (int i = 1; i <= len; i++) {
             Object val = table.get((long) i);
@@ -647,14 +590,6 @@ public final void speakStopAt(IComputerAccess computer, int index) throws LuaExc
         IcyMetaPacket.SPEAKER_REGISTRY.put(speakerSource, this);
         HQSpeakerMod.log("HQSpeaker: started stream (" + method + ") from " + url);
         return true;
-    }
-
-    private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume) {
-        return enqueue(fmt, data, volume, 0L, null, 0);
-    }
-
-    private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume, long startTick) {
-        return enqueue(fmt, data, volume, startTick, null, 0);
     }
 
     private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume,
