@@ -524,7 +524,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         List<HQSpeakerCompositePeripheral> snapshot = targets;
         return withGroupLocks(snapshot, () -> {
             if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
-            return callStandardAll(name, computer, context, args);
+            return callStandardAllResolved(name, snapshot, context, args);
         });
     }
 
@@ -650,7 +650,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                          IArguments args) throws LuaException {
         List<HQSpeakerCompositePeripheral> members = membersFor(computer);
         if (members.isEmpty()) members = List.of(this);
+        return callStandardAllResolved(name, members, context, args);
+    }
 
+    private MethodResult callStandardAllResolved(String name, List<HQSpeakerCompositePeripheral> members,
+                                                 ILuaContext context, IArguments args) throws LuaException {
         boolean accepted = false;
         for (HQSpeakerCompositePeripheral member : members) {
             synchronized (member) {
