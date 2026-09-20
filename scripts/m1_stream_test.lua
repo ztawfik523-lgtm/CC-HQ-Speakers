@@ -1,3 +1,6 @@
+-- Current protocol-v10 direct MP3/ICY radio smoke.
+-- For strict grouped-radio acceptance, use v10_radio_acceptance.lua.
+
 local args = {...}
 local url = args[1] or "https://ice5.somafm.com/groovesalad-128-mp3"
 local speaker = peripheral.find("speaker")

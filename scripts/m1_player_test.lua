@@ -1,5 +1,5 @@
--- HISTORICAL: targets retired pre-v9 finite APIs and old queued-finite behavior.
--- Do not use this for current acceptance; use v9_core_acceptance.lua instead.
+-- HISTORICAL: targets retired pre-v10 finite APIs and old queued-finite behavior.
+-- Do not use this for current acceptance; use v10_core_acceptance.lua instead.
 
 local args = {...}
 if #args < 3 then

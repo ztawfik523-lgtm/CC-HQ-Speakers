@@ -1,11 +1,11 @@
--- Current protocol-v9 automated core acceptance.
--- Usage: v9_core_acceptance <mp3> [wav]
+-- Current protocol-v10 automated core acceptance.
+-- Usage: v10_core_acceptance <mp3> [wav]
 --
 -- This checks API truthfulness and server-visible behavior. It cannot prove
 -- audibility, SoundManager/OpenAL behavior, moving-ship projection, or spatial sync by itself.
 
 local args = {...}
-assert(args[1], "usage: v9_core_acceptance <mp3> [wav]")
+assert(args[1], "usage: v10_core_acceptance <mp3> [wav]")
 
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach a ComputerCraft speaker")
@@ -23,6 +23,7 @@ local required = {
   "speakMaxSamples", "speakSampleRate", "speakSupportedFiles",
   "audioStatus", "audioStatusAt", "audioPause", "audioResume", "audioSeek",
   "audioSetVolume", "audioSetLooping", "audioStop", "audioStopAll", "audioStopAt",
+  "speakStream", "speakStreamAll", "speakStreamAt", "getStreamFormats",
   "getSpeakerCount",
 }
 for _, name in ipairs(required) do
@@ -32,6 +33,8 @@ end
 for _, name in ipairs({
   "speakOgg", "speakAudio", "speakFile", "speakPacked",
   "speakStopAll", "speakStopAt", "speakVolumeAll", "setLoopingAll",
+  "speakHLS", "speakHLSAll", "speakHLSAt",
+  "speakTS", "speakTSAll", "speakTSAt",
 }) do
   assert(not methods[name], "retired API unexpectedly exposed: " .. name)
 end
@@ -43,6 +46,12 @@ local supported = {}
 for _, ext in pairs(speaker.speakSupportedFiles()) do supported[ext] = true end
 assert(supported.mp3 and supported.wav, "supported finite formats must include mp3 and wav")
 assert(not supported.ogg, "OGG must not be advertised as supported")
+
+local streamFormats = speaker.getStreamFormats()
+assert(type(streamFormats) == "table" and streamFormats.mp3,
+  "MP3/ICY radio must be advertised")
+assert(streamFormats.hls == nil and streamFormats.ts == nil,
+  "retired HLS/TS formats must not be advertised")
 
 local function readBinary(path)
   local handle = assert(fs.open(path, "rb"), "cannot open " .. path)
@@ -71,7 +80,7 @@ local function waitMain(wanted, timeout)
   return waitForStatus(function() return speaker.audioStatus() end, wanted, timeout)
 end
 
-print("v9 core acceptance: " .. peripheralName)
+print("v10 core acceptance: " .. peripheralName)
 
 -- Standard CC:T surface: basic dispatch only. Detailed backpressure is covered by
 -- p0_cc_speaker_contract.lua.
@@ -146,5 +155,5 @@ end
 
 speaker.audioStop()
 speaker.speakStop()
-print("v9 automated core acceptance passed")
+print("v10 automated core acceptance passed")
 print("Still required manually: audibility/spatial sync, listener walk-in/out, reload recovery, Sable/VS2 movement, Sound Physics.")

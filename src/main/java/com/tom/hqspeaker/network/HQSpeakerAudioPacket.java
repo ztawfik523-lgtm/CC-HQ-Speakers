@@ -13,8 +13,8 @@ import java.util.UUID;
 /**
  * Legacy non-finite audio packet.
  *
- * <p>Protocol v9 carries only producer-fed RAW PCM and optional live-stream starts. Finite MP3/WAV uses the
- * HQFiniteMedia* protocol and does not share this packet.</p>
+ * <p>Protocol v10 carries producer-fed RAW PCM and MP3/ICY radio starts. Grouped radio carries a strict group id
+ * and collection deadline but no expected-member count. Finite MP3/WAV uses the HQFiniteMedia* protocol.</p>
  */
 public class HQSpeakerAudioPacket implements CustomPacketPayload {
     public static final Type<HQSpeakerAudioPacket> TYPE =

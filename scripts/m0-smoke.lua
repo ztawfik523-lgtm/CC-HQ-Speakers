@@ -1,5 +1,5 @@
--- HISTORICAL: targets retired pre-v9 finite APIs (including OGG/generic whole-file playback).
--- Do not use this for current acceptance; use v9_core_acceptance.lua instead.
+-- HISTORICAL: targets retired pre-v10 finite APIs (including OGG/generic whole-file playback).
+-- Do not use this for current acceptance; use v10_core_acceptance.lua instead.
 
 local RESULTS = "/m0-smoke-results.txt"
 

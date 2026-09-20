@@ -317,17 +317,6 @@ public class StreamingAudioSource {
     }
 
     
-    private int readAtLeast(InputStream is, byte[] buf, int minBytes) throws IOException {
-        int total = 0;
-        while (total < buf.length) {
-            int r = is.read(buf, total, buf.length - total);
-            if (r == -1) break;
-            total += r;
-            if (total >= minBytes) break; 
-        }
-        return total;
-    }
-
     private static int safeParseInt(String s, int def) {
         try { return Integer.parseInt(s.trim()); }
         catch (NumberFormatException e) { return def; }
