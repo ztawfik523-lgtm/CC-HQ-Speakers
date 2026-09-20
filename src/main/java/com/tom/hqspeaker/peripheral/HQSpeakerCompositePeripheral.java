@@ -422,7 +422,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         return withGroupLocks(targets, () -> {
             if (!revisionsMatch(expectedRevisions)
-                    || !finiteGroupStillMatches(this, expectedShared, targets)) return false;
+                    || !finiteGroupStillMatches(this, expectedShared, targets)
+                    || !expectedShared) return false;
             return finite.setMutedAll(muted);
         });
     }
