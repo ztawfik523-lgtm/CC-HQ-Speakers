@@ -16,8 +16,8 @@ Target stack:
 
 ## Current green source checkpoint
 
-`2377aae3bde94d3393f21525697198fb8645f354`  
-CI `35480935418`
+`47976d92e3ba7113f72377969a1f03578f075d7b`  
+CI `35481364704`
 
 Both supported NeoForge targets passed build/tests/package verification/artifact upload.
 
@@ -40,6 +40,7 @@ This checkpoint includes modern finite v9, M1H/M1J source work, finite convergen
 - finite endpoint lock-order hardening: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
 - composite multispeaker transaction/control hardening: `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`.
 - dead singular legacy playback cleanup / RAW cap normalization: `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
+- unreachable composite fallback removal / RAW-only converter specialization: `47976d92e3ba7113f72377969a1f03578f075d7b` / CI `35481364704`.
 
 ## Package verification
 

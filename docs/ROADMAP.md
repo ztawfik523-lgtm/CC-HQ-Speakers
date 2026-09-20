@@ -54,6 +54,8 @@ Complete: obsolete legacy standard All/At bodies were removed while the composit
 
 Dead singular legacy fake standard playback and shadowed legacy `speakPCM` were also removed at `2377aae3bde94d3393f21525697198fb8645f354`, while the composite explicitly retains the supported public names.
 
+Unreachable post-routing fallbacks and the now-obsolete generic 8-bit table conversion path were removed at `47976d92e3ba7113f72377969a1f03578f075d7b`.
+
 ## Active non-runtime phase — release/API cleanup
 
 Priorities:

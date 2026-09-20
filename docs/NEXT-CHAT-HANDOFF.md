@@ -10,9 +10,9 @@ Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
 
 Active branch at handoff: `codex/m1j-multispeaker`
 
-Current green source checkpoint: `2377aae3bde94d3393f21525697198fb8645f354`
+Current green source checkpoint: `47976d92e3ba7113f72377969a1f03578f075d7b`
 
-CI `35480935418` passed NeoForge 21.1.247 and 21.1.248.
+CI `35481364704` passed NeoForge 21.1.247 and 21.1.248.
 
 Ready-to-paste prompt: `HANDOFF-PROMPT-2026-09-20.md`
 

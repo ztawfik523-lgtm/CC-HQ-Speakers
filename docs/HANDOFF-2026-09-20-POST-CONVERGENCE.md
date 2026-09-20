@@ -11,9 +11,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`2377aae3bde94d3393f21525697198fb8645f354` — `cleanup: remove dead singular legacy audio bodies`
+`47976d92e3ba7113f72377969a1f03578f075d7b` — `cleanup: remove unreachable composite routing fallbacks`
 
-CI `35480935418`:
+CI `35481364704`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS

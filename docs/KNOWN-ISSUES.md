@@ -71,6 +71,7 @@ Possible non-functional cleanup: docs-only CI path, concurrency cancellation, de
 - KI-CONC-013: modern/core multi-endpoint command coordination resolved through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`; stable ordered target locks cover finite/RAW group replacement and targeted/shared controls, with deterministic lock-order tests.
 - `audioStopAt(index)` semantics are resolved as endpoint-local detach/stop; ordinary `audioStop` and `audioStopAll` remain shared-playback stops.
 - dead singular legacy fake standard/RAW bodies removed and RAW cap normalized at `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
+- unreachable composite ordered fallbacks and obsolete generic 8-bit table conversion removed at `47976d92e3ba7113f72377969a1f03578f075d7b` / CI `35481364704`.
 - KI-MOVE-004 closed after source-model verification: Sable sub-level contents are plot-space data owned by the parent Minecraft `Level`, so `player.level() == level` is the correct same-dimension check after world-space projection. Focused runtime movement proof remains KI-RUNTIME-003.
 - inherited standalone HQ block removed.
 - license metadata mismatch corrected to MPL-2.0.

@@ -9,9 +9,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`2377aae3bde94d3393f21525697198fb8645f354`
+`47976d92e3ba7113f72377969a1f03578f075d7b`
 
-CI `35480935418` passed:
+CI `35481364704` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248

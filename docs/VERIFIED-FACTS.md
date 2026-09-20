@@ -2,7 +2,7 @@
 
 Updated: 2026-09-20
 
-Checked against current `codex/m1j-multispeaker` source at/through `2377aae3bde94d3393f21525697198fb8645f354` unless explicitly historical.
+Checked against current `codex/m1j-multispeaker` source at/through `47976d92e3ba7113f72377969a1f03578f075d7b` unless explicitly historical.
 
 ## Product/repository
 
@@ -17,7 +17,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `2377aae3bde9
 - FACT-010: current network protocol is v9 with 9 registered payloads.
 - FACT-011: JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded.
 - FACT-012: mp3spi and tritonus-share are removed.
-- FACT-013: `2377aae3bde94d3393f21525697198fb8645f354` passed CI `35480935418` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
+- FACT-013: `47976d92e3ba7113f72377969a1f03578f075d7b` passed CI `35481364704` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
 
 ## Standard CC:T
 
