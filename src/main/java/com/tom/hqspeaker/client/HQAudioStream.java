@@ -165,10 +165,17 @@ public class HQAudioStream implements AudioStream {
 
         java.util.UUID source = packet.source;
         if (packet.syncGroupId != null && packet.syncGroupSize > 1) {
-            sharedStreamingTap = SharedStreamingGroup.open(packet.syncGroupId, packet.streamUrl,
-                type, packet.volume, source, Math.max(1, packet.syncGroupSize));
+            sharedStreamingTap = SharedStreamingGroup.open(
+                packet.syncGroupId, packet.streamUrl, type, packet.volume, source);
             streamingSource = null;
-            HQSpeakerMod.log("HQAudioStream: joined shared " + packet.format + " group "
+            if (sharedStreamingTap == null) {
+                HQSpeakerMod.warn("HQAudioStream: rejected late shared " + packet.format + " group tap "
+                    + packet.syncGroupId);
+                isStreaming = false;
+                hasRealData = false;
+                return;
+            }
+            HQSpeakerMod.log("HQAudioStream: collected shared " + packet.format + " group "
                 + packet.syncGroupId + " from " + packet.streamUrl);
         } else {
             streamingSource = new StreamingAudioSource(packet.streamUrl, type, packet.volume);
@@ -184,6 +191,10 @@ public class HQAudioStream implements AudioStream {
             streamingSource.start();
             HQSpeakerMod.log("HQAudioStream: started " + packet.format + " from " + packet.streamUrl);
         }
+    }
+
+    public void startSharedStreaming() {
+        if (sharedStreamingTap != null) sharedStreamingTap.start();
     }
 
     public boolean isStreaming() { return isStreaming; }

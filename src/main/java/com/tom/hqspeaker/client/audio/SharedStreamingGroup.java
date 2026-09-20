@@ -17,12 +17,12 @@ public final class SharedStreamingGroup {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
     private SharedStreamingGroup() {}
 
-    public static Tap open(UUID groupId, String url, StreamingAudioSource.StreamType type, float volume, UUID metadataSourceId, int expectedTaps) {
+    public static Tap open(UUID groupId, String url, StreamingAudioSource.StreamType type,
+                           float volume, UUID metadataSourceId) {
         Session session = SESSIONS.compute(groupId, (id, existing) -> {
-            if (existing != null && existing.matches(url, type)) { existing.setExpectedTaps(expectedTaps); return existing; }
+            if (existing != null && existing.matches(url, type)) return existing;
             if (existing != null) existing.forceClose();
-            Session created = new Session(groupId, url, type, volume, metadataSourceId, Math.max(1, expectedTaps));
-            return created;
+            return new Session(groupId, url, type, volume, metadataSourceId);
         });
         return session.addTap();
     }
@@ -46,6 +46,7 @@ public final class SharedStreamingGroup {
 
         public AudioFormat getFormat() { return session.getFormat(); }
         public boolean isRunning() { return session.isRunning(); }
+        public void start() { session.startDecode(); }
         public boolean hasData() { return !pcmQueue.isEmpty(); }
         public int getQueueSize() { return pcmQueue.size(); }
 
@@ -101,18 +102,17 @@ public final class SharedStreamingGroup {
         private final ConcurrentHashMap<Integer, BlockingQueue<byte[]>> taps = new ConcurrentHashMap<>();
         private final AtomicInteger nextTapId = new AtomicInteger(1);
         private final AtomicBoolean running = new AtomicBoolean(false);
-        private volatile int expectedTaps;
-        private final java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
         private final AtomicBoolean decodeStarted = new AtomicBoolean(false);
+        private final AtomicBoolean closed = new AtomicBoolean(false);
         private Thread distributorThread;
 
-        private Session(UUID groupId, String url, StreamingAudioSource.StreamType type, float volume, UUID metadataSourceId, int expectedTaps) {
+        private Session(UUID groupId, String url, StreamingAudioSource.StreamType type,
+                        float volume, UUID metadataSourceId) {
             this.groupId = groupId;
             this.url = url;
             this.type = type;
             this.volume = volume;
             this.metadataSourceId = metadataSourceId;
-            this.expectedTaps = Math.max(1, expectedTaps);
             this.source = new StreamingAudioSource(url, type, volume);
             this.source.setMetadataListener((rawTitle, station, genre, desc) -> {
                 try {
@@ -128,30 +128,23 @@ public final class SharedStreamingGroup {
             return this.type == type && this.url.equals(url);
         }
 
-        private void startDecodeIfReady() {
-            if (decodeStarted.get()) return;
-            if (taps.size() < expectedTaps) return;
-            if (!decodeStarted.compareAndSet(false, true)) return;
+        private void startDecode() {
+            if (closed.get() || !decodeStarted.compareAndSet(false, true)) return;
             if (running.compareAndSet(false, true)) {
                 source.start();
                 distributorThread = new Thread(this::distributeLoop, "HQSpeaker-SharedStream-" + groupId);
                 distributorThread.setDaemon(true);
                 distributorThread.start();
-                startLatch.countDown();
-                HQSpeakerMod.log("SharedStreamingGroup: started shared session " + groupId + " for " + type + " " + url + " with " + taps.size() + "/" + expectedTaps + " taps");
+                HQSpeakerMod.log("SharedStreamingGroup: sealed and started shared session " + groupId
+                    + " for " + type + " " + url + " with " + taps.size() + " taps");
             }
         }
 
-        private void setExpectedTaps(int expectedTaps) {
-            this.expectedTaps = Math.max(this.expectedTaps, expectedTaps);
-            startDecodeIfReady();
-        }
-
         private Tap addTap() {
+            if (closed.get() || decodeStarted.get()) return null;
             int id = nextTapId.getAndIncrement();
             BlockingQueue<byte[]> q = new LinkedBlockingQueue<>(400);
             taps.put(id, q);
-            startDecodeIfReady();
             return new Tap(this, id, q);
         }
 
@@ -161,11 +154,13 @@ public final class SharedStreamingGroup {
         }
 
         private AudioFormat getFormat() { return source.getFormat(); }
-        private boolean isRunning() { return (running.get() && source.isRunning()) || (!decodeStarted.get() && !taps.isEmpty()); }
+        private boolean isRunning() {
+            return !closed.get() && ((!decodeStarted.get() && !taps.isEmpty())
+                || (running.get() && source.isRunning()));
+        }
 
         private void distributeLoop() {
             try {
-                startLatch.await();
                 while (running.get()) {
                     ByteBuffer pcm = source.readPCM(DISTRIBUTION_CHUNK_BYTES);
                     if (pcm == null) break;
@@ -191,15 +186,14 @@ public final class SharedStreamingGroup {
         }
 
         private void forceClose() {
-            startLatch.countDown();
-            if (running.compareAndSet(true, false)) {
-                if (distributorThread != null) distributorThread.interrupt();
-                source.stop();
-                taps.values().forEach(BlockingQueue::clear);
-                taps.clear();
-                remove(groupId, this);
-                HQSpeakerMod.log("SharedStreamingGroup: closed session " + groupId);
-            }
+            if (!closed.compareAndSet(false, true)) return;
+            running.set(false);
+            if (distributorThread != null) distributorThread.interrupt();
+            source.stop();
+            taps.values().forEach(BlockingQueue::clear);
+            taps.clear();
+            remove(groupId, this);
+            HQSpeakerMod.log("SharedStreamingGroup: closed session " + groupId);
         }
     }
 }

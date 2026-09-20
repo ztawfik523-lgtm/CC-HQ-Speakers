@@ -42,16 +42,22 @@ public final class HQSpeakerClientHandler {
             return;
         }
 
-        states.computeIfAbsent(packet.source, ignored -> new SpeakerState()).push(packet);
-        if (packet.syncGroupId != null && packet.syncGroupSize > 0) {
+        if (packet.syncGroupId != null) {
             if (!syncGroups.containsKey(packet.syncGroupId) && syncGroups.size() >= MAX_SYNC_GROUPS) {
                 HQSpeakerMod.warn("HQSpeakerClientHandler: dropping sync group; too many active groups");
                 return;
             }
-            syncGroups.computeIfAbsent(packet.syncGroupId,
-                id -> new SyncGroupState(id, packet.syncGroupSize))
-                .add(packet.source, packet.syncGroupSize);
+            Level level = Minecraft.getInstance().level;
+            long now = level != null ? level.getGameTime() : Long.MAX_VALUE;
+            SyncGroupState group = syncGroups.computeIfAbsent(packet.syncGroupId, SyncGroupState::new);
+            if (!group.accept(packet.source, packet.startTick, now)) {
+                HQSpeakerMod.log("HQSpeakerClientHandler: ignored late member " + packet.source
+                    + " for sealed stream group " + packet.syncGroupId);
+                return;
+            }
         }
+
+        states.computeIfAbsent(packet.source, ignored -> new SpeakerState()).push(packet);
     }
 
     private static boolean isPacketSafe(HQSpeakerAudioPacket packet) {
@@ -106,55 +112,55 @@ public final class HQSpeakerClientHandler {
     }
 
     private static final class SyncGroupState {
-        private final UUID groupId;
-        private volatile int expectedCount;
-        private final java.util.Set<UUID> members = ConcurrentHashMap.newKeySet();
-        private volatile long armedStartTick = -1L;
-        private volatile boolean started;
+        private final StrictStreamGroupGate gate;
 
-        private SyncGroupState(UUID groupId, int expectedCount) {
-            this.groupId = groupId;
-            this.expectedCount = Math.max(1, expectedCount);
+        private SyncGroupState(UUID groupId) {
+            this.gate = new StrictStreamGroupGate(groupId);
         }
 
-        void add(UUID source, int count) {
-            expectedCount = Math.max(expectedCount, count);
-            members.add(source);
+        boolean accept(UUID source, long sealTick, long nowTick) {
+            return gate.accept(source, sealTick, nowTick);
         }
 
-        void remove(UUID source) { members.remove(source); }
+        void remove(UUID source) { gate.remove(source); }
 
         boolean canRemove() {
-            if (!started) return members.isEmpty();
-            for (UUID member : members) {
+            if (gate.canRemove()) return true;
+            if (!gate.isStarted()) return false;
+            for (UUID member : gate.members()) {
                 SpeakerState state = states.get(member);
-                if (state != null && groupId.equals(state.currentSyncGroupId())) return false;
+                if (state != null && gate.groupId().equals(state.currentSyncGroupId())) return false;
             }
             return true;
         }
 
         void tick(Level level, long now) {
+            if (gate.sealIfDue(now)) {
+                for (UUID member : gate.members()) {
+                    SpeakerState state = states.get(member);
+                    if (state != null && gate.groupId().equals(state.currentSyncGroupId())) {
+                        state.beginSharedStreaming();
+                    }
+                }
+                HQSpeakerMod.log("HQSpeakerClientHandler: sealed stream group " + gate.groupId()
+                    + " with " + gate.members().size() + " local speakers at tick " + now);
+            }
+
+            if (!gate.isSealed() || gate.isStarted()) return;
             java.util.ArrayList<SpeakerState> ready = new java.util.ArrayList<>();
-            long maxStartTick = 0L;
             int present = 0;
-            for (UUID member : members) {
+            for (UUID member : gate.members()) {
                 SpeakerState state = states.get(member);
-                if (state == null || !groupId.equals(state.currentSyncGroupId())) continue;
+                if (state == null || !gate.groupId().equals(state.currentSyncGroupId())) continue;
                 present++;
-                maxStartTick = Math.max(maxStartTick, state.currentStartTick());
                 if (state.isReadyToStart()) ready.add(state);
             }
-            if (present == 0) return;
-            if (!started && armedStartTick < 0L && present >= expectedCount
-                    && ready.size() >= expectedCount) {
-                armedStartTick = Math.max(maxStartTick, now + 1L);
-            }
-            if (!started && armedStartTick >= 0L && now >= armedStartTick) {
-                for (SpeakerState state : ready) state.forceStart(level);
-                started = true;
-                HQSpeakerMod.log("HQSpeakerClientHandler: started legacy sync group " + groupId
-                    + " with " + ready.size() + "/" + expectedCount + " speakers at tick " + now);
-            }
+            if (present == 0 || ready.size() != present) return;
+
+            for (SpeakerState state : ready) state.forceStart(level);
+            gate.markStarted();
+            HQSpeakerMod.log("HQSpeakerClientHandler: started strict stream group " + gate.groupId()
+                + " with " + ready.size() + " speakers at tick " + now);
         }
     }
 
@@ -196,7 +202,7 @@ public final class HQSpeakerClientHandler {
 
         private void tryStart(Level level) {
             if (stream == null || packet == null || !stream.isStreamReady()) return;
-            if (packet.syncGroupId != null && packet.syncGroupSize > 1) return;
+            if (packet.syncGroupId != null) return;
             if (packet.startTick > 0L && level.getGameTime() < packet.startTick) return;
             Minecraft minecraft = Minecraft.getInstance();
             if (sound != null && minecraft.getSoundManager().isActive(sound)) return;
@@ -207,6 +213,12 @@ public final class HQSpeakerClientHandler {
 
         boolean isReadyToStart() {
             return stream != null && packet != null && stream.isStreamReady();
+        }
+
+        void beginSharedStreaming() {
+            if (stream != null && packet != null && packet.syncGroupId != null) {
+                stream.startSharedStreaming();
+            }
         }
 
         void forceStart(Level level) {

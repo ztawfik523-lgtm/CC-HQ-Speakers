@@ -61,8 +61,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> RAW_ALL = Set.of("speakPCMAll");
     private static final Set<String> RAW_AT = Set.of("speakPCMAt");
     private static final Set<String> STREAM_START = Set.of("speakStream", "speakHLS", "speakTS");
+    private static final Set<String> STREAM_ALL = Set.of("speakStreamAll");
+    private static final Set<String> STREAM_AT = Set.of("speakStreamAt");
     private static final Set<String> STREAM_DIRECT = Set.of(
-        "speakStreamAll", "speakHLSAll", "speakTSAll", "speakStreamAt", "speakHLSAt", "speakTSAt"
+        "speakHLSAll", "speakTSAll", "speakHLSAt", "speakTSAt"
     );
     private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
@@ -466,9 +468,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             long revision = commandRevision.incrementAndGet();
             return startStreamReplacing(name, args, revision);
         }
+        if (STREAM_ALL.contains(name)) return startStreamAllReplacing(name, computer, args);
+        if (STREAM_AT.contains(name)) return startStreamAtReplacing(name, computer, args);
         if (STREAM_DIRECT.contains(name)) {
-            // These inherited multi/At helpers remain legacy, but they still supersede any older normal stream
-            // validation which is in flight.
             commandRevision.incrementAndGet();
             return invokeLegacy(name, computer, context, args);
         }
@@ -589,6 +591,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             if (!expectedShared && owner == Owner.STAGED_FINITE) {
                 return supersededControlResult(name);
+            }
+            if (!expectedShared && "audioStopAll".equals(name)) {
+                for (HQSpeakerCompositePeripheral member : snapshot) member.stopCurrentHQ();
+                return MethodResult.of();
             }
             return callFiniteAllControl(name, computer, context, args);
         });
@@ -911,6 +917,87 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return true;
     }
 
+    private MethodResult startStreamAllReplacing(String name, IComputerAccess computer,
+                                                 IArguments args) throws LuaException {
+        String url = args.getString(0);
+        Optional<Double> volume = args.optDouble(1);
+        if (volume.isPresent() && !Double.isFinite(volume.get())) throw new LuaException("volume must be finite");
+
+        List<HQSpeakerCompositePeripheral> targets = membersFor(computer);
+        if (targets.isEmpty()) targets = List.of(this);
+        targets = List.copyOf(targets);
+
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
+        LinkedHashMap<HQSpeakerCompositePeripheral, Long> expectedLifecycles = new LinkedHashMap<>();
+        for (HQSpeakerCompositePeripheral target : targets) {
+            expectedLifecycles.put(target, target.legacy.lifecycleEpochSnapshot());
+        }
+
+        HQSpeakerPeripheral.validateStreamUrl(url, name);
+        long sealTick = targets.size() > 1 ? targets.getFirst().legacy.nextGroupStartTick() : 0L;
+        UUID groupId = targets.size() > 1 ? UUID.randomUUID() : null;
+        List<HQSpeakerCompositePeripheral> snapshot = targets;
+
+        return withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
+            for (HQSpeakerCompositePeripheral member : snapshot) {
+                if (!member.legacy.lifecycleEpochMatches(expectedLifecycles.get(member))) {
+                    return MethodResult.of(false);
+                }
+            }
+
+            for (HQSpeakerCompositePeripheral member : snapshot) member.beginReplacingHQ(Owner.STREAM);
+
+            boolean complete = true;
+            for (HQSpeakerCompositePeripheral member : snapshot) {
+                boolean started = member.legacy.startValidatedStreamAtTick(
+                    url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                    sealTick, groupId, snapshot.size(), expectedLifecycles.get(member));
+                if (!started) {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if (!complete) {
+                for (HQSpeakerCompositePeripheral member : snapshot) {
+                    member.legacy.speakStop();
+                    member.owner = Owner.NONE;
+                }
+                return MethodResult.of(false);
+            }
+
+            for (HQSpeakerCompositePeripheral member : snapshot) member.owner = Owner.STREAM;
+            return MethodResult.of(true);
+        });
+    }
+
+    private MethodResult startStreamAtReplacing(String name, IComputerAccess computer,
+                                                IArguments args) throws LuaException {
+        HQSpeakerCompositePeripheral target = memberAt(computer, args.getInt(0));
+        String url = args.getString(1);
+        Optional<Double> volume = args.optDouble(2);
+        if (volume.isPresent() && !Double.isFinite(volume.get())) throw new LuaException("volume must be finite");
+
+        long expectedRevision = target.commandRevision.incrementAndGet();
+        long expectedLifecycle = target.legacy.lifecycleEpochSnapshot();
+        HQSpeakerPeripheral.validateStreamUrl(url, name);
+
+        return withGroupLocks(List.of(target), () -> {
+            if (target.commandRevision.get() != expectedRevision
+                    || !ACTIVE.contains(target)
+                    || !target.legacy.lifecycleEpochMatches(expectedLifecycle)) {
+                return MethodResult.of(false);
+            }
+            target.beginReplacingHQ(Owner.STREAM);
+            boolean started = target.legacy.startValidatedStreamAtTick(
+                url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                0L, null, 0, expectedLifecycle);
+            if (started) target.owner = Owner.STREAM;
+            return MethodResult.of(started);
+        });
+    }
+
     private MethodResult startStreamReplacing(String name, IArguments args, long expectedCommandRevision) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
@@ -1060,6 +1147,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                                      IComputerAccess computer, ILuaContext context,
                                                      IArguments args) throws LuaException {
         synchronized (member) {
+            if ("audioStopAt".equals(name)) {
+                member.stopCurrentHQ();
+                return MethodResult.of();
+            }
             if (member.owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
 
             return switch (name) {
@@ -1069,11 +1160,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 case "audioSeekAt" -> MethodResult.of(member.finite.seek(args.getDouble(1)));
                 case "audioSetVolumeAt" -> MethodResult.of(member.finite.setVolume(args.getDouble(1)));
                 case "audioSetLoopingAt" -> MethodResult.of(member.finite.setLooping(args.getBoolean(1)));
-                case "audioStopAt" -> {
-                    // Indexed stop is intentionally endpoint-local: detach only this physical speaker.
-                    member.stopCurrentHQ();
-                    yield MethodResult.of();
-                }
                 default -> invokeLegacy(name, computer, context, args);
             };
         }

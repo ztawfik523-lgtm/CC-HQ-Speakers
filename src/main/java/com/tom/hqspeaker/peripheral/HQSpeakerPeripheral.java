@@ -546,7 +546,7 @@ public final boolean speakTSAt(IComputerAccess computer, int index, String url, 
         return startValidatedStreamAtTick(url, volume, format, method, 0L, null, 0, expectedLifecycle);
     }
 
-    private synchronized boolean startValidatedStreamAtTick(
+    synchronized boolean startValidatedStreamAtTick(
             String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method,
             long startTick, java.util.UUID syncGroupId, int syncGroupSize, long expectedLifecycle) throws LuaException {
         if (lifecycleEpoch != expectedLifecycle) return false;
