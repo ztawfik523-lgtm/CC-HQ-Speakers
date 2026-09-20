@@ -405,21 +405,6 @@ private SyncDispatch nextSyncDispatch(int members) {
 }
 
 @LuaFunction
-public final void speakStopAll(IComputerAccess computer) {
-    for (HQSpeakerPeripheral p : membersFor(computer)) p.speakStop();
-}
-
-@LuaFunction
-public final void speakVolumeAll(IComputerAccess computer, IArguments args) throws LuaException {
-    for (HQSpeakerPeripheral p : membersFor(computer)) p.speakVolume(args);
-}
-
-@LuaFunction
-public final void setLoopingAll(IComputerAccess computer, boolean loop) {
-    for (HQSpeakerPeripheral p : membersFor(computer)) p.setLooping(loop);
-}
-
-@LuaFunction
 public final Map<String, Object> audioStatusAll(IComputerAccess computer) throws LuaException {
     return leaderFor(computer).audioStatus();
 }
@@ -504,11 +489,6 @@ public final boolean speakHLSAt(IComputerAccess computer, int index, String url,
 @LuaFunction
 public final boolean speakTSAt(IComputerAccess computer, int index, String url, java.util.Optional<Double> volume) throws LuaException {
     return byIndexFor(computer, index).speakTS(url, volume);
-}
-
-@LuaFunction
-public final void speakStopAt(IComputerAccess computer, int index) throws LuaException {
-    byIndexFor(computer, index).speakStop();
 }
 
 @LuaFunction public final Map<String, Object> audioStatusAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioStatus(); }

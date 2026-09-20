@@ -29,7 +29,10 @@ for _, name in ipairs(required) do
   assert(methods[name], "missing current API method: " .. name)
 end
 
-for _, name in ipairs({"speakOgg", "speakAudio", "speakFile", "speakPacked"}) do
+for _, name in ipairs({
+  "speakOgg", "speakAudio", "speakFile", "speakPacked",
+  "speakStopAll", "speakStopAt", "speakVolumeAll", "setLoopingAll",
+}) do
   assert(not methods[name], "retired API unexpectedly exposed: " .. name)
 end
 
