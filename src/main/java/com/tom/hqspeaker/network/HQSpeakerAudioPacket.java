@@ -49,6 +49,9 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     public final long startTick;
     public final UUID syncGroupId;
 
+    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
+                                float x, float y, float z,
+                                int blockX, int blockY, int blockZ,
                                 byte[] data) {
         this(source, format, volume, x, y, z, blockX, blockY, blockZ,
             data, null, 0L, null);
@@ -78,9 +81,6 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
             new byte[0], streamUrl, startTick, null);
     }
 
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
     public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
                                 float x, float y, float z,
                                 int blockX, int blockY, int blockZ,
