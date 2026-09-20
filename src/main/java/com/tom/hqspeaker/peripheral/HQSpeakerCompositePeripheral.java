@@ -85,6 +85,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private static final Set<HQSpeakerCompositePeripheral> ACTIVE = ConcurrentHashMap.newKeySet();
     private static final Map<Integer, Set<HQSpeakerCompositePeripheral>> COMPUTER_SPEAKERS = new ConcurrentHashMap<>();
+    private static final AtomicLong NEXT_LOCK_ORDER = new AtomicLong();
 
     private enum Owner {
         NONE,
@@ -103,6 +104,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /** Requested sample count for each computer currently waiting for RAW capacity. */
     private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
+    private final long lockOrder = NEXT_LOCK_ORDER.getAndIncrement();
+
     /**
      * Serializes normal Lua audio command commits without coupling them to the ownership monitor used by
      * server tick/cleanup. Blocking URL validation must never hold this lock: audioPlayPrepared is a CC:T
@@ -235,6 +238,34 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return members.get(index - 1);
     }
 
+    private static <T> T withGroupLocks(List<HQSpeakerCompositePeripheral> members,
+                                        OrderedMultiLock.Operation<T, LuaException> operation) throws LuaException {
+        ArrayList<OrderedMultiLock.Target> locks = new ArrayList<>(members.size());
+        LinkedHashSet<HQSpeakerCompositePeripheral> unique = new LinkedHashSet<>(members);
+        for (HQSpeakerCompositePeripheral member : unique) {
+            locks.add(new OrderedMultiLock.Target(member.lockOrder, member.commandLock, member));
+        }
+        return OrderedMultiLock.run(locks, operation);
+    }
+
+    private static Map<HQSpeakerCompositePeripheral, Long> reserveCommandRevisions(
+            List<HQSpeakerCompositePeripheral> members) {
+        LinkedHashMap<HQSpeakerCompositePeripheral, Long> expected = new LinkedHashMap<>();
+        for (HQSpeakerCompositePeripheral member : members) {
+            expected.put(member, member.commandRevision.incrementAndGet());
+        }
+        return expected;
+    }
+
+    private static boolean revisionsMatch(Map<HQSpeakerCompositePeripheral, Long> expected) {
+        for (Map.Entry<HQSpeakerCompositePeripheral, Long> entry : expected.entrySet()) {
+            if (!ACTIVE.contains(entry.getKey()) || entry.getKey().commandRevision.get() != entry.getValue()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
         return (IComputerAccess) Proxy.newProxyInstance(
             IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
@@ -303,30 +334,31 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                               Optional<Double> volume) throws LuaException {
         List<HQSpeakerCompositePeripheral> members = membersFor(computer);
         if (members.isEmpty()) members = List.of(this);
+        members = List.copyOf(members);
 
-        for (HQSpeakerCompositePeripheral member : members) member.commandRevision.incrementAndGet();
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(members);
         List<HQFiniteMediaServer> targets = members.stream().map(member -> member.finite).toList();
 
         try (HQFiniteMediaServer.PreparedGroupStart prepared =
                  finite.preparePreparedGroupStart(targets, assetId, volume.orElse(1.0))) {
-            // Admission and asset retention succeeded for the complete snapshot before any current output is replaced.
-            for (HQSpeakerCompositePeripheral member : members) {
-                synchronized (member.commandLock) {
-                    synchronized (member) {
-                        member.beginReplacingHQ(Owner.STAGED_FINITE);
-                    }
-                }
-            }
+            List<HQSpeakerCompositePeripheral> snapshot = members;
+            return withGroupLocks(snapshot, () -> {
+                if (!revisionsMatch(expectedRevisions)) return false;
 
-            if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
-                throw new IllegalStateException("admitted prepared multispeaker replacement could not be committed");
-            }
-            for (HQSpeakerCompositePeripheral member : members) {
-                synchronized (member) {
+                // Admission and asset retention succeeded for the complete snapshot before any current output
+                // is replaced. Keep every target reserved through replacement and group commit.
+                for (HQSpeakerCompositePeripheral member : snapshot) {
+                    member.beginReplacingHQ(Owner.STAGED_FINITE);
+                }
+
+                if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
+                    throw new IllegalStateException("admitted prepared multispeaker replacement could not be committed");
+                }
+                for (HQSpeakerCompositePeripheral member : snapshot) {
                     member.owner = Owner.STAGED_FINITE;
                 }
-            }
-            return true;
+                return true;
+            });
         }
     }
 
@@ -570,10 +602,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
         volume = Math.max(0.0, Math.min(3.0, volume));
 
-        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = new LinkedHashMap<>();
-        for (HQSpeakerCompositePeripheral target : targets) {
-            expectedRevisions.put(target, target.commandRevision.incrementAndGet());
-        }
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
 
         MediaAsset asset = staging.importAnalyzedBytes(name, bytes, expectedFormat);
         String assetId = asset.id().toString();
@@ -583,12 +612,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         try {
             return context.executeMainThreadTask(() -> {
                 try {
-                    for (Map.Entry<HQSpeakerCompositePeripheral, Long> entry : expectedRevisions.entrySet()) {
-                        if (entry.getKey().commandRevision.get() != entry.getValue()
-                                || !ACTIVE.contains(entry.getKey())) {
-                            return new Object[]{ false };
-                        }
-                    }
+                    if (!revisionsMatch(expectedRevisions)) return new Object[]{ false };
 
                     if (all) {
                         List<HQFiniteMediaServer> finiteTargets =
@@ -596,25 +620,20 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                         HQFiniteMediaServer coordinator = snapshot.getFirst().finite;
                         try (HQFiniteMediaServer.PreparedGroupStart prepared =
                                  coordinator.preparePreparedGroupStart(finiteTargets, assetId, appliedVolume)) {
-                            for (HQSpeakerCompositePeripheral member : snapshot) {
-                                synchronized (member.commandLock) {
-                                    synchronized (member) {
-                                        if (member.commandRevision.get() != expectedRevisions.get(member)) {
-                                            return new Object[]{ false };
-                                        }
-                                        member.beginReplacingHQ(Owner.STAGED_FINITE);
-                                    }
+                            return withGroupLocks(snapshot, () -> {
+                                if (!revisionsMatch(expectedRevisions)) return new Object[]{ false };
+                                for (HQSpeakerCompositePeripheral member : snapshot) {
+                                    member.beginReplacingHQ(Owner.STAGED_FINITE);
                                 }
-                            }
-                            if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
-                                throw new LuaException("admitted " + name + " multispeaker replacement could not be committed");
-                            }
-                            for (HQSpeakerCompositePeripheral member : snapshot) {
-                                synchronized (member) {
+                                if (!HQFiniteMediaServer.commitPreparedGroupStart(prepared)) {
+                                    throw new LuaException(
+                                        "admitted " + name + " multispeaker replacement could not be committed");
+                                }
+                                for (HQSpeakerCompositePeripheral member : snapshot) {
                                     member.owner = Owner.STAGED_FINITE;
                                 }
-                            }
-                            return new Object[]{ true };
+                                return new Object[]{ true };
+                            });
                         }
                     }
 
@@ -661,32 +680,31 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         List<HQSpeakerCompositePeripheral> members = membersFor(computer);
         if (members.isEmpty()) members = List.of(this);
+        members = List.copyOf(members);
 
-        // Preflight the complete snapshot before replacing any current output. This keeps backpressure rejection
-        // non-destructive and avoids intentionally creating a partially advanced RAW group.
-        for (HQSpeakerCompositePeripheral member : members) {
-            synchronized (member.commandLock) {
-                synchronized (member) {
-                    if (!member.canAcceptRaw(prepared)) {
-                        member.rawCapacityWaiters.put(computer, prepared.samples());
-                        return MethodResult.of(false);
-                    }
-                }
-            }
-        }
-
-        for (HQSpeakerCompositePeripheral member : members) member.commandRevision.incrementAndGet();
+        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(members);
         long startTick = members.size() > 1 ? members.getFirst().legacy.nextGroupStartTick() : 0L;
+        List<HQSpeakerCompositePeripheral> snapshot = members;
 
-        boolean accepted = true;
-        for (HQSpeakerCompositePeripheral member : members) {
-            synchronized (member.commandLock) {
-                synchronized (member) {
-                    accepted = member.commitRawPrepared(computer, prepared, startTick) && accepted;
+        return withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
+
+            // Preflight and commit happen while the complete target snapshot is reserved. No other Lua command can
+            // consume RAW capacity or replace one member between the all-speaker admission check and its commit.
+            for (HQSpeakerCompositePeripheral member : snapshot) {
+                if (!member.canAcceptRaw(prepared)) {
+                    member.rawCapacityWaiters.put(computer, prepared.samples());
+                    return MethodResult.of(false);
                 }
             }
-        }
-        return MethodResult.of(accepted);
+
+            for (HQSpeakerCompositePeripheral member : snapshot) {
+                if (!member.commitRawPrepared(computer, prepared, startTick)) {
+                    throw new IllegalStateException("preflighted RAW multispeaker commit was unexpectedly rejected");
+                }
+            }
+            return MethodResult.of(true);
+        });
     }
 
     private MethodResult startRawAt(IComputerAccess computer, String name, IArguments args) throws LuaException {
@@ -799,8 +817,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
         finite.stopPlayback();
         for (HQSpeakerCompositePeripheral candidate : affected) {
-            synchronized (candidate) {
-                if (!candidate.finite.isActive()) candidate.owner = Owner.NONE;
+            // owner is volatile. Do not nest composite monitors here: two endpoints may stop the same shared
+            // playback concurrently. A replacement which won the race has either changed owner or installed an
+            // active finite session, so it must not be cleared.
+            if (candidate.owner == Owner.STAGED_FINITE && !candidate.finite.isActive()) {
+                candidate.owner = Owner.NONE;
             }
         }
     }
