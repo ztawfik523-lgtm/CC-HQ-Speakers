@@ -28,7 +28,7 @@ The original and intermediate repositories carry an MPL-2.0 `LICENSE`. Their mod
 
 ## Current source checkpoint
 
-Current: `47976d92e3ba7113f72377969a1f03578f075d7b` / CI `35481364704` / both NeoForge targets PASS.
+Current: `fe880002b387f329d39a7372af521f1eacce559a` / CI `35529480491` / both NeoForge targets PASS.
 
 Important earlier checkpoints:
 

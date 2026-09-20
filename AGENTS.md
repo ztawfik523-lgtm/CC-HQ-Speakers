@@ -9,8 +9,8 @@ Active branch: `codex/m1j-multispeaker`
 
 Current green source checkpoint:
 
-- source: `47976d92e3ba7113f72377969a1f03578f075d7b`
-- CI: `35481364704`
+- source: `fe880002b387f329d39a7372af521f1eacce559a`
+- CI: `35529480491`
 - NeoForge 21.1.247: PASS
 - NeoForge 21.1.248: PASS
 
@@ -90,7 +90,7 @@ Client shared playback projection must not re-anchor the canonical local clock f
 
 M1H movement uses Sable Companion first, then VS2, then static block center. Do not add continuous position packets without a concrete need.
 
-Important unresolved runtime risk: server relevance still requires `player.level() == level` after moving-source position projection. A Sable sublevel speaker projected into a parent world may therefore be geometrically correct but still fail listener admission. Do not mark this resolved without focused runtime/source work.
+The earlier Sable parent-world Level-identity concern is closed at source-model level: Sable sub-level contents are plot-space data owned by the parent Minecraft `Level`. Keep focused Sable/Aeronautics movement runtime acceptance in the backlog, but do not reintroduce this as a source bug.
 
 ## Work style
 

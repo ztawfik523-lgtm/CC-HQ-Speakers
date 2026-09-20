@@ -31,8 +31,8 @@ One physical speaker remains one mono positional source.
 
 Current green source checkpoint:
 
-- `47976d92e3ba7113f72377969a1f03578f075d7b`
-- CI `35481364704`
+- `fe880002b387f329d39a7372af521f1eacce559a`
+- CI `35529480491`
 - NeoForge 21.1.247: PASS
 - NeoForge 21.1.248: PASS
 
@@ -132,7 +132,7 @@ M1H-3 uses local movement resolution:
 
 No continuous position packets are sent.
 
-Focused Sable/Aeronautics and VS2 runtime acceptance remains pending. A specific server-side risk remains: relevance still checks the player's Level identity even after projecting the speaker position, which may matter for Sable sublevels.
+Focused Sable/Aeronautics and VS2 runtime acceptance remains pending. The earlier Sable parent-world Level-identity concern was closed by source-model verification; runtime still needs to prove actual moving-source behavior.
 
 ## What is next
 
@@ -140,10 +140,9 @@ Core finite architecture is no longer the main task.
 
 Near-term non-runtime work:
 
-1. decide the stale inherited compatibility aliases `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
-2. keep live-stream sync machinery while grouped live helpers still use it and decide later whether optional grouped live is worth repairing;
-3. continue exact dead-code/API cleanup and fix/validate Sable parent-world relevance;
-4. packaging/dependency/docs/CI/default-branch release hygiene.
+1. keep live-stream sync machinery while grouped live helpers still use it and decide whether optional grouped live is worth keeping/fixing;
+2. continue exact dead-code/API/dependency cleanup;
+3. packaging/dependency/docs/CI/default-branch release hygiene.
 
 Then run the deferred integrated Minecraft acceptance/stress pass covering listener lifecycle, recovery, movement, multispeaker behavior, endpoint replacement, malformed media, bounds, Sound Physics Remastered, and realistic 2/4/8+ speaker cost.
 

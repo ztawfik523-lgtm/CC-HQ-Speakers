@@ -56,15 +56,16 @@ Dead singular legacy fake standard playback and shadowed legacy `speakPCM` were 
 
 Unreachable post-routing fallbacks and the now-obsolete generic 8-bit table conversion path were removed at `47976d92e3ba7113f72377969a1f03578f075d7b`.
 
+Obsolete undocumented compatibility controls `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` were removed at `fe880002b387f329d39a7372af521f1eacce559a`.
+
 ## Active non-runtime phase — release/API cleanup
 
 Priorities:
 
-1. decide whether stale inherited `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` aliases should be removed or made ownership-aware;
-2. contain optional live code without letting it drive core architecture;
-3. continue exact dead-code/dependency/package cleanup;
-4. docs/API freeze;
-5. CI/default-branch/repository hygiene where useful.
+1. contain optional live code without letting it drive core architecture;
+2. continue exact dead-code/dependency/package cleanup;
+3. docs/API freeze;
+4. CI/default-branch/repository hygiene where useful.
 
 Do not delete live sync-group code while grouped `speakStreamAll` / `speakHLSAll` / `speakTSAll` still use it.
 

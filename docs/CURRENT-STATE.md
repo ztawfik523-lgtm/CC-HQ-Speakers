@@ -9,9 +9,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`47976d92e3ba7113f72377969a1f03578f075d7b`
+`fe880002b387f329d39a7372af521f1eacce559a`
 
-CI `35481364704` passed:
+CI `35529480491` passed:
 
 - NeoForge 21.1.247
 - NeoForge 21.1.248
@@ -92,7 +92,7 @@ Resolved across the hardening sequence:
 - shared-stop owner cleanup no longer nests composite monitors;
 - deterministic `OrderedMultiLockTest` covers opposite-order callers, overlapping groups and invalid pre-held-lock entry.
 
-Focused real-Minecraft concurrent-control/stress acceptance is still deferred. Optional grouped live helpers and stale inherited compatibility aliases remain separate known debt; they are not part of this modern/core coordination guarantee.
+Focused real-Minecraft concurrent-control/stress acceptance is still deferred. Optional grouped live helpers remain separate known debt; they are not part of this modern/core coordination guarantee.
 
 ## Finite API convergence complete
 
@@ -148,6 +148,8 @@ The obsolete legacy RAW `speakPCMAll/speakPCMAt` duplicates and now-unreferenced
 
 At `2377aae3bde94d3393f21525697198fb8645f354`, the remaining dead singular legacy fake `playNote/playSound/playAudio` bodies and the shadowed legacy `speakPCM` body were removed. The composite explicitly preserves `speakPCM` and `speakMaxSamples` in its dynamic method surface. The legacy RAW table limit is now the same 131072-sample cap as the public contract.
 
+At `fe880002b387f329d39a7372af521f1eacce559a`, the obsolete undocumented aliases `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` were removed rather than carrying incorrect/no-op compatibility behavior.
+
 ## Optional live path
 
 Still present:
@@ -168,10 +170,9 @@ Known HLS refresh/index progression concerns remain.
 
 Near-term non-runtime:
 
-1. decide the fate of stale inherited compatibility controls `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll`;
-2. keep live-stream sync machinery while grouped live helpers still depend on it, and decide later whether to trim or repair optional grouped live;
-3. continue exact dead-code/import/dependency cleanup;
-4. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
+1. decide later whether optional grouped live is worth retaining/fixing; keep its sync machinery while those helpers remain;
+2. continue exact dead-code/import/dependency cleanup;
+3. freeze truthful docs/API/capabilities and finish CI/default-branch/release hygiene.
 
 Deferred runtime/integration:
 

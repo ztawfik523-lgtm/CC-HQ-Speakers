@@ -2,7 +2,7 @@
 
 Updated: 2026-09-20
 
-Checked against current `codex/m1j-multispeaker` source at/through `47976d92e3ba7113f72377969a1f03578f075d7b` unless explicitly historical.
+Checked against current `codex/m1j-multispeaker` source at/through `fe880002b387f329d39a7372af521f1eacce559a` unless explicitly historical.
 
 ## Product/repository
 
@@ -17,7 +17,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `47976d92e3ba
 - FACT-010: current network protocol is v9 with 9 registered payloads.
 - FACT-011: JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded.
 - FACT-012: mp3spi and tritonus-share are removed.
-- FACT-013: `47976d92e3ba7113f72377969a1f03578f075d7b` passed CI `35481364704` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
+- FACT-013: `fe880002b387f329d39a7372af521f1eacce559a` passed CI `35529480491` on both supported NeoForge targets, including deterministic tests, packaged-mod verification and artifact upload.
 
 ## Standard CC:T
 
@@ -60,6 +60,7 @@ Checked against current `codex/m1j-multispeaker` source at/through `47976d92e3ba
 - FACT-063: `speakPCMAll` preflights the target snapshot and uses a common future start tick without expected-member synchronization.
 - FACT-064: obsolete legacy `speakPCMAll/speakPCMAt` duplicates and their now-unreferenced wrappers are removed; public RAW All/At admission is composite-owned.
 - FACT-065: dead singular legacy fake standard audio bodies and the shadowed legacy `speakPCM` body are removed at `2377aae3bde94d3393f21525697198fb8645f354`; the composite explicitly preserves public `speakPCM` and `speakMaxSamples`; the RAW table cap is consistently 131072 samples.
+- FACT-066: obsolete undocumented `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` are removed at `fe880002b387f329d39a7372af521f1eacce559a`; supported modern All/At controls remain unchanged.
 
 ## Optional live
 

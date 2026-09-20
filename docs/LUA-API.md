@@ -143,6 +143,8 @@ Related helpers include:
 - `speakVolume(...)`
 - `speakIsPlaying()`
 
+Removed obsolete legacy aliases: `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll`. Use the current `audio*All/At`, RAW `speakPCMAll/At`, or singular controls instead.
+
 RAW has no real seek/duration/loop model.
 
 ## Speaker discovery

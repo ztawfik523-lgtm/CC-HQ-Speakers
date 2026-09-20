@@ -10,6 +10,8 @@ The dead standard grouped/indexed bodies, dead singular fake standard bodies, sh
 
 Remaining source cleanup should be exact-reference-driven: remove only helpers/aliases proven unreachable or obsolete.
 
+The stale undocumented controls `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` have been removed; do not re-add them merely for speculative script compatibility.
+
 Do **not** mechanically delete `SyncDispatch` / client sync-group code: grouped optional live-stream helpers still use it.
 
 ## RAW/API cleanup
@@ -20,7 +22,6 @@ Remaining goals:
 
 - keep signed-16/48-kHz behavior concise and truthful (public and legacy RAW table caps are now consistently 131072 samples);
 - keep `hqspeaker_audio_empty` tied to observed backpressure;
-- decide/remove-or-repair obsolete compatibility aliases which no longer match composite ownership;
 - keep native `speaker_audio_empty` separate;
 - avoid fake seek/duration/loop for RAW.
 

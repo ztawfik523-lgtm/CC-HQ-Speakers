@@ -22,9 +22,9 @@ Start with:
 
 Active branch at handoff: `codex/m1j-multispeaker`.
 
-Current source checkpoint: `47976d92e3ba7113f72377969a1f03578f075d7b`.
+Current source checkpoint: `fe880002b387f329d39a7372af521f1eacce559a`.
 
-CI `35481364704` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
+CI `35529480491` passed NeoForge 21.1.247 and 21.1.248 with deterministic tests, packaged-mod verification, and artifact upload.
 
 Current network protocol is v9 with 9 payloads.
 
@@ -62,7 +62,9 @@ Core modern/multispeaker concurrency hardening is complete in source through `68
 
 Dead singular legacy fake standard playback and the shadowed legacy `speakPCM` body were removed at `2377aae3bde94d3393f21525697198fb8645f354`; the composite explicitly preserves the supported public method names and RAW max is 131072 throughout.
 
-Next decide the stale inherited compatibility aliases: `speakStopAll/At`, `speakVolumeAll`, and `setLoopingAll` still bypass composite ownership or are no-ops. Then continue exact dead-code/dependency/docs/repository hygiene.
+The obsolete undocumented aliases `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` were removed at `fe880002b387f329d39a7372af521f1eacce559a`; do not re-add them for speculative script compatibility.
+
+Continue exact dead-code/dependency/docs/repository hygiene. Optional grouped live remains the next meaningful scope decision because it still carries legacy ownership/sync/HLS/TS debt.
 
 Do not start FLAC/OGG/provider playback/shared decode fan-out unless a fresh decision justifies it.
 

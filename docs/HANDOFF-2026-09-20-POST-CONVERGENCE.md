@@ -11,9 +11,9 @@ Active branch: `codex/m1j-multispeaker`
 
 Current source checkpoint:
 
-`47976d92e3ba7113f72377969a1f03578f075d7b` — `cleanup: remove unreachable composite routing fallbacks`
+`fe880002b387f329d39a7372af521f1eacce559a` — `cleanup: remove obsolete compatibility control aliases`
 
-CI `35481364704`:
+CI `35529480491`:
 
 - NeoForge 21.1.247 PASS
 - NeoForge 21.1.248 PASS
@@ -254,23 +254,11 @@ Each audible modern finite endpoint decodes independently. Do not optimize witho
 
 Core multispeaker concurrency hardening is complete in source through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`. Relevant speakers are reserved together in a stable order for modern/core group transactions and controls; shared playback snapshots are rechecked under reservation. Keep real concurrent-control stress in the runtime acceptance batch.
 
-### A. RAW/public API compatibility-control decision
+### A. RAW/public API cleanup
 
-`audioStopAt(index)` is resolved/documented as endpoint-local detach/stop. The remaining shared playback continues.
+`audioStopAt(index)` is endpoint-local detach/stop. The remaining shared playback continues.
 
-At `2377aae3bde94d3393f21525697198fb8645f354`, dead singular legacy fake standard playback plus the shadowed legacy `speakPCM` body were removed; the composite explicitly preserves supported method names and the RAW cap is consistently 131072 samples.
-
-The next compatibility decision is the stale inherited alias set:
-
-The dead standard and RAW grouped/indexed implementation duplicates are gone.
-
-Remaining inherited aliases need an explicit policy because they are not equivalent to the composite ownership model:
-
-- `speakStopAll` / `speakStopAt` call legacy stop directly;
-- `speakVolumeAll` changes legacy default volume rather than current modern finite endpoint gain;
-- `setLoopingAll` currently reaches a legacy no-op.
-
-Choose between removing these undocumented compatibility aliases or preserving them with explicit ownership-aware semantics.
+Dead singular legacy fake standard playback plus the shadowed legacy `speakPCM` body are removed, the RAW cap is consistently 131072 samples, and at `fe880002b387f329d39a7372af521f1eacce559a` the obsolete undocumented aliases `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` were removed instead of preserving broken/no-op compatibility.
 
 Do **not** delete `SyncDispatch` / packet sync-group fields / client `SyncGroupState` wholesale because optional grouped live streams still use them.
 
