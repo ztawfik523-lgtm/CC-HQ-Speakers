@@ -37,7 +37,7 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     }
 
     public static final int MAX_BYTES = 8 * 1024 * 1024;
-    public static final int MAX_URL_CHARS = 512;
+    public static final int MAX_URL_CHARS = StreamUrlPolicy.MAX_URL_CHARS;
 
     public final UUID source;
     public final AudioFormat format;

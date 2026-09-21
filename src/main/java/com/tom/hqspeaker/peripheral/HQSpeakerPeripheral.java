@@ -572,40 +572,12 @@ public final void audioStopAll(IComputerAccess computer) {
     }
 
     static void validateStreamUrl(String url, String method) throws LuaException {
-        if (url == null || url.isBlank()) throw new LuaException(method + ": URL cannot be empty");
-        if (url.length() > 512) throw new LuaException(method + ": URL too long (max 512 chars)");
-
-        for (int i = 0; i < url.length(); i++) {
-            char c = url.charAt(i);
-            if (c < 0x20 || c == 0x7F) throw new LuaException(method + ": URL contains illegal character at index " + i);
-        }
-
         try {
-            java.net.URI uri = java.net.URI.create(url);
-            String scheme = uri.getScheme();
-            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))
-                throw new LuaException(method + ": URL must use http:// or https://");
-            if (uri.getUserInfo() != null) throw new LuaException(method + ": URL userinfo is not allowed");
-            String host = uri.getHost();
-            if (host == null || host.isBlank()) throw new LuaException(method + ": URL has no host");
-            if (host.equalsIgnoreCase("localhost") || host.endsWith(".local"))
-                throw new LuaException(method + ": URL targets a local host");
-
-            int port = uri.getPort();
-            if (port != -1 && port != 80 && port != 443 && port != 8000 && port != 8080 && port != 8443)
-                throw new LuaException(method + ": URL uses a blocked port (" + port + ")");
-
-            for (java.net.InetAddress addr : java.net.InetAddress.getAllByName(host)) {
-                if (addr.isLoopbackAddress() || addr.isSiteLocalAddress() || addr.isLinkLocalAddress() ||
-                    addr.isAnyLocalAddress() || addr.isMulticastAddress()) {
-                    throw new LuaException(method + ": URL resolves to a private/reserved address");
-                }
-            }
-        } catch (IllegalArgumentException e) {
-            throw new LuaException(method + ": malformed URL");
-        } catch (java.net.UnknownHostException e) {
-            throw new LuaException(method + ": cannot resolve host");
+            com.tom.hqspeaker.network.StreamUrlPolicy.validate(url);
+        } catch (java.io.IOException exception) {
+            throw new LuaException(method + ": " + exception.getMessage());
         }
     }
+
 }
 

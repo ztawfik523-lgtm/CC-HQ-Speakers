@@ -19,11 +19,11 @@ public final class SharedStreamingGroup {
 
     public static Tap open(UUID groupId, String url, float volume, UUID metadataSourceId) {
         Session session = SESSIONS.compute(groupId, (id, existing) -> {
-            if (existing != null && existing.matches(url)) return existing;
+            if (existing != null && existing.matches(url, volume)) return existing;
             if (existing != null) existing.forceClose();
-            return new Session(groupId, url, volume, metadataSourceId);
+            return new Session(groupId, url, volume);
         });
-        return session.addTap();
+        return session.addTap(metadataSourceId);
     }
 
     private static void remove(UUID groupId, Session session) {
@@ -46,7 +46,7 @@ public final class SharedStreamingGroup {
         public AudioFormat getFormat() { return session.getFormat(); }
         public boolean isRunning() { return session.isRunning(); }
         public void start() { session.startDecode(); }
-        public boolean hasData() { return !pcmQueue.isEmpty(); }
+        public boolean hasData() { return (carry != null && carry.hasRemaining()) || !pcmQueue.isEmpty(); }
         public int getQueueSize() { return pcmQueue.size(); }
 
         public ByteBuffer readPCM(int maxBytes) {
@@ -95,33 +95,35 @@ public final class SharedStreamingGroup {
         private final UUID groupId;
         private final String url;
         private final float volume;
-        private final UUID metadataSourceId;
         private final StreamingAudioSource source;
         private final ConcurrentHashMap<Integer, BlockingQueue<byte[]>> taps = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, UUID> tapSources = new ConcurrentHashMap<>();
         private final AtomicInteger nextTapId = new AtomicInteger(1);
         private final AtomicBoolean running = new AtomicBoolean(false);
         private final AtomicBoolean decodeStarted = new AtomicBoolean(false);
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private Thread distributorThread;
 
-        private Session(UUID groupId, String url, float volume, UUID metadataSourceId) {
+        private Session(UUID groupId, String url, float volume) {
             this.groupId = groupId;
             this.url = url;
             this.volume = volume;
-            this.metadataSourceId = metadataSourceId;
             this.source = new StreamingAudioSource(url, volume);
             this.source.setMetadataListener((rawTitle, station, genre, desc) -> {
-                try {
-                    com.tom.hqspeaker.network.HQSpeakerNetwork.sendToServer(
-                        new com.tom.hqspeaker.network.IcyMetaPacket(metadataSourceId, rawTitle, station, genre, desc));
-                } catch (Exception e) {
-                    HQSpeakerMod.warn("SharedStreamingGroup: failed to send ICY meta — " + e.getMessage());
+                for (UUID metadataSourceId : new java.util.HashSet<>(tapSources.values())) {
+                    try {
+                        com.tom.hqspeaker.network.HQSpeakerNetwork.sendToServer(
+                            new com.tom.hqspeaker.network.IcyMetaPacket(
+                                metadataSourceId, rawTitle, station, genre, desc));
+                    } catch (Exception e) {
+                        HQSpeakerMod.warn("SharedStreamingGroup: failed to send ICY meta — " + e.getMessage());
+                    }
                 }
             });
         }
 
-        private boolean matches(String url) {
-            return this.url.equals(url);
+        private boolean matches(String url, float volume) {
+            return this.url.equals(url) && Float.compare(this.volume, volume) == 0;
         }
 
         private void startDecode() {
@@ -136,16 +138,18 @@ public final class SharedStreamingGroup {
             }
         }
 
-        private Tap addTap() {
-            if (closed.get() || decodeStarted.get()) return null;
+        private Tap addTap(UUID metadataSourceId) {
+            if (closed.get() || decodeStarted.get() || metadataSourceId == null) return null;
             int id = nextTapId.getAndIncrement();
             BlockingQueue<byte[]> q = new LinkedBlockingQueue<>(400);
             taps.put(id, q);
+            tapSources.put(id, metadataSourceId);
             return new Tap(this, id, q);
         }
 
         private void removeTap(int id) {
             taps.remove(id);
+            tapSources.remove(id);
             if (taps.isEmpty()) forceClose();
         }
 
@@ -177,8 +181,17 @@ public final class SharedStreamingGroup {
             } catch (Exception e) {
                 if (running.get()) HQSpeakerMod.warn("SharedStreamingGroup: distributor error — " + e.getMessage());
             } finally {
-                forceClose();
+                finishDistribution();
             }
+        }
+
+        private void finishDistribution() {
+            if (closed.get()) return;
+            running.set(false);
+            source.stop();
+            remove(groupId, this);
+            HQSpeakerMod.log("SharedStreamingGroup: source finished for session " + groupId
+                + "; draining buffered tap audio");
         }
 
         private void forceClose() {
@@ -188,6 +201,7 @@ public final class SharedStreamingGroup {
             source.stop();
             taps.values().forEach(BlockingQueue::clear);
             taps.clear();
+            tapSources.clear();
             remove(groupId, this);
             HQSpeakerMod.log("SharedStreamingGroup: closed session " + groupId);
         }

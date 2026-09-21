@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client.audio;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.network.StreamUrlPolicy;
 
 import javax.sound.sampled.AudioFormat;
 import java.io.*;
@@ -39,6 +40,8 @@ public class StreamingAudioSource {
     private ByteBuffer carry = null;
 
     private Thread streamThread;
+    private volatile HttpURLConnection activeConnection;
+    private volatile InputStream activeInput;
 
     public StreamingAudioSource(String url, float volume) {
         this.url = url;
@@ -61,22 +64,31 @@ public class StreamingAudioSource {
     public void stop() {
         stopped.set(true);
         running.set(false);
+
+        InputStream input = activeInput;
+        activeInput = null;
+        if (input != null) {
+            try { input.close(); } catch (IOException ignored) {}
+        }
+
+        HttpURLConnection connection = activeConnection;
+        activeConnection = null;
+        if (connection != null) connection.disconnect();
+
         if (streamThread != null) streamThread.interrupt();
         pcmQueue.clear();
-        HQSpeakerMod.log("StreamingAudio: Stopped");
+        HQSpeakerMod.log("StreamingAudio: stopped");
     }
 
     public boolean isRunning() { return running.get() && !stopped.get(); }
     public AudioFormat getFormat() { return detectedFormat.get(); }
-    public boolean hasData()      { return !pcmQueue.isEmpty(); }
+    public boolean hasData()      { return (carry != null && carry.hasRemaining()) || !pcmQueue.isEmpty(); }
     public int     getQueueSize() { return pcmQueue.size(); }
 
     
     private static final ByteBuffer EMPTY_SENTINEL = ByteBuffer.allocateDirect(0).asReadOnlyBuffer();
 
     public ByteBuffer readPCM(int maxBytes) {
-        if (!isRunning() && pcmQueue.isEmpty()) return null; 
-
         if (carry != null && carry.hasRemaining()) {
             int len = Math.min(carry.remaining(), maxBytes);
             len -= len % 2;
@@ -90,6 +102,8 @@ public class StreamingAudioSource {
             if (!carry.hasRemaining()) carry = null;
             return out;
         }
+
+        if (!isRunning() && pcmQueue.isEmpty()) return null;
 
         byte[] data = pcmQueue.poll(); 
         if (data == null) return EMPTY_SENTINEL; 
@@ -132,12 +146,14 @@ public class StreamingAudioSource {
         
         
         HttpURLConnection conn = openConnection(url);
+        activeConnection = conn;
 
         String metaIntStr = conn.getHeaderField("icy-metaint");
         int metaInterval  = (metaIntStr != null) ? safeParseInt(metaIntStr, 0) : 0;
         HQSpeakerMod.log("StreamingAudio: icy-metaint=" + metaInterval);
 
         InputStream rawStream   = conn.getInputStream();
+        activeInput = rawStream;
         InputStream audioStream = (metaInterval > 0)
                 ? new IcyInputStream(rawStream, metaInterval)
                 : new BufferedInputStream(rawStream, 65536);
@@ -213,8 +229,11 @@ public class StreamingAudioSource {
             }
         } finally {
             try { bitstream.close(); } catch (Exception ignored) {}
+            if (activeInput == rawStream) activeInput = null;
             try { rawStream.close(); } catch (IOException ignored) {}
-            flushRemainingPCM(); 
+            if (activeConnection == conn) activeConnection = null;
+            conn.disconnect();
+            flushRemainingPCM();
         }
     }
 
@@ -287,6 +306,7 @@ public class StreamingAudioSource {
 
     
     private HttpURLConnection openConnection(String urlStr) throws IOException {
+        StreamUrlPolicy.validate(urlStr);
         URL u = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
         conn.setRequestMethod("GET");
@@ -296,7 +316,10 @@ public class StreamingAudioSource {
         conn.setRequestProperty("Icy-MetaData", "1");
         conn.setInstanceFollowRedirects(false);
         int code = conn.getResponseCode();
-        if (code != 200) throw new IOException("HTTP " + code + " for " + urlStr);
+        if (code != 200) {
+            conn.disconnect();
+            throw new IOException("HTTP " + code + " for " + urlStr);
+        }
 
         
         String n = conn.getHeaderField("icy-name");
