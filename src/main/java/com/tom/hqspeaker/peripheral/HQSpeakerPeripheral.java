@@ -148,25 +148,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public void speakerTick() {
         SpeakerChunk chunk = speakerQueue.poll();
         if (chunk != null && world instanceof ServerLevel sl) {
-            float wx = pos.getX() + 0.5f;
-            float wy = pos.getY() + 0.5f;
-            float wz = pos.getZ() + 0.5f;
-
-            try {
-                if (com.tom.hqspeaker.vs2.VS2TransformHelper.isVS2Loaded()) {
-                    Object ship = com.tom.hqspeaker.vs2.VS2TransformHelper.getShipManagingBlock(world, pos);
-                    if (ship != null) {
-                        org.joml.Matrix4dc mat = com.tom.hqspeaker.vs2.VS2TransformHelper.getShipToWorldMatrix(ship);
-                        if (mat != null) {
-                            org.joml.Vector3d v = new org.joml.Vector3d(wx, wy, wz);
-                            mat.transformPosition(v);
-                            wx = (float) v.x; wy = (float) v.y; wz = (float) v.z;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                HQSpeakerMod.warn("HQSpeaker: VS2 conversion failed: " + e.getMessage());
-            }
+            org.joml.Vector3d resolved = com.tom.hqspeaker.compat.MovingSourcePosition.resolve(
+                world, pos, new org.joml.Vector3d());
+            float wx = (float) resolved.x;
+            float wy = (float) resolved.y;
+            float wz = (float) resolved.z;
 
             var pkt = new HQSpeakerAudioPacket(
                 speakerSource, chunk.format(), chunk.volume(),
@@ -439,21 +425,9 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
     }
 
     private float[] computeWorldPos(String ctx) {
-        float wx = pos.getX() + 0.5f, wy = pos.getY() + 0.5f, wz = pos.getZ() + 0.5f;
-        try {
-            if (com.tom.hqspeaker.vs2.VS2TransformHelper.isVS2Loaded()) {
-                Object ship = com.tom.hqspeaker.vs2.VS2TransformHelper.getShipManagingBlock(world, pos);
-                if (ship != null) {
-                    org.joml.Matrix4dc mat = com.tom.hqspeaker.vs2.VS2TransformHelper.getShipToWorldMatrix(ship);
-                    if (mat != null) {
-                        org.joml.Vector3d v = new org.joml.Vector3d(wx, wy, wz);
-                        mat.transformPosition(v);
-                        wx = (float) v.x; wy = (float) v.y; wz = (float) v.z;
-                    }
-                }
-            }
-        } catch (Exception e) { HQSpeakerMod.warn(ctx + ": VS2 transform failed: " + e.getMessage()); }
-        return new float[]{wx, wy, wz};
+        org.joml.Vector3d resolved = com.tom.hqspeaker.compat.MovingSourcePosition.resolve(
+            world, pos, new org.joml.Vector3d());
+        return new float[]{(float) resolved.x, (float) resolved.y, (float) resolved.z};
     }
 
     private void sendToNearby(ServerLevel sl, CustomPacketPayload pkt, float wx, float wy, float wz) {

@@ -2,7 +2,7 @@ package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
-import com.tom.hqspeaker.vs2.VS2TransformHelper;
+import com.tom.hqspeaker.compat.MovingSourcePosition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
 import net.minecraft.client.resources.sounds.Sound;
@@ -16,7 +16,6 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
-import org.joml.Matrix4dc;
 import org.joml.Vector3d;
 
 import java.util.UUID;
@@ -236,22 +235,10 @@ public final class HQSpeakerClientHandler {
         private void tickPosition(Level level, HQSpeakerSound currentSound, HQSpeakerAudioPacket currentPacket) {
             if (currentSound == null || currentPacket == null || level == null) return;
             if (!Minecraft.getInstance().getSoundManager().isActive(currentSound)) return;
-            if (!VS2TransformHelper.isVS2Loaded()) return;
 
             BlockPos blockPos = new BlockPos(currentPacket.blockX, currentPacket.blockY, currentPacket.blockZ);
-            Object ship = VS2TransformHelper.getShipManagingBlock(level, blockPos);
-            if (ship == null) return;
-            try {
-                Matrix4dc matrix = getShipToWorldMatrix(ship);
-                if (matrix == null) return;
-                Vector3d local = new Vector3d(
-                    currentPacket.blockX + 0.5, currentPacket.blockY + 0.5, currentPacket.blockZ + 0.5);
-                Vector3d world = new Vector3d();
-                matrix.transformPosition(local, world);
-                currentSound.updatePosition((float) world.x, (float) world.y, (float) world.z);
-            } catch (Exception exception) {
-                HQSpeakerMod.warn("HQSpeaker: tickPosition failed: " + exception.getMessage());
-            }
+            Vector3d world = MovingSourcePosition.resolve(level, blockPos, new Vector3d());
+            currentSound.updatePosition((float) world.x, (float) world.y, (float) world.z);
         }
 
         UUID currentSyncGroupId() { return packet == null ? null : packet.syncGroupId; }
@@ -272,10 +259,6 @@ public final class HQSpeakerClientHandler {
             if (mode == Mode.STREAM) return stream == null || stream.isDrained();
             return mode == Mode.NONE;
         }
-    }
-
-    static Matrix4dc getShipToWorldMatrix(Object ship) {
-        return VS2TransformHelper.getShipToWorldMatrix(ship);
     }
 
     @OnlyIn(Dist.CLIENT)
