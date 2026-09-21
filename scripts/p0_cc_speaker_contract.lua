@@ -1,6 +1,5 @@
--- P0 runtime acceptance for the standard CC:T speaker contract.
--- Reviewed M1 fba84a3 is expected to fail some checks. Do not weaken these
--- assertions to make an incompatible implementation pass.
+-- Frozen-v10 runtime acceptance for the standard CC:T speaker contract.
+-- This intentionally tests native CC:T semantics, not HQ replacements.
 
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach a ComputerCraft speaker")
@@ -27,59 +26,31 @@ end
 
 print("P0 CC:T speaker compatibility")
 
--- This is checked first, before this test has queued audio.
 local idleEvents = countIdleEmptyEvents(0.35)
-assert(idleEvents == 0,
-  "idle speaker spammed speaker_audio_empty (" .. idleEvents .. " events)")
+assert(idleEvents == 0, "idle speaker spammed speaker_audio_empty (" .. idleEvents .. " events)")
+assert(type(speaker.stop) == "function", "standard speaker.stop() is missing")
 
-assert(type(speaker.stop) == "function",
-  "standard speaker.stop() is missing")
-
--- Optional arguments are part of the standard API.
 assertBool(speaker.playNote("harp"), "playNote")
 sleep(0.1)
-
--- Use an ordinary short registered Minecraft sound. The exact sound should be
--- honored; this test can only assert API acceptance, so listen during the final
--- consolidated runtime pass too.
-assertBool(
-  speaker.playSound("minecraft:entity.experience_orb.pickup", 0.25, 1.0),
-  "playSound"
-)
+assertBool(speaker.playSound("minecraft:entity.experience_orb.pickup", 0.25, 1.0), "playSound")
 sleep(0.2)
 
--- Exact CC:T stop() sets a flag which SpeakerPeripheral.update() consumes on the
--- next server tick. Do not enqueue the following playAudio buffer in that same
--- tick or a correct native implementation may accept it and then cancel it when
--- the pending stop is processed.
 speaker.stop()
 sleep(0.05)
 
 local audio = {}
-for i = 1, 4800 do
-  audio[i] = math.floor(math.sin(i * 0.08) * 100)
-end
+for i = 1, 4800 do audio[i] = math.floor(math.sin(i * 0.08) * 100) end
 
-assert(speaker.playAudio(audio, 0.35) == true,
-  "first playAudio buffer was rejected")
-
--- CC:T has one pending playAudio buffer. A second immediate push should not be
--- accepted until the pending buffer is pulled and speaker_audio_empty signals
--- capacity again.
-assert(speaker.playAudio(audio) == false,
-  "second immediate playAudio buffer should have been backpressured")
+assert(speaker.playAudio(audio, 0.35) == true, "first playAudio buffer was rejected")
+assert(speaker.playAudio(audio) == false, "second immediate playAudio should be backpressured")
 
 local timer = os.startTimer(5)
 while true do
   local event, a = os.pullEvent()
   if event == "speaker_audio_empty" then break end
-  if event == "timer" and a == timer then
-    error("timed out waiting for speaker_audio_empty")
-  end
+  if event == "timer" and a == timer then error("timed out waiting for speaker_audio_empty") end
 end
 
-assert(speaker.playAudio(audio) == true,
-  "playAudio retry after speaker_audio_empty was rejected")
-
+assert(speaker.playAudio(audio) == true, "playAudio retry after speaker_audio_empty was rejected")
 speaker.stop()
-print("P0 standard CC:T speaker contract passed")
+print("[PASS] P0 standard CC:T speaker contract")

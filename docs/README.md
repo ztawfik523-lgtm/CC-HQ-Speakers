@@ -2,22 +2,27 @@
 
 Updated: 2026-09-21
 
-Current frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-CI: `35655973164` — PASS on NeoForge 21.1.247 and 21.1.248.  
+Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
 Protocol: **v10**.
 
-Read in this order:
+Read current authority in this order:
 
 1. `API-FREEZE-V10.md`
 2. `CURRENT-STATE.md`
 3. `KNOWN-ISSUES.md`
-4. `TESTING.md`
-5. `VERIFIED-FACTS.md`
-6. `ARCHITECTURE.md`
-7. `LUA-API.md`
-8. `ROADMAP.md`
-9. `CC-T-COMPATIBILITY-CONTRACT.md`
-10. `SERVER-CONFIG.md`
-11. `SOURCES.md`
+4. `RUNTIME-ACCEPTANCE-V10.md`
+5. `RUNTIME-RESULTS-V10.md`
+6. `TESTING.md`
+7. `VERIFIED-FACTS.md`
+8. `ARCHITECTURE.md`
+9. `LUA-API.md`
+10. `ROADMAP.md`
+11. `CC-T-COMPATIBILITY-CONTRACT.md`
+12. `SERVER-CONFIG.md`
+13. `SOURCES.md`
+
+Fresh-chat handoff: `HANDOFF-2026-09-21-RUNTIME-READY.md`.  
+Ready-to-paste prompt: `HANDOFF-PROMPT-2026-09-21.md`.
 
 Historical dated handoffs and M0/M1 milestone documents remain evidence for their old checkpoints but are not current authority.

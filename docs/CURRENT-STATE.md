@@ -3,39 +3,44 @@
 Updated: 2026-09-21
 
 Frozen source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-CI: `35655973164` — both supported NeoForge targets PASS.  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
 Protocol: **v10**, 9 payloads.
+
+Both supported NeoForge targets passed the source-freeze build/tests/package checks.
 
 ## Product
 
-Only the normal `computercraft:speaker` is upgraded. The standalone HQ block is gone. Internal custom audio uses `hqspeaker:hq_audio_source`. License is MPL-2.0.
+Only the normal `computercraft:speaker` is upgraded. Standalone HQ block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License is MPL-2.0.
 
-## Implemented
+Frozen supported paths:
 
-Modern finite MP3/common-WAV playback is server-authoritative, uses immutable prepared assets, bounded encoded range transport, progressive client decode, one shared multispeaker authority, dynamic finite listener membership/recovery, endpoint-local gain/mute, and start-time endpoint snapshots.
+- native CC:T speaker behavior;
+- modern finite MP3 + supported common WAV;
+- modern finite multispeaker shared authority;
+- signed-16 mono 48-kHz RAW;
+- MP3/ICY radio singular/All/At with strict no-auto-membership grouping.
 
-RAW is separate signed-16 mono 48-kHz producer-fed PCM with max 131072 samples/call and bounded backpressure.
+HLS, MPEG-TS, OGG/generic whole-file aliases, duplicate finite engine and stale legacy control aliases are removed.
 
-MP3/ICY radio is supported in singular/All/At form. Grouped radio uses strict snapshot membership and one shared client decoder/prebuffer. Late/new speakers do not auto-join.
+All HQ positional paths use Sable Companion -> VS2 -> static block-center resolution.
 
-All HQ positional output paths now share the Sable -> VS2 -> static movement resolver.
+## Final pre-freeze hardening
 
-## Recent pre-freeze hardening
+The cleanup/rethink pass closed:
 
-The final cleanup/rethink pass:
+- radio/finite server-thread commit affinity;
+- cancellable radio startup and drained client state;
+- v10 handshake registration;
+- HLS/TS and expected-count radio removal;
+- double-applied radio volume;
+- non-mutating discovery reads;
+- stricter radio URL filtering;
+- dead legacy control/helper bodies;
+- movement inconsistency between finite and RAW/radio;
+- source-wide stale-reference/import/TODO sweep.
 
-- moved radio and finite world/network commits onto the server thread;
-- made blocking radio startup cancellable and kept DNS outside sensitive locks;
-- hardened radio URL policy and client/server revalidation;
-- retired drained client radio state;
-- removed HLS/TS and expected-member radio barriers;
-- fixed v10 network registration;
-- removed dead legacy control/helper bodies;
-- fixed radio gain being applied twice;
-- made speaker discovery reads non-mutating;
-- unified RAW/radio movement with finite movement;
-- completed a 67-class mechanical stale-reference/import/TODO sweep.
+## Runtime readiness
 
-## Evidence boundary
+The source/API is frozen. Runtime scripts and the ordered acceptance matrix are prepared in `RUNTIME-ACCEPTANCE-V10.md`.
 
-Source/test/CI/package work is frozen. Focused Minecraft proof is still required for listener/recovery/movement, 2/4/8+ multispeaker behavior, strict radio synchronization, RAW timing/backpressure, malformed/extreme media, Sound Physics Remastered and realistic performance.
+Runtime testing has **not** been declared complete. Remaining evidence is Minecraft-only: listener/recovery, moving Sable/VS2 sources, real 2/4/8+ synchronization and stress, RAW audibility/backpressure timing, strict radio synchronization/late membership, malformed/bounds testing, Sound Physics Remastered and realistic performance.

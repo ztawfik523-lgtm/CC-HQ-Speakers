@@ -1,19 +1,9 @@
-# CC:HQ Speakers — next-chat handoff
+# Next-chat handoff
 
-Updated: 2026-09-20
+Updated: 2026-09-21
 
-Use the current dated handoff:
+Use `HANDOFF-2026-09-21-RUNTIME-READY.md`.
 
-`HANDOFF-2026-09-20-POST-CONVERGENCE.md`
-
-Repository: `ztawfik523-lgtm/CC-HQ-Speakers`
-
-Active branch at handoff: `codex/m1j-multispeaker`
-
-Current green source checkpoint: `fe880002b387f329d39a7372af521f1eacce559a`
-
-CI `35529710352` passed NeoForge 21.1.247 and 21.1.248.
-
-Ready-to-paste prompt: `HANDOFF-PROMPT-2026-09-20.md`
-
-`NEXT-CHAT-PROMPT.md` is the stable pointer to the same prompt.
+Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
+Protocol: v10.  
+Runtime plan: `RUNTIME-ACCEPTANCE-V10.md`.
