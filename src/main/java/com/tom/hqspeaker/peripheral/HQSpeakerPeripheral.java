@@ -44,7 +44,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private static final int    SPEAKER_READY_MARK  = 4;
     private static final double SPEAKER_RADIUS      = 32.0;
     private static final long   SPEAKER_MIN_START_DELAY = 0L;
-    private static final long   SPEAKER_MAX_START_DELAY = 20L * 60L; 
 
     private final UUID speakerSource = UUID.randomUUID();
     private final ArrayBlockingQueue<SpeakerChunk> speakerQueue = new ArrayBlockingQueue<>(SPEAKER_MAX_QUEUE);
@@ -426,11 +425,6 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume, startTick));
         if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return offered;
-    }
-
-    private static float clampVol(double v) {
-        if (!Double.isFinite(v)) return 1.0f;
-        return (float) Math.max(0.0, Math.min(3.0, v));
     }
 
     private static float clampVolChecked(double v, String name) throws LuaException {
