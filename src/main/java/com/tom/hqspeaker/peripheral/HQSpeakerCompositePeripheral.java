@@ -75,7 +75,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /** Dynamic calls which observe state/capabilities but do not supersede an in-flight stream start. */
     private static final Set<String> READ_ONLY_DYNAMIC = Set.of(
         "audioStatus", "audioStatusAll", "audioStatusAt",
-        "getPeripheralType", "getPos", "getSpeakerCount",
+        "getPeripheralType", "getPos", "getSpeakerCount", "getSpeakers", "getSpeakerPos",
         "getStreamArtist", "getStreamFormats", "getStreamGenre", "getStreamMeta", "getStreamMetaSerial",
         "getStreamSong", "getStreamStation", "getStreamTitle", "getStreamUrl", "isStreaming",
         "speakIsPlaying", "speakMaxAudioBytes", "speakMaxSamples",

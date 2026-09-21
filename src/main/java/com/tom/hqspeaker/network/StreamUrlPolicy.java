@@ -78,7 +78,18 @@ public final class StreamUrlPolicy {
         if (bytes.length != 4) return false;
         int first = bytes[0] & 0xFF;
         int second = bytes[1] & 0xFF;
-        // Carrier-grade NAT is not public-routable and should not be a client radio target either.
-        return first == 100 && second >= 64 && second <= 127;
+        int third = bytes[2] & 0xFF;
+
+        // Java covers ordinary loopback/private/link-local/multicast above. Cover the remaining
+        // non-public IPv4 ranges explicitly so "private/reserved" is actually truthful.
+        if (first == 0) return true; // "this network" 0.0.0.0/8
+        if (first == 100 && second >= 64 && second <= 127) return true; // CGNAT 100.64.0.0/10
+        if (first == 192 && second == 0 && third == 0) return true; // IETF protocol assignments
+        if (first == 192 && second == 0 && third == 2) return true; // TEST-NET-1
+        if (first == 192 && second == 88 && third == 99) return true; // deprecated 6to4 relay anycast
+        if (first == 198 && (second == 18 || second == 19)) return true; // benchmarking 198.18.0.0/15
+        if (first == 198 && second == 51 && third == 100) return true; // TEST-NET-2
+        if (first == 203 && second == 0 && third == 113) return true; // TEST-NET-3
+        return first >= 240; // reserved/future-use 240.0.0.0/4
     }
 }
