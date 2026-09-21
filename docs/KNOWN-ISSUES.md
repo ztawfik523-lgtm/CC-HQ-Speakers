@@ -1,83 +1,51 @@
 # Known issues and risk register
 
-Updated: 2026-09-20
+Updated: 2026-09-21
 
-This file records current unresolved risks and important resolved issues. Older numbered issue discussions in historical documents remain evidence for their checkpoints but do not override current source.
+Only current unresolved/deferred items are listed here. Retired HLS/TS and expected-count live issues are closed by removal/redesign.
 
-## Current unresolved / deferred
+## Runtime evidence still required
 
-### KI-RUNTIME-001 — M1H listener lifecycle lacks focused Minecraft proof
+### KI-RUNTIME-001 — finite listener lifecycle
 
-Source/test/CI/package behavior exists for walk-in, walk-out, re-entry and cleanup, but focused live Minecraft acceptance is still deferred.
+Verify outside-at-start, enter, leave, re-enter at current time, dimension/disconnect cleanup and terminal/replacement cleanup in Minecraft.
 
-### KI-RUNTIME-002 — M1H renderer/reload/starvation recovery lacks focused Minecraft proof
+### KI-RUNTIME-002 — renderer/reload/starvation recovery
 
-Deterministic logic exists, but SoundEngine resource reload, lost renderer and sustained starvation need in-game acceptance.
+Verify resource reload, renderer/SoundEngine loss and sustained starvation in Minecraft.
 
-### KI-RUNTIME-003 — Sable/Aeronautics + VS2 movement lacks focused Minecraft proof
+### KI-RUNTIME-003 — moving speakers
 
-Source/package support exists. Runtime movement acceptance remains deferred.
+All HQ positional paths now use Sable -> VS2 -> static source resolution. Verify actual Sable/Aeronautics and VS2 movement in-game.
 
-### KI-RUNTIME-005 — M1J multispeaker lacks focused Minecraft proof
+### KI-RUNTIME-005 — finite multispeaker
 
-Need real 2/4/8+ speaker tests for audibility/sync, pause/seek/loop, endpoint removal/replacement and per-endpoint volume/mute.
+Verify real 2/4/8+ speaker synchronization, shared controls, endpoint-local gain/mute, `audioStopAt`, endpoint removal/replacement and concurrent controls.
 
-### KI-PERF-006 — multispeaker client decode duplication is unprofiled
+### KI-RUNTIME-006 — MP3/ICY radio
 
-Every audible endpoint keeps an independent decoder/PCM/render path. Server range traffic is already bounded per player.
+Verify direct and grouped radio audibility, strict snapshot behavior, long-run drift, late-member rejection/rerun, metadata, bad URL/EOF/network failure and stop/replacement behavior.
 
-Do not implement shared decode fan-out unless profiling shows meaningful cost.
+### KI-RUNTIME-007 — RAW
 
-### KI-LIVE-007 — HLS refreshed-playlist progression remains suspect
+Verify signed-16 audibility, repeated feed behavior, backpressure/retry event, All preflight/common start, drain ownership and moving-source behavior.
 
-Inherited HLS logic keeps a monotonically increasing segment index while refreshed playlist arrays are new zero-based windows. A long-running stream can therefore stop finding new segment indices.
+### KI-PERF-006 — finite per-endpoint decode cost
 
-Live streaming is optional, so this is not a core release blocker unless live HLS is promoted.
+Finite playback intentionally keeps independent endpoint decoders/renderers. Profile realistic 2/4/8+ loads before considering shared finite decode fan-out.
 
-### KI-LIVE-008 — grouped live streams still use expected-count synchronization
+### KI-RELEASE-010 — integrated acceptance
 
-`speakStreamAll` / `speakHLSAll` / `speakTSAll` still create legacy sync groups. Client `SyncGroupState` waits on expected members.
+Before release, run malformed/extreme media, storage/range/worker bounds, repeated replacement/control stress, Sound Physics Remastered, and final checks on both NeoForge targets.
 
-Finite and RAW no longer use this barrier. Do not confuse the remaining live-only code with core multispeaker design.
+### KI-REPO-011 — release branch hygiene
 
-### KI-RELEASE-010 — final integrated runtime/stress acceptance remains
+The product branch is `codex/m1j-multispeaker`; GitHub default `main` remains historical until explicitly promoted/merged for release.
 
-Before public release, batch M1H/M1J runtime backlog, malformed/extreme media, queue/memory/network/worker bounds, Sound Physics Remastered, and both NeoForge targets.
+## Frozen semantics, not issues
 
-### KI-REPO-011 — repository/CI hygiene can still improve
-
-Possible non-functional cleanup: docs-only CI path, concurrency cancellation, default-branch normalization, stale historical script labeling, and dead imports/helpers.
-
-## Important resolved issues
-
-- KI-046: M1G focused audible/core proof passed 2026-09-19 on NeoForge 21.1.247.
-- KI-054: shutdown/root-lock retry resolved.
-- KI-062: stream DNS/server-lock coupling resolved.
-- KI-063: destructive replacement before admission resolved for modern finite and RAW.
-- KI-064: import no-progress / atomic rename fallback resolved.
-- duplicate legacy finite engine/API debt resolved by migration/removal.
-- modern finite expected-member barrier removed.
-- RAW expected-member barrier removed.
-- grouped/indexed standard semantics corrected at the composite surface.
-- dead legacy standard grouped/indexed bodies removed at `ef2a917de429c34409ae7866f59cb50f3c191aa1`.
-- dead legacy RAW `speakPCMAll/speakPCMAt` duplicates/helpers removed at `395a41c1c91a4d1efa41cee9db89ba02fe767785`;
-- nested finite endpoint-monitor fanout and `sharesPlaybackWith` lock nesting removed at `8349d0883c2521506bbfdaac4546981c1e31af3e`;
-- KI-CONC-013: modern/core multi-endpoint command coordination resolved through `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`; stable ordered target locks cover finite/RAW group replacement and targeted/shared controls, with deterministic lock-order tests.
-- `audioStopAt(index)` semantics are resolved as endpoint-local detach/stop; ordinary `audioStop` and `audioStopAll` remain shared-playback stops.
-- dead singular legacy fake standard/RAW bodies removed and RAW cap normalized at `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
-- unreachable composite ordered fallbacks and obsolete generic 8-bit table conversion removed at `47976d92e3ba7113f72377969a1f03578f075d7b` / CI `35481364704`.
-- KI-MOVE-004 closed after source-model verification: Sable sub-level contents are plot-space data owned by the parent Minecraft `Level`, so `player.level() == level` is the correct same-dimension check after world-space projection. Focused runtime movement proof remains KI-RUNTIME-003.
-- KI-API-012 closed at `fe880002b387f329d39a7372af521f1eacce559a` / CI `35529480491`: obsolete undocumented `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll` were removed; current v9 acceptance asserts they stay absent.
-- inherited standalone HQ block removed.
-- license metadata mismatch corrected to MPL-2.0.
-
-## Scope reminders
-
-Optional/future, not current blockers:
-
-- modern OGG;
-- FLAC;
-- provider playback;
-- live HLS/TS/radio repair;
-- native ordinary Create contraption lifecycle;
-- gapless playback.
+- `audioStopAt` is endpoint-local.
+- grouped radio has no automatic membership.
+- `isStreaming` means server-side stream ownership/request state, not confirmed client audibility.
+- HLS/TS are removed.
+- shared finite decode fan-out is not selected.

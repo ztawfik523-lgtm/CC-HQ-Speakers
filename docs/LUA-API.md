@@ -1,190 +1,67 @@
-# Lua API
+# Lua API — frozen v10
 
-Updated: 2026-09-20
+Updated: 2026-09-21
 
-The peripheral type remains `speaker`. Standard CC:T speaker methods continue to exist; HQ methods are extensions.
+Peripheral type remains `speaker`. See `API-FREEZE-V10.md` for the release contract.
 
-## Recommended modern finite module
+## Recommended finite files
 
 ```lua
 local speaker = peripheral.find("speaker")
 local hq = require("hqspeaker")
+hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 ```
 
-### `hq.prepareFile(speaker, path) -> assetId`
+Module helpers: `prepareFile`, `preparedInfo`, `preparedFormats`, `playPrepared`, `playPreparedAll`, `playFile`, `playFileAll`, `releasePrepared`, mute helpers.
 
-Copy a ComputerCraft-local file into immutable server media storage and analyze it.
+Modern finite formats: MP3 + supported common WAV.
 
-Modern supported formats:
-
-- MP3
-- supported common WAV
-
-### `hq.preparedInfo(speaker, assetId) -> table`
-
-Returns server-derived facts such as format, duration, sample rate, channels, bits per sample, size and source name.
-
-### `hq.preparedFormats(speaker) -> table`
-
-Current result:
-
-```lua
-{ mp3 = true, wav = true }
-```
-
-`speaker.speakSupportedFiles()` also reports the current finite set `{"mp3","wav"}` for compatibility.
-
-### `hq.playPrepared(speaker, assetId, options?) -> boolean`
-
-Start one prepared asset on one speaker. `options.volume` is optional.
-
-### `hq.playPreparedAll(speaker, assetId, options?) -> boolean`
-
-Start one shared prepared playback on the speakers attached to the calling computer at invocation time. The endpoint set is a snapshot.
-
-### `hq.releasePrepared(speaker, assetId) -> boolean`
-
-Release the caller's preparation reference. Active playback owns its own retained reference.
-
-### `hq.playFile(speaker, path, options?) -> boolean`
-
-Prepare, start, then release the temporary preparation reference.
-
-### `hq.playFileAll(speaker, path, options?) -> boolean`
-
-Prepare once and start one shared playback across the current speaker snapshot.
-
-## Finite compatibility names
-
-These old names now use the modern finite engine:
-
-- `speakMp3`
-- `speakWav`
-- `speakMp3All`
-- `speakWavAll`
-- `speakMp3At`
-- `speakWavAt`
-
-They are strict format-specific wrappers.
-
-Removed:
-
-- `speakOgg`;
-- generic whole-file `speakAudio` / `speakFile` / `speakPacked`;
-- corresponding All/At forms.
+Compatibility byte names: `speakMp3/speakWav` plus All/At.
 
 ## Finite controls
 
-Singular:
+Singular: `audioStatus`, `audioPause`, `audioResume`, `audioSeek`, `audioSetVolume`, `audioSetLooping`, `audioStop`, `audioSetMuted`.
 
-- `audioStatus()`
-- `audioPause()`
-- `audioResume()`
-- `audioSeek(seconds)`
-- `audioSetVolume(volume)`
-- `audioSetLooping(loop)`
-- `audioStop()`
-- `audioSetMuted(muted)`
+All/At equivalents exist for status, pause/resume, seek, volume, looping, stop and mute.
 
-Grouped/indexed equivalents exist for the modern finite surface, including status, pause/resume, seek, loop, stop, volume and mute All/At variants.
+Shared playback operations: pause/resume/seek/loop and ordinary/All stop.
 
-Pause/resume/seek/loop and ordinary/All stop affect the shared playback authority.
+Endpoint operations: volume/mute. `audioStopAt(index)` stops/detaches only that endpoint.
 
-`audioStopAt(index)` is intentionally different: it detaches/stops only that selected physical speaker. The other endpoints continue the same shared playback.
+## Native CC:T
 
-Volume/mute are endpoint-local. All-volume/all-mute targets the surviving playback endpoint snapshot.
+Preserved: `playNote`, `playSound`, `playAudio`, `stop`, `speaker_audio_empty`.
 
-`audioStatus()` for active finite playback includes state, playbackId, stateRevision, generation, format, position, duration, sampleRate, channels, bitsPerSample, volume, muted, looping, assetId, capability flags, and error when present.
+Added selected-endpoint helpers: `playNoteAll/At`, `playSoundAll/At`, `playAudioAll/At`.
 
-## Standard CC:T methods
+## RAW
 
-Preserved:
+`speakPCM(samples [, volume])`, `speakPCMAll`, `speakPCMAt`.
 
-- `playNote`
-- `playSound`
-- `playAudio`
-- `stop`
-- native `speaker_audio_empty`
+Samples are signed 16-bit integers, mono 48 kHz, max 131072 samples/call. Backpressure rejection returns false; a producer that observed rejection may wait for `hqspeaker_audio_empty`.
 
-Grouped/indexed standard helpers dispatch to real CC:T speakers:
+Helpers: `speakStop`, `speakVolume`, `speakIsPlaying`, `speakQueueSize`, `speakSampleRate`, `speakMaxAudioBytes`, `speakMaxSamples`, `speakSupportedFiles`.
 
-- `playNoteAll` / `playNoteAt`
-- `playSoundAll` / `playSoundAt`
-- `playAudioAll` / `playAudioAt`
+## MP3/ICY radio
 
-## HQ RAW PCM
+`speakStream(url [, volume])`  
+`speakStreamAll(url [, volume])`  
+`speakStreamAt(index, url [, volume])`
 
-### `speakPCM(samples [, volume]) -> boolean`
+Metadata/status helpers: `isStreaming`, `getStreamUrl`, `getStreamFormats`, `getStreamMeta`, `getStreamTitle`, `getStreamArtist`, `getStreamSong`, `getStreamStation`, `getStreamGenre`, `getStreamMetaSerial`.
 
-Signed 16-bit PCM at 48 kHz.
+Metadata event: `hqspeaker_metadata`.
 
-Current maximum: 131072 samples per call.
+All radio grouping is strict snapshot/no-auto-membership. A late/new speaker joins only after the script reruns the stream command.
 
-Returns false when bounded HQ RAW capacity cannot accept the chunk.
+`isStreaming` reports server-owned stream state, not confirmed client connectivity.
 
-If a computer observes false, it may wait for `hqspeaker_audio_empty` and retry.
+Only MP3/ICY HTTP(S) radio is supported. HLS and TS are removed.
 
-### `speakPCMAll(samples [, volume]) -> boolean`
+## Discovery
 
-Preflights the full endpoint snapshot. If any endpoint cannot admit the chunk, the call rejects before intentionally replacing/advancing part of the group.
+`getPeripheralType`, `getPos`, `getSpeakerCount`, `getSpeakers`, `getSpeakerPos`.
 
-Accepted endpoints share a future start tick but no expected-member barrier.
+## Removed names
 
-### `speakPCMAt(index, samples [, volume]) -> boolean`
-
-Target one current physical speaker index.
-
-Related helpers include:
-
-- `speakQueueSize()`
-- `speakSampleRate()`
-- `speakMaxSamples()`
-- `speakStop()`
-- `speakVolume(...)`
-- `speakIsPlaying()`
-
-Removed obsolete legacy aliases: `speakStopAll`, `speakStopAt`, `speakVolumeAll`, and `setLoopingAll`. Use the current `audio*All/At`, RAW `speakPCMAll/At`, or singular controls instead.
-
-RAW has no real seek/duration/loop model.
-
-## Speaker discovery
-
-Available grouped/indexed discovery includes:
-
-- `getSpeakerCount()`
-- `getSpeakers()`
-- `getSpeakerPos(index)`
-
-## Optional live streaming
-
-Still exposed but not core release functionality:
-
-- `speakStream(url [, volume])`
-- `speakHLS(url [, volume])`
-- `speakTS(url [, volume])`
-- All/At variants
-- ICY metadata getters/events.
-
-Grouped live helpers still use legacy expected-count synchronization. HLS long-running refresh behavior has a known concern.
-
-Do not treat these optional live APIs as the architecture contract for modern finite/RAW.
-
-## Events
-
-`speaker_audio_empty` is native CC:T `playAudio` backpressure.
-
-`hqspeaker_audio_empty` is HQ RAW retry notification after observed rejection.
-
-`hqspeaker_audio_state` is modern finite state projection to attached computers.
-
-## Range/volume behavior
-
-Modern finite core server relevance is fixed at 32 blocks.
-
-Finite volume changes gain, not this radius.
-
-## Removed standalone block
-
-There is no `hqspeaker:hq_speaker` peripheral block. Use the normal CC:T speaker.
-
-The internal SoundManager event `hqspeaker:hq_audio_source` is not a Lua API or block.
+`speakOgg`; generic `speakAudio/speakFile/speakPacked` families; HLS/TS families; `speakStopAll`, `speakStopAt`, `speakVolumeAll`; old `setLooping`/All aliases.

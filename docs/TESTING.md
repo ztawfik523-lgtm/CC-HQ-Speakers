@@ -1,101 +1,67 @@
 # Testing
 
-Updated: 2026-09-20
+Updated: 2026-09-21
 
 ## Evidence rule
 
-CI proves compilation, deterministic tests and package structure. It does **not** prove audibility, Minecraft SoundManager/OpenAL lifecycle, movement behavior or real-world performance.
+CI proves compilation, deterministic tests and package structure. It does not prove Minecraft audibility, OpenAL/SoundManager lifecycle, moving-ship behavior, spatial synchronization or realistic performance.
 
-Target stack:
+Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
+CI: `35655973164` — NeoForge 21.1.247 + 21.1.248 PASS.
 
-- Java 21
-- Minecraft 1.21.1
-- CC:Tweaked 1.120.0
-- NeoForge 21.1.247
-- NeoForge 21.1.248
+Deterministic coverage includes finite analyzers/decoders/range transport/state machines/recovery/projection, storage/release limits, ordered multi-lock behavior, RAW feed lifetime, strict radio group sealing, URL policy and package checks.
 
-## Current green source checkpoint
+## Frozen runtime targets
 
-`b3005f8b33525c237df53f08bb5b09c6b96809fc`  
-CI `35529710352`
+### Native CC:T
 
-Both supported NeoForge targets passed build/tests/package verification/artifact upload.
+Verify `playNote`, `playSound`, `playAudio`, `stop`, native `speaker_audio_empty`, plus grouped/indexed native helpers.
 
-This checkpoint includes modern finite v9, M1H/M1J source work, finite convergence/teardown, RAW admission refactor, dependency cleanup, standalone-block removal, MPL metadata correction, internal sound-resource rename, completed modern/core multi-endpoint coordination hardening, and dead singular legacy playback cleanup with the public composite method surface preserved.
+### Finite singular
 
-`OrderedMultiLockTest` deterministically covers opposite target ordering, overlapping target groups, complete lock ownership during the transaction, and fail-fast rejection when a caller enters with a target lock already held. Full `HQSpeakerCompositePeripheral` behavior still depends on Minecraft/CC:T integration, so green CI is not a substitute for the deferred real concurrent-control stress pass.
+MP3 and common WAV: start, status, pause/resume, seek, volume, mute, loop enable/disable/wrap, exact-duration end, replacement and stop.
 
-## Major checkpoints
+### Finite multispeaker
 
-- M1G: `fa679ffcb81a66fd99ab6be8e6d6b77895fbc542` / CI `35297026277` / focused audible core PASS on NeoForge 21.1.247.
-- post-M1G hardening: `3d30ce4564de749f32171666df65de739b08ad77` / CI `35406595856`.
-- M1H-1: `84e7bab99009e5871934a960908945ceb00a10a9` / CI `35410830197`.
-- M1H-2: `aa72f0d2fc9f8cde53cd956389beca1743d06165` / CI `35411480844`.
-- M1H-3: `5cd6d6ddcad4b5b4887b903f471de0f2f812795c` / CI `35451236630`.
-- M1J first shared-playback checkpoint: `b557773b9c6f6b8029aec132a1706f0d8da914bd` / CI `35466635285`.
-- finite teardown: `fcb6670dd818412c15509129105aa7f54be9d5ba` / CI `35470940030`.
-- RAW barrier/admission: `b6866ce99810f1b449d0066c3d25cf6bc7d3baaf` / CI `35471254482` and `c728a9076073e7a19a7a016f8eaf8e82c6ce68ac` / CI `35471357327`.
-- standalone block/license: `ce12a8bca2d68e7a6ebfaf106c4206508c26bb98` / CI `35474632162`.
-- internal sound rename: `00b07db41c003363cef60ef8ec4134fa387c421c` / CI `35474944518`.
-- finite endpoint lock-order hardening: `8349d0883c2521506bbfdaac4546981c1e31af3e` / CI `35477934035`.
-- composite multispeaker transaction/control hardening: `68314efe2e7ccbaa73e273044389ea43fea70530` / CI `35478810268`.
-- dead singular legacy playback cleanup / RAW cap normalization: `2377aae3bde94d3393f21525697198fb8645f354` / CI `35480935418`.
-- unreachable composite fallback removal / RAW-only converter specialization: `47976d92e3ba7113f72377969a1f03578f075d7b` / CI `35481364704`.
-- obsolete compatibility-control alias removal: `fe880002b387f329d39a7372af521f1eacce559a` / CI `35529480491`.
+2, 4 and 8+ speakers: shared playback ID/timeline, synchronized start, pause/resume/seek/loop, endpoint volume/mute, All volume/mute snapshot semantics, `audioStopAt` survivor behavior, endpoint remove/replace and concurrent controls.
 
-## Package verification
+### Listener/recovery
 
-Checks:
-
-- `META-INF/neoforge.mods.toml`
-- mixins config
-- Jar-in-Jar metadata
-- JLayer 1.0.1.4
-- Sable Companion 1.6.0
-- bundled ComputerCraft Lua module
-
-## Deferred focused Minecraft matrix
-
-### Listener membership
-
-Outside-at-start, enter within 32 blocks, no restart spam while staying, leave cleanup, re-entry at current time, dimension/disconnect cleanup, terminal/replacement cleanup.
-
-### Recovery
-
-Resource reload, renderer/SoundEngine loss, READY retry, sustained starvation, pause/mute/restart interactions.
+Outside-at-start, enter, leave, re-enter at current time, dimension/disconnect cleanup, resource reload, renderer loss and sustained starvation.
 
 ### Movement
 
-Sable/Aeronautics moving sublevel, VS2, static regression, and server relevance following movement. The prior parent-world Level-identity concern is closed at source-model level; runtime still needs to prove the projected movement path behaves correctly in Minecraft.
-
-### Multispeaker
-
-Use 2, 4 and 8+ speakers where practical. Verify one shared timeline, relevant endpoint subset, late entry, group pause/resume/seek/loop, endpoint-local volume/mute, All gain/mute snapshot semantics, endpoint removal/replacement, and detaching one endpoint via new playback.
+Static regression plus real Sable/Aeronautics and VS2 motion. Test finite, RAW and radio because all now share the movement resolver.
 
 ### RAW
 
-Verify signed-16 audibility, repeated chunks as one feed, false on capacity rejection, `hqspeaker_audio_empty` after observed rejection, All preflight, common start tick with no expected-member deadlock, and ownership release after drain/grace.
+Signed-16 audibility, repeated feed continuity, max/rejection behavior, `hqspeaker_audio_empty`, All preflight/common start, At targeting, drain/grace ownership and moving source.
+
+### MP3/ICY radio
+
+Direct, At and All; metadata; strict no-auto-membership; late speaker stays out until rerun; one-client subset behavior; start sync after prebuffer; long-run drift; `audioStopAt`/All stop; bad URL, EOF and network interruption.
+
+Remember: `isStreaming` is server-side ownership/request state, not client-connect proof.
 
 ### Bounds/stress
 
-Malformed/extreme MP3/WAV, long-media memory bounds, range-request bounds, worker shutdown/restart, many listeners/speakers, repeated start/stop/replace/seek.
+Malformed/extreme MP3/WAV, long media, repeated prepare/release, configured storage limits, range request bounds, worker shutdown/restart, many listeners/speakers, repeated start/stop/replace/seek.
 
 ### Sound Physics Remastered
 
-Verify normal SoundManager processing and profile many simultaneous sources. Do not add custom raytracing unless runtime proves a gap.
+Verify these SoundManager sources are processed normally and profile many simultaneous sources. Add compatibility code only if runtime proves an actual gap.
 
-## Optional live tests
+## Package checks
 
-Only if live features remain supported/promoted: MP3 URL/ICY, HLS refresh across windows, TS, grouped-stream partial-listener behavior, shutdown/DNS failure.
+CI verifies NeoForge metadata, mixins, Jar-in-Jar metadata, JLayer 1.0.1.4, Sable Companion 1.6.0 and bundled `hqspeaker.lua`.
 
-## Current runtime scripts
+## Current scripts
 
-- `scripts/v9_core_acceptance.lua <mp3> [wav]`: current v9 automated API/core lifecycle check, including the endpoint-local `audioStopAt` contract when 2+ speakers are attached.
-- `scripts/p0_cc_speaker_contract.lua`: focused native CC:T behavior/backpressure regression.
-- `scripts/p0_finite_regression.lua <mp3>`: focused finite looping/end-state regression.
+Current/frozen helpers:
 
-These scripts still do not replace manual audibility/spatial, movement, reload/recovery or Sound Physics checks.
+- `scripts/v10_core_acceptance.lua`
+- `scripts/v10_radio_acceptance.lua`
+- `scripts/p0_cc_speaker_contract.lua`
+- `scripts/p0_finite_regression.lua`
 
-## Historical scripts
-
-`m0-smoke.lua` and `m1_player_test.lua` are explicitly marked historical because they target retired OGG/generic/old finite behavior. Other dated M1 scripts should be treated as milestone-specific unless reviewed for the current v9 surface.
+M0/M1 milestone scripts are historical unless explicitly promoted by the v10 runtime plan.

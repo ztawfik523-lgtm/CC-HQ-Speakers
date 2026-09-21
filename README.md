@@ -1,166 +1,50 @@
 # CC:HQ Speakers
 
-CC:HQ Speakers upgrades the normal CC:Tweaked `speaker` peripheral with higher-quality programmable audio while preserving the standard CC:T speaker contract.
+CC:HQ Speakers upgrades the normal CC:Tweaked `computercraft:speaker` with higher-quality programmable audio while preserving CC:T's native speaker behavior.
 
-Target stack:
+Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.247 baseline and 21.1.248 compatibility.
 
-- Minecraft 1.21.1
-- Java 21
-- CC:Tweaked 1.120.0
-- NeoForge 21.1.247 baseline / 21.1.248 compatibility
+## Frozen v10 release surface
 
-## Fork and license
+Source freeze checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
+CI: `35655973164` — both NeoForge targets passed build, deterministic tests, package verification and artifact upload.  
+Network protocol: **v10**, 9 payloads.
 
-Repository lineage:
+The normal CC:T speaker is the only block product. The inherited standalone `hqspeaker:hq_speaker` block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License: MPL-2.0.
 
-`tiktop101/CC-HQ-Speakers -> jvrcruzGAMES/CC-HQ-Speakers -> ztawfik523-lgtm/CC-HQ-Speakers`
+Supported playback:
 
-The inherited repository license is Mozilla Public License 2.0. This fork remains MPL-2.0. Upstream also shipped an inconsistent LGPL-3.0 mod-metadata label; this fork corrected NeoForge metadata to `MPL-2.0`.
+- native CC:T `playNote`, `playSound`, `playAudio`, `stop`;
+- modern finite MP3 + supported common WAV;
+- MP3/WAV compatibility byte methods on the same modern finite engine;
+- signed-16 mono RAW PCM at 48 kHz;
+- MP3/ICY internet radio: singular, All and At;
+- multispeaker finite playback with one shared authority and independent physical endpoints.
 
-## Product direction
+Retired: OGG/generic whole-file aliases, HLS, MPEG-TS, the duplicate finite engine, stale compatibility-control aliases, and the standalone HQ block.
 
-The normal `computercraft:speaker` is the **only** speaker block product.
+## Core semantics
 
-The inherited standalone `hqspeaker:hq_speaker` block/item/block entity/registry path was removed. The internal custom SoundManager anchor is now named `hqspeaker:hq_audio_source` so it cannot be confused with a block.
+Finite multispeaker membership is a start-time speaker snapshot. Pause/resume/seek/loop and ordinary/All stop operate on shared playback. Volume and mute are endpoint-local. `audioStopAt(index)` stops/detaches only that physical endpoint.
 
-Lua decides whether audio is music, speech, alarms, notifications, ambience, soundboards, or something else. Java exposes playback mechanics and truthful capabilities.
+Grouped MP3 radio is also strict-snapshot: the command defines the participating server endpoints, each client collects only the speakers it actually receives before the seal deadline, one shared decoder/prebuffer is used for that local group, and late/new speakers do not auto-join. Rerun the command to create a new group.
 
-One physical speaker remains one mono positional source.
+RAW `speakPCMAll` preflights the whole target snapshot and uses a common future start tick without an expected-member barrier.
 
-## Current status
+All HQ positional paths now use the same movement resolver: Sable Companion first, VS2 second, static block center otherwise.
 
-Current green source checkpoint:
-
-- `b3005f8b33525c237df53f08bb5b09c6b96809fc`
-- CI `35529710352`
-- NeoForge 21.1.247: PASS
-- NeoForge 21.1.248: PASS
-
-Current protocol: **v9**, 9 payloads.
-
-Completed at source/test/CI/package level:
-
-- modern bounded finite engine;
-- post-M1G lifecycle/storage hardening;
-- dynamic listener admission/leave/rejoin;
-- renderer/reload/starvation recovery;
-- Sable/Aeronautics + VS2 moving-source support;
-- modern multispeaker shared playback;
-- MP3/WAV compatibility-name migration to the modern engine;
-- removal of OGG/generic whole-file aliases and duplicate finite engine;
-- RAW multispeaker admission without the old expected-member barrier;
-- obsolete JavaSound MP3 SPI dependency removal;
-- standalone speaker block removal;
-- MPL metadata correction;
-- internal sound-resource rename;
-- finite/multispeaker concurrency hardening;
-- dead legacy singular standard/RAW implementation cleanup while preserving the public composite API.
-
-Focused M1H/M1J Minecraft checks remain in the runtime backlog.
-
-## Finite playback
-
-Recommended Lua path:
+## Recommended finite API
 
 ```lua
 local speaker = peripheral.find("speaker")
 local hq = require("hqspeaker")
-
 hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 ```
 
-Supported modern finite formats:
+Prepared media is stored server-side as immutable encoded assets. Defaults are 512 MiB per asset and 2048 MiB total; server config can change those limits.
 
-- MP3
-- supported common WAV
+## Evidence boundary
 
-Current finite pipeline:
+Green CI proves source/tests/package structure, not Minecraft audibility, OpenAL/SoundManager behavior, moving-ship behavior or real multispeaker synchronization. The next phase is runtime acceptance against this frozen v10 surface.
 
-```text
-ComputerCraft file or compatibility byte payload
--> immutable server MediaAsset
--> server analysis / codec descriptor
--> one server-authoritative playback authority
--> protocol v9 bounded range transport
--> progressive client decode
--> one shared client playback projection
--> independent positional SoundManager source per physical speaker
-```
-
-Multispeaker starts snapshot the speakers attached to the calling computer. There is no expected-member barrier. Removing/replacing one endpoint does not kill the other endpoints.
-
-Shared controls: play/pause/resume/seek/loop/stop.  
-Endpoint-local controls: volume/mute.  
-Explicit `*All` and `*At` variants apply endpoint controls as requested.
-
-Legacy names `speakMp3` / `speakWav` and their All/At variants remain as compatibility frontends but now use the same modern finite engine.
-
-OGG and generic whole-file aliases are retired.
-
-## Standard CC:T behavior
-
-The composite delegates normal `playNote`, `playSound` and `playAudio` to CC:T's real `SpeakerPeripheral`. Grouped/indexed standard helpers are intercepted by the composite and also dispatch to the real CC:T speakers, preserving requested instruments, sound IDs and native DFPWM behavior.
-
-Native `speaker_audio_empty` remains CC:T-owned.
-
-## HQ RAW
-
-`speakPCM` is a separate producer-fed signed-16 PCM path:
-
-- 48 kHz;
-- maximum 131072 samples per call;
-- bounded queue/backpressure;
-- `hqspeaker_audio_empty` for producers which actually observed rejection;
-- singular, All and At forms;
-- All preflights every target endpoint before replacement and uses a common future start tick without a global expected-member barrier.
-
-RAW is intentionally not represented as a fake finite song with seek/duration/loop semantics.
-
-## Optional live streaming
-
-MP3 stream / ICY, HLS and TS helpers remain optional legacy/future features. They are not core release blockers.
-
-Known inherited HLS progression concerns remain. Grouped live-stream helpers still retain legacy sync-group metadata, so that code is not dead yet.
-
-## Moving speakers
-
-M1H-3 uses local movement resolution:
-
-1. Sable Companion / Aeronautics-style sublevels;
-2. VS2 transform fallback;
-3. normal static block center.
-
-No continuous position packets are sent.
-
-Focused Sable/Aeronautics and VS2 runtime acceptance remains pending. The earlier Sable parent-world Level-identity concern was closed by source-model verification; runtime still needs to prove actual moving-source behavior.
-
-## What is next
-
-Core finite architecture is no longer the main task.
-
-Near-term non-runtime work:
-
-1. keep live-stream sync machinery while grouped live helpers still use it and decide whether optional grouped live is worth keeping/fixing;
-2. continue exact dead-code/API/dependency cleanup;
-3. packaging/dependency/docs/CI/default-branch release hygiene.
-
-Then run the deferred integrated Minecraft acceptance/stress pass covering listener lifecycle, recovery, movement, multispeaker behavior, endpoint replacement, malformed media, bounds, Sound Physics Remastered, and realistic 2/4/8+ speaker cost.
-
-Shared decode fan-out stays deferred unless profiling shows duplicated client decode is materially expensive.
-
-## Documentation
-
-Start with:
-
-1. `docs/HANDOFF-2026-09-20-POST-CONVERGENCE.md`
-2. `docs/CURRENT-STATE.md`
-3. `docs/KNOWN-ISSUES.md`
-4. `docs/TESTING.md`
-5. `docs/VERIFIED-FACTS.md`
-6. `docs/ARCHITECTURE.md`
-7. `docs/ROADMAP.md`
-8. `docs/LUA-API.md`
-
-For a fresh chat, use `docs/HANDOFF-PROMPT-2026-09-20.md` or `docs/NEXT-CHAT-PROMPT.md`.
-
-Historical dated milestone documents remain evidence for their checkpoints but do not override current docs.
+See `docs/API-FREEZE-V10.md`, then `docs/TESTING.md`.
