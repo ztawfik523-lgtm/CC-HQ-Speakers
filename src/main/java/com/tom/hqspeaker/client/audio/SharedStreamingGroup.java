@@ -17,11 +17,11 @@ public final class SharedStreamingGroup {
     private static final ConcurrentHashMap<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
     private SharedStreamingGroup() {}
 
-    public static Tap open(UUID groupId, String url, float volume, UUID metadataSourceId) {
+    public static Tap open(UUID groupId, String url, UUID metadataSourceId) {
         Session session = SESSIONS.compute(groupId, (id, existing) -> {
-            if (existing != null && existing.matches(url, volume)) return existing;
+            if (existing != null && existing.matches(url)) return existing;
             if (existing != null) existing.forceClose();
-            return new Session(groupId, url, volume);
+            return new Session(groupId, url);
         });
         return session.addTap(metadataSourceId);
     }
@@ -94,7 +94,6 @@ public final class SharedStreamingGroup {
         private static final int DISTRIBUTION_CHUNK_BYTES = 9600; 
         private final UUID groupId;
         private final String url;
-        private final float volume;
         private final StreamingAudioSource source;
         private final ConcurrentHashMap<Integer, BlockingQueue<byte[]>> taps = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<Integer, UUID> tapSources = new ConcurrentHashMap<>();
@@ -104,11 +103,10 @@ public final class SharedStreamingGroup {
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private Thread distributorThread;
 
-        private Session(UUID groupId, String url, float volume) {
+        private Session(UUID groupId, String url) {
             this.groupId = groupId;
             this.url = url;
-            this.volume = volume;
-            this.source = new StreamingAudioSource(url, volume);
+            this.source = new StreamingAudioSource(url);
             this.source.setMetadataListener((rawTitle, station, genre, desc) -> {
                 for (UUID metadataSourceId : new java.util.HashSet<>(tapSources.values())) {
                     try {
@@ -122,8 +120,8 @@ public final class SharedStreamingGroup {
             });
         }
 
-        private boolean matches(String url, float volume) {
-            return this.url.equals(url) && Float.compare(this.volume, volume) == 0;
+        private boolean matches(String url) {
+            return this.url.equals(url);
         }
 
         private void startDecode() {

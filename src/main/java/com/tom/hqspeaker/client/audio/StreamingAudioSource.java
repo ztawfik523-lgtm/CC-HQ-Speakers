@@ -21,7 +21,6 @@ public class StreamingAudioSource {
     }
 
     private final String url;
-    private final float volume;
     private MetadataListener metadataListener;
 
     
@@ -43,9 +42,8 @@ public class StreamingAudioSource {
     private volatile HttpURLConnection activeConnection;
     private volatile InputStream activeInput;
 
-    public StreamingAudioSource(String url, float volume) {
+    public StreamingAudioSource(String url) {
         this.url = url;
-        this.volume = volume;
     }
 
     public void setMetadataListener(MetadataListener l) { this.metadataListener = l; }
@@ -269,17 +267,6 @@ public class StreamingAudioSource {
 
     private void queuePCM(byte[] pcm) {
         if (pcm == null || pcm.length == 0) return;
-
-        
-        if (Math.abs(volume - 1.0f) > 0.001f) {
-            for (int i = 0; i + 1 < pcm.length; i += 2) {
-                short s = (short)((pcm[i] & 0xFF) | ((pcm[i + 1] & 0xFF) << 8));
-                long scaled = (long)(s * volume);
-                s = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, scaled));
-                pcm[i]     = (byte)(s & 0xFF);
-                pcm[i + 1] = (byte)((s >> 8) & 0xFF);
-            }
-        }
 
         
         int needed = accumLen + pcm.length;

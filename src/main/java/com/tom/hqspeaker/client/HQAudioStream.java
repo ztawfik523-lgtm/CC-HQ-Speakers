@@ -159,7 +159,7 @@ public class HQAudioStream implements AudioStream {
         java.util.UUID source = packet.source;
         if (packet.syncGroupId != null) {
             sharedStreamingTap = SharedStreamingGroup.open(
-                packet.syncGroupId, packet.streamUrl, packet.volume, source);
+                packet.syncGroupId, packet.streamUrl, source);
             streamingSource = null;
             if (sharedStreamingTap == null) {
                 HQSpeakerMod.warn("HQAudioStream: rejected late shared " + packet.format + " group tap "
@@ -171,7 +171,7 @@ public class HQAudioStream implements AudioStream {
             HQSpeakerMod.log("HQAudioStream: collected shared " + packet.format + " group "
                 + packet.syncGroupId + " from " + packet.streamUrl);
         } else {
-            streamingSource = new StreamingAudioSource(packet.streamUrl, packet.volume);
+            streamingSource = new StreamingAudioSource(packet.streamUrl);
             streamingSource.setMetadataListener((rawTitle, station, genre, description) -> {
                 try {
                     com.tom.hqspeaker.network.HQSpeakerNetwork.sendToServer(
