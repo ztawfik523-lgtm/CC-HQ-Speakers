@@ -290,10 +290,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return List.copyOf(members);
     }
 
-    private static MethodResult supersededControlResult(String name) {
+    private record FiniteControlInput(double number, boolean flag) {}
+
+    private static FiniteControlInput parseFiniteControlInput(String name, IArguments args, int offset)
+            throws LuaException {
+        if (name.startsWith("audioSeek") || name.startsWith("audioSetVolume")) {
+            return new FiniteControlInput(args.getDouble(offset), false);
+        }
+        if (name.startsWith("audioSetLooping")) {
+            return new FiniteControlInput(0.0, args.getBoolean(offset));
+        }
+        return new FiniteControlInput(0.0, false);
+    }
+
+    private static Object[] supersededControlValues(String name) {
         return switch (name) {
-            case "stop", "speakStop", "audioStop", "audioStopAll", "audioStopAt" -> MethodResult.of();
-            default -> MethodResult.of(false);
+            case "stop", "speakStop", "audioStop", "audioStopAll", "audioStopAt" -> new Object[0];
+            default -> new Object[]{ false };
         };
     }
 
@@ -408,7 +421,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
-    @LuaFunction
+    @LuaFunction(mainThread = true)
     public final boolean audioSetMuted(boolean muted) {
         commandRevision.incrementAndGet();
         synchronized (commandLock) {
@@ -418,7 +431,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
-    @LuaFunction
+    @LuaFunction(mainThread = true)
     public final boolean audioSetMutedAll(IComputerAccess computer, boolean muted) {
         boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
@@ -432,7 +445,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         });
     }
 
-    @LuaFunction
+    @LuaFunction(mainThread = true)
     public final boolean audioSetMutedAt(IComputerAccess computer, int index, boolean muted) throws LuaException {
         HQSpeakerCompositePeripheral member = memberAt(computer, index);
         List<HQSpeakerCompositePeripheral> targets = List.of(member);
@@ -471,21 +484,29 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (STREAM_ALL.contains(name)) return startStreamAllReplacing(name, computer, context, args);
         if (STREAM_AT.contains(name)) return startStreamAtReplacing(name, computer, context, args);
 
-        // Commands which reserve another endpoint or a whole playback snapshot must enter without already holding
-        // the caller's command lock, otherwise the stable multi-lock order can be inverted.
+        // Commands which can project HQ state into the Minecraft world/connection must commit on the main thread.
+        // Target reservation still happens before yielding, so a newer command can supersede this one while queued.
         if ("stop".equals(name) || "speakStop".equals(name)) {
-            return callStopCoordinated(name, computer, context, args);
+            return callStopCoordinated(name, computer, context);
         }
         if (FINITE_SHARED_CONTROLS.contains(name)) {
-            return callFiniteSharedControlCoordinated(name, computer, context, args);
+            return callFiniteSharedControlCoordinated(
+                name, computer, context, parseFiniteControlInput(name, args, 0));
+        }
+        if (FINITE_CONTROLS.contains(name)) {
+            return callFiniteEndpointControlOnMainThread(
+                name, context, parseFiniteControlInput(name, args, 0));
         }
         if (STANDARD_ALL.contains(name)) return callStandardAllCoordinated(name, computer, context, args);
         if (STANDARD_AT.contains(name)) return callStandardAtCoordinated(name, computer, context, args);
-        if (FINITE_ALL_CONTROLS.contains(name) && !"audioStatusAll".equals(name)) {
-            return callFiniteAllControlCoordinated(name, computer, context, args);
+        if (FINITE_ALL_CONTROLS.contains(name)) {
+            return callFiniteAllControlCoordinated(
+                name, computer, context, parseFiniteControlInput(name, args, 0));
         }
-        if (FINITE_AT_CONTROLS.contains(name) && !"audioStatusAt".equals(name)) {
-            return callFiniteAtControlCoordinated(name, computer, context, args);
+        if (FINITE_AT_CONTROLS.contains(name)) {
+            HQSpeakerCompositePeripheral target = memberAt(computer, args.getInt(0));
+            return callFiniteAtControlCoordinated(
+                name, target, context, parseFiniteControlInput(name, args, 1));
         }
         if (RAW_ALL.contains(name)) return startRawAll(computer, name, args);
         if (RAW_AT.contains(name)) return startRawAt(computer, name, args);
@@ -496,35 +517,61 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
-    private MethodResult callStopCoordinated(String name, IComputerAccess computer, ILuaContext context,
-                                             IArguments args) throws LuaException {
+    private MethodResult callStopCoordinated(String name, IComputerAccess computer, ILuaContext context)
+            throws LuaException {
         boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
             expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
-        return withGroupLocks(targets, () -> {
+        List<HQSpeakerCompositePeripheral> snapshot = List.copyOf(targets);
+
+        return context.executeMainThreadTask(() -> withGroupLocks(snapshot, () -> {
             if (!revisionsMatch(expectedRevisions)
-                    || !finiteGroupStillMatches(this, expectedShared, targets)) {
-                return supersededControlResult(name);
+                    || !finiteGroupStillMatches(this, expectedShared, snapshot)) {
+                return supersededControlValues(name);
             }
-            if ("stop".equals(name)) return callStandard(name, context, args);
             stopEverything();
-            return MethodResult.of();
-        });
+            return new Object[0];
+        }));
     }
 
-    private MethodResult callFiniteSharedControlCoordinated(String name, IComputerAccess computer,
-                                                            ILuaContext context, IArguments args) throws LuaException {
+    private MethodResult callFiniteSharedControlCoordinated(
+            String name, IComputerAccess computer, ILuaContext context, FiniteControlInput input) throws LuaException {
         boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets =
             expectedShared ? sharedFiniteMembers(this) : List.of(this);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
-        return withGroupLocks(targets, () -> {
+        List<HQSpeakerCompositePeripheral> snapshot = List.copyOf(targets);
+
+        return context.executeMainThreadTask(() -> withGroupLocks(snapshot, () -> {
             if (!revisionsMatch(expectedRevisions)
-                    || !finiteGroupStillMatches(this, expectedShared, targets)) {
-                return supersededControlResult(name);
+                    || !finiteGroupStillMatches(this, expectedShared, snapshot)) {
+                return supersededControlValues(name);
             }
-            return callFiniteControl(name, computer, context, args);
+            return callFiniteControlValues(name, input);
+        }));
+    }
+
+    private MethodResult callFiniteEndpointControlOnMainThread(
+            String name, ILuaContext context, FiniteControlInput input) throws LuaException {
+        if ("audioStatus".equals(name)) {
+            return context.executeMainThreadTask(() -> {
+                synchronized (this) {
+                    return new Object[]{ statusForOwner() };
+                }
+            });
+        }
+
+        long expectedRevision = commandRevision.incrementAndGet();
+        return context.executeMainThreadTask(() -> {
+            synchronized (commandLock) {
+                if (commandRevision.get() != expectedRevision || !ACTIVE.contains(this)) {
+                    return supersededControlValues(name);
+                }
+                synchronized (this) {
+                    return callFiniteControlValues(name, input);
+                }
+            }
         });
     }
 
@@ -552,8 +599,18 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         });
     }
 
-    private MethodResult callFiniteAllControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
-                                                         IArguments args) throws LuaException {
+    private MethodResult callFiniteAllControlCoordinated(
+            String name, IComputerAccess computer, ILuaContext context, FiniteControlInput input) throws LuaException {
+        if ("audioStatusAll".equals(name)) {
+            List<HQSpeakerCompositePeripheral> current = membersFor(computer);
+            HQSpeakerCompositePeripheral statusTarget = current.isEmpty() ? this : current.getFirst();
+            return context.executeMainThreadTask(() -> {
+                synchronized (statusTarget) {
+                    return new Object[]{ statusTarget.statusForOwner() };
+                }
+            });
+        }
+
         boolean expectedShared = owner == Owner.STAGED_FINITE;
         List<HQSpeakerCompositePeripheral> targets;
         if (expectedShared) {
@@ -565,38 +622,49 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         targets = List.copyOf(targets);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         List<HQSpeakerCompositePeripheral> snapshot = targets;
-        return withGroupLocks(snapshot, () -> {
-            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+
+        return context.executeMainThreadTask(() -> withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlValues(name);
             if (expectedShared && !finiteGroupStillMatches(this, true, snapshot)) {
-                return supersededControlResult(name);
+                return supersededControlValues(name);
             }
             if (!expectedShared && owner == Owner.STAGED_FINITE) {
-                return supersededControlResult(name);
+                return supersededControlValues(name);
             }
             if (!expectedShared && "audioStopAll".equals(name)) {
                 for (HQSpeakerCompositePeripheral member : snapshot) member.stopCurrentHQ();
-                return MethodResult.of();
+                return new Object[0];
             }
-            return callFiniteAllControl(name, computer, context, args);
-        });
+            return callFiniteAllControlValues(name, input);
+        }));
     }
 
-    private MethodResult callFiniteAtControlCoordinated(String name, IComputerAccess computer, ILuaContext context,
-                                                        IArguments args) throws LuaException {
-        HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
+    private MethodResult callFiniteAtControlCoordinated(
+            String name, HQSpeakerCompositePeripheral member, ILuaContext context, FiniteControlInput input)
+            throws LuaException {
+        if ("audioStatusAt".equals(name)) {
+            return context.executeMainThreadTask(() -> {
+                synchronized (member) {
+                    return new Object[]{ member.statusForOwner() };
+                }
+            });
+        }
+
         boolean expectedShared =
             member.owner == Owner.STAGED_FINITE && FINITE_AT_SHARED_CONTROLS.contains(name);
         List<HQSpeakerCompositePeripheral> targets =
             expectedShared ? sharedFiniteMembers(member) : List.of(member);
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
-        return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)) return supersededControlResult(name);
+        List<HQSpeakerCompositePeripheral> snapshot = List.copyOf(targets);
+
+        return context.executeMainThreadTask(() -> withGroupLocks(snapshot, () -> {
+            if (!revisionsMatch(expectedRevisions)) return supersededControlValues(name);
             if (FINITE_AT_SHARED_CONTROLS.contains(name)
-                    && !finiteGroupStillMatches(member, expectedShared, targets)) {
-                return supersededControlResult(name);
+                    && !finiteGroupStillMatches(member, expectedShared, snapshot)) {
+                return supersededControlValues(name);
             }
-            return callFiniteAtControlResolved(name, member, computer, context, args);
-        });
+            return callFiniteAtControlValues(name, member, input);
+        }));
     }
 
     private MethodResult callMethodOrdered(IComputerAccess computer, ILuaContext context, int method, IArguments args)
@@ -607,16 +675,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (STANDARD.contains(name)) {
             synchronized (this) { return callStandard(name, context, args); }
         }
-        if (FINITE_CONTROLS.contains(name)) {
-            synchronized (this) { return callFiniteControl(name, computer, context, args); }
-        }
-        if (FINITE_ALL_CONTROLS.contains(name)) {
-            return callFiniteAllControl(name, computer, context, args);
-        }
-        if (FINITE_AT_CONTROLS.contains(name)) {
-            return callFiniteAtControl(name, computer, context, args);
-        }
-
         if ("speakMaxSamples".equals(name)) return MethodResult.of(HQ_RAW_MAX_SAMPLES);
         if ("speakSupportedFiles".equals(name)) return MethodResult.of((Object) SUPPORTED_FINITE_FILES.clone());
 
@@ -1073,82 +1131,73 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
     }
 
-    private MethodResult callFiniteControl(String name, IComputerAccess computer, ILuaContext context,
-                                           IArguments args) throws LuaException {
-        if ("audioStatus".equals(name)) {
-            return switch (owner) {
-                case STAGED_FINITE -> MethodResult.of(finite.hasStatus() ? finite.status() : idleStatus());
-                case STREAM -> invokeLegacy(name, computer, context, args);
-                case RAW -> MethodResult.of(rawStatus());
-                case NONE -> MethodResult.of(idleStatus());
-            };
-        }
+    private Object[] callFiniteControlValues(String name, FiniteControlInput input) throws LuaException {
+        if ("audioStatus".equals(name)) return new Object[]{ statusForOwner() };
 
         if ("audioStop".equals(name)) {
             if (owner == Owner.STAGED_FINITE) stopFinitePlaybackAndClearOwners();
             else stopCurrentHQ();
-            return MethodResult.of();
+            return new Object[0];
         }
 
         if (owner == Owner.STAGED_FINITE) {
             return switch (name) {
-                case "audioPause" -> MethodResult.of(finite.pause());
-                case "audioResume" -> MethodResult.of(finite.resume());
-                case "audioSeek" -> MethodResult.of(finite.seek(args.getDouble(0)));
-                case "audioSetVolume" -> MethodResult.of(finite.setVolume(args.getDouble(0)));
-                case "audioSetLooping" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
-                default -> MethodResult.of(false);
+                case "audioPause" -> new Object[]{ finite.pause() };
+                case "audioResume" -> new Object[]{ finite.resume() };
+                case "audioSeek" -> new Object[]{ finite.seek(input.number()) };
+                case "audioSetVolume" -> new Object[]{ finite.setVolume(input.number()) };
+                case "audioSetLooping" -> new Object[]{ finite.setLooping(input.flag()) };
+                default -> new Object[]{ false };
             };
         }
 
-        return MethodResult.of(false);
+        return new Object[]{ false };
     }
 
-    private MethodResult callFiniteAllControl(String name, IComputerAccess computer, ILuaContext context,
-                                              IArguments args) throws LuaException {
-        if (owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
+    private Object[] callFiniteAllControlValues(String name, FiniteControlInput input) throws LuaException {
+        if (owner != Owner.STAGED_FINITE) return new Object[]{ false };
 
         return switch (name) {
-            case "audioStatusAll" -> MethodResult.of(finite.hasStatus() ? finite.status() : idleStatus());
-            case "audioPauseAll" -> MethodResult.of(finite.pause());
-            case "audioResumeAll" -> MethodResult.of(finite.resume());
-            case "audioSeekAll" -> MethodResult.of(finite.seek(args.getDouble(0)));
-            case "audioSetLoopingAll" -> MethodResult.of(finite.setLooping(args.getBoolean(0)));
-            case "audioSetVolumeAll" -> MethodResult.of(finite.setVolumeAll(args.getDouble(0)));
+            case "audioPauseAll" -> new Object[]{ finite.pause() };
+            case "audioResumeAll" -> new Object[]{ finite.resume() };
+            case "audioSeekAll" -> new Object[]{ finite.seek(input.number()) };
+            case "audioSetLoopingAll" -> new Object[]{ finite.setLooping(input.flag()) };
+            case "audioSetVolumeAll" -> new Object[]{ finite.setVolumeAll(input.number()) };
             case "audioStopAll" -> {
                 stopFinitePlaybackAndClearOwners();
-                yield MethodResult.of();
+                yield new Object[0];
             }
-            default -> invokeLegacy(name, computer, context, args);
+            default -> new Object[]{ false };
         };
     }
 
-    private MethodResult callFiniteAtControl(String name, IComputerAccess computer, ILuaContext context,
-                                             IArguments args) throws LuaException {
-        return callFiniteAtControlResolved(
-            name, memberAt(computer, args.getInt(0)), computer, context, args);
-    }
-
-    private MethodResult callFiniteAtControlResolved(String name, HQSpeakerCompositePeripheral member,
-                                                     IComputerAccess computer, ILuaContext context,
-                                                     IArguments args) throws LuaException {
+    private Object[] callFiniteAtControlValues(
+            String name, HQSpeakerCompositePeripheral member, FiniteControlInput input) throws LuaException {
         synchronized (member) {
             if ("audioStopAt".equals(name)) {
                 member.stopCurrentHQ();
-                return MethodResult.of();
+                return new Object[0];
             }
-            if (member.owner != Owner.STAGED_FINITE) return invokeLegacy(name, computer, context, args);
+            if (member.owner != Owner.STAGED_FINITE) return new Object[]{ false };
 
             return switch (name) {
-                case "audioStatusAt" -> MethodResult.of(member.finite.hasStatus() ? member.finite.status() : idleStatus());
-                case "audioPauseAt" -> MethodResult.of(member.finite.pause());
-                case "audioResumeAt" -> MethodResult.of(member.finite.resume());
-                case "audioSeekAt" -> MethodResult.of(member.finite.seek(args.getDouble(1)));
-                case "audioSetVolumeAt" -> MethodResult.of(member.finite.setVolume(args.getDouble(1)));
-                case "audioSetLoopingAt" -> MethodResult.of(member.finite.setLooping(args.getBoolean(1)));
-                default -> invokeLegacy(name, computer, context, args);
+                case "audioPauseAt" -> new Object[]{ member.finite.pause() };
+                case "audioResumeAt" -> new Object[]{ member.finite.resume() };
+                case "audioSeekAt" -> new Object[]{ member.finite.seek(input.number()) };
+                case "audioSetVolumeAt" -> new Object[]{ member.finite.setVolume(input.number()) };
+                case "audioSetLoopingAt" -> new Object[]{ member.finite.setLooping(input.flag()) };
+                default -> new Object[]{ false };
             };
         }
+    }
+
+    private Map<String, Object> statusForOwner() {
+        return switch (owner) {
+            case STAGED_FINITE -> finite.hasStatus() ? finite.status() : idleStatus();
+            case STREAM -> legacy.audioStatus();
+            case RAW -> rawStatus();
+            case NONE -> idleStatus();
+        };
     }
 
     private Map<String, Object> rawStatus() {
