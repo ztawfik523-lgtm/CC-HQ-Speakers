@@ -147,7 +147,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.addAll(FINITE_CONTROLS);
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
-        names.add("setLooping");
         names.add("speakMaxSamples");
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
@@ -467,17 +466,16 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         // main-thread audioPlayPrepared call could wait behind DNS and stall the Minecraft server.
         if (STREAM_START.contains(name)) {
             long revision = commandRevision.incrementAndGet();
-            return startStreamReplacing(name, args, revision);
+            return startStreamReplacing(name, context, args, revision);
         }
-        if (STREAM_ALL.contains(name)) return startStreamAllReplacing(name, computer, args);
-        if (STREAM_AT.contains(name)) return startStreamAtReplacing(name, computer, args);
+        if (STREAM_ALL.contains(name)) return startStreamAllReplacing(name, computer, context, args);
+        if (STREAM_AT.contains(name)) return startStreamAtReplacing(name, computer, context, args);
 
         // Commands which reserve another endpoint or a whole playback snapshot must enter without already holding
         // the caller's command lock, otherwise the stable multi-lock order can be inverted.
         if ("stop".equals(name) || "speakStop".equals(name)) {
             return callStopCoordinated(name, computer, context, args);
         }
-        if ("setLooping".equals(name)) return callSetLoopingCoordinated(computer, context, args);
         if (FINITE_SHARED_CONTROLS.contains(name)) {
             return callFiniteSharedControlCoordinated(name, computer, context, args);
         }
@@ -512,20 +510,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             if ("stop".equals(name)) return callStandard(name, context, args);
             stopEverything();
             return MethodResult.of();
-        });
-    }
-
-    private MethodResult callSetLoopingCoordinated(IComputerAccess computer, ILuaContext context,
-                                                    IArguments args) throws LuaException {
-        boolean expectedShared = owner == Owner.STAGED_FINITE;
-        List<HQSpeakerCompositePeripheral> targets =
-            expectedShared ? sharedFiniteMembers(this) : List.of(this);
-        Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
-        return withGroupLocks(targets, () -> {
-            if (!revisionsMatch(expectedRevisions)
-                    || !finiteGroupStillMatches(this, expectedShared, targets)) return MethodResult.of(false);
-            if (expectedShared) return MethodResult.of(finite.setLooping(args.getBoolean(0)));
-            return invokeLegacy("setLooping", computer, context, args);
         });
     }
 
@@ -915,7 +899,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult startStreamAllReplacing(String name, IComputerAccess computer,
-                                                 IArguments args) throws LuaException {
+                                                 ILuaContext context, IArguments args) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
         if (volume.isPresent() && !Double.isFinite(volume.get())) throw new LuaException("volume must be finite");
@@ -930,47 +914,50 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             expectedLifecycles.put(target, target.legacy.lifecycleEpochSnapshot());
         }
 
+        // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
-        long sealTick = targets.size() > 1 ? targets.getFirst().legacy.nextGroupStartTick() : 0L;
         UUID groupId = targets.size() > 1 ? UUID.randomUUID() : null;
         List<HQSpeakerCompositePeripheral> snapshot = targets;
 
-        return withGroupLocks(snapshot, () -> {
-            if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
-            for (HQSpeakerCompositePeripheral member : snapshot) {
-                if (!member.legacy.lifecycleEpochMatches(expectedLifecycles.get(member))) {
-                    return MethodResult.of(false);
-                }
-            }
-
-            for (HQSpeakerCompositePeripheral member : snapshot) member.beginReplacingHQ(Owner.STREAM);
-
-            boolean complete = true;
-            for (HQSpeakerCompositePeripheral member : snapshot) {
-                boolean started = member.legacy.startValidatedStreamAtTick(
-                    url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
-                    sealTick, groupId, expectedLifecycles.get(member));
-                if (!started) {
-                    complete = false;
-                    break;
-                }
-            }
-
-            if (!complete) {
+        return context.executeMainThreadTask(() -> {
+            long sealTick = snapshot.size() > 1 ? snapshot.getFirst().legacy.nextGroupStartTick() : 0L;
+            return withGroupLocks(snapshot, () -> {
+                if (!revisionsMatch(expectedRevisions)) return new Object[]{ false };
                 for (HQSpeakerCompositePeripheral member : snapshot) {
-                    member.legacy.speakStop();
-                    member.owner = Owner.NONE;
+                    if (!member.legacy.lifecycleEpochMatches(expectedLifecycles.get(member))) {
+                        return new Object[]{ false };
+                    }
                 }
-                return MethodResult.of(false);
-            }
 
-            for (HQSpeakerCompositePeripheral member : snapshot) member.owner = Owner.STREAM;
-            return MethodResult.of(true);
+                for (HQSpeakerCompositePeripheral member : snapshot) member.beginReplacingHQ(Owner.STREAM);
+
+                boolean complete = true;
+                for (HQSpeakerCompositePeripheral member : snapshot) {
+                    boolean started = member.legacy.startValidatedStreamAtTick(
+                        url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                        sealTick, groupId, expectedLifecycles.get(member));
+                    if (!started) {
+                        complete = false;
+                        break;
+                    }
+                }
+
+                if (!complete) {
+                    for (HQSpeakerCompositePeripheral member : snapshot) {
+                        member.legacy.speakStop();
+                        member.owner = Owner.NONE;
+                    }
+                    return new Object[]{ false };
+                }
+
+                for (HQSpeakerCompositePeripheral member : snapshot) member.owner = Owner.STREAM;
+                return new Object[]{ true };
+            });
         });
     }
 
     private MethodResult startStreamAtReplacing(String name, IComputerAccess computer,
-                                                IArguments args) throws LuaException {
+                                                ILuaContext context, IArguments args) throws LuaException {
         HQSpeakerCompositePeripheral target = memberAt(computer, args.getInt(0));
         String url = args.getString(1);
         Optional<Double> volume = args.optDouble(2);
@@ -978,43 +965,49 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         long expectedRevision = target.commandRevision.incrementAndGet();
         long expectedLifecycle = target.legacy.lifecycleEpochSnapshot();
+
+        // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
 
-        return withGroupLocks(List.of(target), () -> {
+        return context.executeMainThreadTask(() -> withGroupLocks(List.of(target), () -> {
             if (target.commandRevision.get() != expectedRevision
                     || !ACTIVE.contains(target)
                     || !target.legacy.lifecycleEpochMatches(expectedLifecycle)) {
-                return MethodResult.of(false);
+                return new Object[]{ false };
             }
             target.beginReplacingHQ(Owner.STREAM);
             boolean started = target.legacy.startValidatedStreamAtTick(
                 url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                 0L, null, expectedLifecycle);
             if (started) target.owner = Owner.STREAM;
-            return MethodResult.of(started);
-        });
+            return new Object[]{ started };
+        }));
     }
 
-    private MethodResult startStreamReplacing(String name, IArguments args, long expectedCommandRevision) throws LuaException {
+    private MethodResult startStreamReplacing(String name, ILuaContext context, IArguments args,
+                                              long expectedCommandRevision) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
         long expectedLifecycle = legacy.lifecycleEpochSnapshot();
+
+        // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
 
         if (!"speakStream".equals(name)) throw new LuaException("No such stream method " + name);
         HQSpeakerAudioPacket.AudioFormat format = HQSpeakerAudioPacket.AudioFormat.MP3_STREAM;
 
-        // Validation is complete, so the remaining commit is short and may safely rejoin normal command ordering.
-        synchronized (commandLock) {
-            if (commandRevision.get() != expectedCommandRevision) return MethodResult.of(false);
-            synchronized (this) {
-                if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return MethodResult.of(false);
-                beginReplacingHQ(Owner.STREAM);
-                boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
-                if (started) owner = Owner.STREAM;
-                return MethodResult.of(started);
+        return context.executeMainThreadTask(() -> {
+            synchronized (commandLock) {
+                if (commandRevision.get() != expectedCommandRevision) return new Object[]{ false };
+                synchronized (this) {
+                    if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return new Object[]{ false };
+                    beginReplacingHQ(Owner.STREAM);
+                    boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
+                    if (started) owner = Owner.STREAM;
+                    return new Object[]{ started };
+                }
             }
-        }
+        });
     }
 
     private void beginReplacingHQ(Owner requested) {

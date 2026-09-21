@@ -62,7 +62,7 @@ dependencies {
         }
     }
 
-    // JLayer is used directly by the modern progressive MP3 decoder and optional live MP3 streaming.
+    // JLayer is used directly by the modern progressive MP3 decoder and supported MP3/ICY radio streaming.
     jarJar(implementation('com.googlecode.soundlibs:jlayer:1.0.1.4')) {
         version {
             strictly '[1.0.1.4,1.0.2)'

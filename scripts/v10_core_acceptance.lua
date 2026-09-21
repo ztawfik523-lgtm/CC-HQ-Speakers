@@ -32,7 +32,7 @@ end
 
 for _, name in ipairs({
   "speakOgg", "speakAudio", "speakFile", "speakPacked",
-  "speakStopAll", "speakStopAt", "speakVolumeAll", "setLoopingAll",
+  "speakStopAll", "speakStopAt", "speakVolumeAll", "setLooping", "setLoopingAll",
   "speakHLS", "speakHLSAll", "speakHLSAt",
   "speakTS", "speakTSAll", "speakTSAt",
 }) do

@@ -250,11 +250,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     @LuaFunction
-    public final void setLooping(boolean loop) {
-        // Finite looping is owned by HQFiniteMediaServer. RAW/live legacy sources do not loop here.
-    }
-
-    @LuaFunction
     public final boolean speakIsPlaying() {
         return streamActive.get() || !speakerQueue.isEmpty();
     }
