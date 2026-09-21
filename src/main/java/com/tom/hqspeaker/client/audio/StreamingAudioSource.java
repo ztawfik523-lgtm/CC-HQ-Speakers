@@ -143,94 +143,95 @@ public class StreamingAudioSource {
 
     
     private void streamMP3() throws IOException {
-        
-        
         HttpURLConnection conn = openConnection(url);
-        activeConnection = conn;
+        InputStream rawStream = null;
+        javazoom.jl.decoder.Bitstream bitstream = null;
 
-        String metaIntStr = conn.getHeaderField("icy-metaint");
-        int metaInterval  = (metaIntStr != null) ? safeParseInt(metaIntStr, 0) : 0;
-        HQSpeakerMod.log("StreamingAudio: icy-metaint=" + metaInterval);
+        try {
+            String metaIntStr = conn.getHeaderField("icy-metaint");
+            int metaInterval = metaIntStr != null ? safeParseInt(metaIntStr, 0) : 0;
+            HQSpeakerMod.log("StreamingAudio: icy-metaint=" + metaInterval);
 
-        InputStream rawStream   = conn.getInputStream();
-        activeInput = rawStream;
-        InputStream audioStream = (metaInterval > 0)
+            rawStream = conn.getInputStream();
+            activeInput = rawStream;
+            InputStream audioStream = metaInterval > 0
                 ? new IcyInputStream(rawStream, metaInterval)
                 : new BufferedInputStream(rawStream, 65536);
 
-        javazoom.jl.decoder.Bitstream  bitstream = new javazoom.jl.decoder.Bitstream(audioStream);
-        javazoom.jl.decoder.Decoder    decoder   = new javazoom.jl.decoder.Decoder();
+            bitstream = new javazoom.jl.decoder.Bitstream(audioStream);
+            javazoom.jl.decoder.Decoder decoder = new javazoom.jl.decoder.Decoder();
 
-        
-        int srcChannels = 2;
-        float srcRate   = 44100f;
-        boolean formatDetected = false;
+            int srcChannels = 2;
+            float srcRate = 44100f;
+            boolean formatDetected = false;
 
-        try {
             while (!stopped.get()) {
                 javazoom.jl.decoder.Header header;
                 try {
                     header = bitstream.readFrame();
-                } catch (javazoom.jl.decoder.BitstreamException e) {
-                    
-                    HQSpeakerMod.warn("StreamingAudio: Bitstream sync error, resyncing — " + e.getMessage());
+                } catch (javazoom.jl.decoder.BitstreamException exception) {
+                    if (!stopped.get()) {
+                        HQSpeakerMod.warn("StreamingAudio: bitstream sync error, resyncing — "
+                            + exception.getMessage());
+                    }
                     continue;
                 }
 
                 if (header == null) {
-                    
                     HQSpeakerMod.log("StreamingAudio: MP3 stream ended (server EOF)");
                     break;
                 }
 
-                
                 if (!formatDetected) {
-                    srcRate     = header.frequency();
-                    srcChannels = (header.mode() == javazoom.jl.decoder.Header.SINGLE_CHANNEL) ? 1 : 2;
+                    srcRate = header.frequency();
+                    srcChannels = header.mode() == javazoom.jl.decoder.Header.SINGLE_CHANNEL ? 1 : 2;
                     AudioFormat monoFmt = new AudioFormat(
-                            AudioFormat.Encoding.PCM_SIGNED,
-                            srcRate, 16, 1, 2, srcRate, false);
+                        AudioFormat.Encoding.PCM_SIGNED,
+                        srcRate, 16, 1, 2, srcRate, false);
                     detectedFormat.set(monoFmt);
                     formatDetected = true;
                     HQSpeakerMod.log(String.format(
-                            "StreamingAudio: JLayer MP3 → %.0f Hz %d ch", srcRate, srcChannels));
+                        "StreamingAudio: JLayer MP3 → %.0f Hz %d ch", srcRate, srcChannels));
                 }
 
-                
                 javazoom.jl.decoder.SampleBuffer output;
                 try {
                     output = (javazoom.jl.decoder.SampleBuffer) decoder.decodeFrame(header, bitstream);
-                } catch (javazoom.jl.decoder.DecoderException e) {
-                    HQSpeakerMod.warn("StreamingAudio: Frame decode error — " + e.getMessage());
+                } catch (javazoom.jl.decoder.DecoderException exception) {
+                    if (!stopped.get()) {
+                        HQSpeakerMod.warn("StreamingAudio: frame decode error — " + exception.getMessage());
+                    }
                     bitstream.closeFrame();
                     continue;
                 }
 
-                
-                short[] samples   = output.getBuffer();
-                int     frameLen  = output.getBufferLength(); 
-                int     channels  = srcChannels;
-                byte[]  mono      = new byte[(frameLen / channels) * 2];
-                int     outIdx    = 0;
+                short[] samples = output.getBuffer();
+                int frameLen = output.getBufferLength();
+                int channels = srcChannels;
+                byte[] mono = new byte[(frameLen / channels) * 2];
+                int outIdx = 0;
 
                 for (int i = 0; i < frameLen; i += channels) {
-                    
                     long sum = 0;
-                    for (int c = 0; c < channels; c++) {
-                        sum += samples[i + c];
+                    for (int channel = 0; channel < channels; channel++) {
+                        sum += samples[i + channel];
                     }
-                    short s = (short)(sum / channels);
-                    mono[outIdx++] = (byte)(s & 0xFF);          
-                    mono[outIdx++] = (byte)((s >> 8) & 0xFF);   
+                    short sample = (short) (sum / channels);
+                    mono[outIdx++] = (byte) (sample & 0xFF);
+                    mono[outIdx++] = (byte) ((sample >> 8) & 0xFF);
                 }
 
                 queuePCM(mono);
                 bitstream.closeFrame();
             }
         } finally {
-            try { bitstream.close(); } catch (Exception ignored) {}
+            if (bitstream != null) {
+                try { bitstream.close(); } catch (Exception ignored) {}
+            }
             if (activeInput == rawStream) activeInput = null;
-            try { rawStream.close(); } catch (IOException ignored) {}
+            if (rawStream != null) {
+                try { rawStream.close(); } catch (IOException ignored) {}
+            }
             if (activeConnection == conn) activeConnection = null;
             conn.disconnect();
             flushRemainingPCM();
@@ -315,20 +316,24 @@ public class StreamingAudioSource {
         conn.setRequestProperty("User-Agent", "HQSpeaker-Streaming/1.0");
         conn.setRequestProperty("Icy-MetaData", "1");
         conn.setInstanceFollowRedirects(false);
-        int code = conn.getResponseCode();
-        if (code != 200) {
-            conn.disconnect();
-            throw new IOException("HTTP " + code + " for " + urlStr);
-        }
 
-        
-        String n = conn.getHeaderField("icy-name");
-        String g = conn.getHeaderField("icy-genre");
-        String d = conn.getHeaderField("icy-description");
-        if (n != null) icyName        = n;
-        if (g != null) icyGenre       = g;
-        if (d != null) icyDescription = d;
-        return conn;
+        activeConnection = conn;
+        try {
+            int code = conn.getResponseCode();
+            if (code != 200) throw new IOException("HTTP " + code + " for " + urlStr);
+
+            String n = conn.getHeaderField("icy-name");
+            String g = conn.getHeaderField("icy-genre");
+            String d = conn.getHeaderField("icy-description");
+            if (n != null) icyName = n;
+            if (g != null) icyGenre = g;
+            if (d != null) icyDescription = d;
+            return conn;
+        } catch (IOException | RuntimeException exception) {
+            if (activeConnection == conn) activeConnection = null;
+            conn.disconnect();
+            throw exception;
+        }
     }
 
     
