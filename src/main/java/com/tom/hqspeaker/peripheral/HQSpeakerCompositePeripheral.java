@@ -1194,10 +1194,22 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private Map<String, Object> statusForOwner() {
         return switch (owner) {
             case STAGED_FINITE -> finite.hasStatus() ? finite.status() : idleStatus();
-            case STREAM -> legacy.audioStatus();
+            case STREAM -> streamStatus();
             case RAW -> rawStatus();
             case NONE -> idleStatus();
         };
+    }
+
+    private Map<String, Object> streamStatus() {
+        Map<String, Object> status = new HashMap<>();
+        boolean active = legacy.isStreaming();
+        status.put("state", active ? "playing" : "idle");
+        status.put("kind", active ? "stream" : "none");
+        status.put("observed", false);
+        status.put("canPause", false);
+        status.put("canSeek", false);
+        status.put("canLoop", false);
+        return status;
     }
 
     private Map<String, Object> rawStatus() {

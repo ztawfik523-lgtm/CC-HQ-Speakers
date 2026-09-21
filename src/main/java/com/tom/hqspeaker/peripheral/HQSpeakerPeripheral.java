@@ -128,20 +128,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
         return members.isEmpty() ? java.util.List.of(this) : members;
     }
 
-    private HQSpeakerPeripheral leaderFor(@Nullable IComputerAccess computer) throws LuaException {
-        java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-        if (members.isEmpty()) throw new LuaException("no speakers connected to this computer");
-        return members.get(0);
-    }
-
     private HQSpeakerPeripheral byIndexFor(@Nullable IComputerAccess computer, int index) throws LuaException {
         java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
         if (index < 1 || index > members.size()) throw new LuaException("speaker index out of range");
         return members.get(index - 1);
-    }
-
-    private static boolean anyTrue(boolean current, boolean next) {
-        return current || next;
     }
 
     public synchronized void cleanup() {
@@ -254,31 +244,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         return streamActive.get() || !speakerQueue.isEmpty();
     }
 
-    @LuaFunction
-    public final Map<String, Object> audioStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("state", streamActive.get() ? "playing" : "idle");
-        status.put("kind", streamActive.get() ? "stream" : "none");
-        status.put("observed", false);
-        status.put("canPause", false);
-        status.put("canSeek", false);
-        status.put("canLoop", false);
-        return status;
-    }
-
-    @LuaFunction public final boolean audioPause() { return false; }
-    @LuaFunction public final boolean audioResume() { return false; }
-    @LuaFunction public final boolean audioSeek(double seconds) throws LuaException {
-        if (!Double.isFinite(seconds)) throw new LuaException("seconds must be finite");
-        return false;
-    }
-    @LuaFunction public final boolean audioSetVolume(double volume) throws LuaException {
-        clampVolChecked(volume, "volume");
-        return false;
-    }
-    @LuaFunction public final boolean audioSetLooping(boolean loop) { return false; }
-    @LuaFunction public final void audioStop() { speakStop(); }
-
     @LuaFunction public final int speakQueueSize() { return speakerQueue.size(); }
     @LuaFunction public final int speakSampleRate() { return SPEAKER_SAMPLE_RATE; }
     @LuaFunction public final int speakMaxAudioBytes() { return SPEAKER_MAX_AUDIO; }
@@ -388,60 +353,6 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
 }
 
 
-@LuaFunction
-public final Map<String, Object> audioStatusAll(IComputerAccess computer) throws LuaException {
-    return leaderFor(computer).audioStatus();
-}
-
-@LuaFunction
-public final boolean audioPauseAll(IComputerAccess computer) {
-    boolean ok = false;
-    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioPause());
-    return ok;
-}
-
-@LuaFunction
-public final boolean audioResumeAll(IComputerAccess computer) {
-    boolean ok = false;
-    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioResume());
-    return ok;
-}
-
-@LuaFunction
-public final boolean audioSeekAll(IComputerAccess computer, double seconds) throws LuaException {
-    boolean ok = false;
-    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSeek(seconds));
-    return ok;
-}
-
-@LuaFunction
-public final boolean audioSetVolumeAll(IComputerAccess computer, double volume) throws LuaException {
-    boolean ok = false;
-    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetVolume(volume));
-    return ok;
-}
-
-@LuaFunction
-public final boolean audioSetLoopingAll(IComputerAccess computer, boolean loop) {
-    boolean ok = false;
-    for (HQSpeakerPeripheral p : membersFor(computer)) ok = anyTrue(ok, p.audioSetLooping(loop));
-    return ok;
-}
-
-@LuaFunction
-public final void audioStopAll(IComputerAccess computer) {
-    for (HQSpeakerPeripheral p : membersFor(computer)) p.audioStop();
-}
-
-@LuaFunction public final Map<String, Object> audioStatusAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioStatus(); }
-@LuaFunction public final boolean audioPauseAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioPause(); }
-@LuaFunction public final boolean audioResumeAt(IComputerAccess computer, int index) throws LuaException { return byIndexFor(computer, index).audioResume(); }
-@LuaFunction public final boolean audioSeekAt(IComputerAccess computer, int index, double seconds) throws LuaException { return byIndexFor(computer, index).audioSeek(seconds); }
-@LuaFunction public final boolean audioSetVolumeAt(IComputerAccess computer, int index, double volume) throws LuaException { return byIndexFor(computer, index).audioSetVolume(volume); }
-@LuaFunction public final boolean audioSetLoopingAt(IComputerAccess computer, int index, boolean loop) throws LuaException { return byIndexFor(computer, index).audioSetLooping(loop); }
-@LuaFunction public final void audioStopAt(IComputerAccess computer, int index) throws LuaException { byIndexFor(computer, index).audioStop(); }
-
-    
     private byte[] rawTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName) throws LuaException {
         if (len <= 0) throw new LuaException(fnName + ": table is empty");
         if (len > SPEAKER_MAX_PCM) throw new LuaException(fnName + ": table too large");
