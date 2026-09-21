@@ -269,7 +269,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     public boolean canAcceptIcyMetadata(ServerPlayer player) {
         if (!streamActive.get() || player == null || player.level() != world) return false;
-        float[] wp = computeWorldPos("icyMeta");
+        float[] wp = computeWorldPos();
         double dx = player.getX() - wp[0], dy = player.getY() - wp[1], dz = player.getZ() - wp[2];
         return dx * dx + dy * dy + dz * dz <= SPEAKER_RADIUS * SPEAKER_RADIUS;
     }
@@ -382,7 +382,7 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         if (startTick < 0L) startTick = 0L;
 
         if (world instanceof ServerLevel sl) {
-            float[] wp = computeWorldPos(method);
+            float[] wp = computeWorldPos();
             var pkt = new HQSpeakerAudioPacket(
                 speakerSource, format, vol, wp[0], wp[1], wp[2],
                 pos.getX(), pos.getY(), pos.getZ(), url, startTick, syncGroupId);
@@ -424,7 +424,7 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         icyMetaSerial++;
     }
 
-    private float[] computeWorldPos(String ctx) {
+    private float[] computeWorldPos() {
         org.joml.Vector3d resolved = com.tom.hqspeaker.compat.MovingSourcePosition.resolve(
             world, pos, new org.joml.Vector3d());
         return new float[]{(float) resolved.x, (float) resolved.y, (float) resolved.z};
@@ -441,7 +441,7 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
     private void broadcastStopPacket() {
         if (!(world instanceof ServerLevel sl)) return;
         var pkt = new HQSpeakerStopPacket(speakerSource);
-        float[] wp = computeWorldPos("broadcastStop");
+        float[] wp = computeWorldPos();
         sendToNearby(sl, pkt, wp[0], wp[1], wp[2]);
     }
 
