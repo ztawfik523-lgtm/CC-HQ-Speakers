@@ -725,7 +725,7 @@ manualGate("L5/5 RAW multispeaker", {
     render()
   end
 
-  timerSleep(0.75, "letting final RAW audio drain")
+  timerSleep(3.0, "letting final RAW audio drain")
 end)
 
 dumpSnapshot("interactive Phase 0 complete")
