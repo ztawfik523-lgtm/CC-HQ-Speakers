@@ -8,7 +8,8 @@
   ],
   "client": [
     "client.SoundManagerAccessor",
-    "client.SoundEngineAccessor"
+    "client.SoundEngineAccessor",
+    "client.ChannelAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
