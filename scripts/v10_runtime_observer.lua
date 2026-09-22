@@ -14,6 +14,9 @@ local startedMs = os.epoch("utc")
 local finishTimer = os.startTimer(seconds)
 local pollTimer = os.startTimer(0.25)
 local lastStatus = ""
+local lastEndpoints = ""
+local lastPositions = ""
+local lastPositionLogMs = 0
 local lastEvent = "-"
 local stateChanges = 0
 local eventCount = 0
@@ -81,13 +84,15 @@ local function render(statusText)
     writeAt(monitor, 2, ("Elapsed %.1fs   Remaining %.1fs"):format(elapsed(), remaining()))
     writeAt(monitor, 3, ("Speakers %d   State changes %d   Events %d")
       :format(speaker.getSpeakerCount(), stateChanges, eventCount))
-    writeAt(monitor, 4, "Status: " .. shorten(statusText or lastStatus, math.max(12, w - 8)))
-    writeAt(monitor, 5, "Event: " .. shorten(lastEvent, math.max(12, w - 7)))
-    writeAt(monitor, 6, "Log: " .. LOG_PATH)
-    if h >= 8 then
-      writeAt(monitor, 7, string.rep("-", math.max(1, math.min(w, 40))))
-      local first = math.max(1, #tail - (h - 8))
-      local y = 8
+    writeAt(monitor, 4, "Main: " .. shorten(statusText or lastStatus, math.max(12, w - 6)))
+    writeAt(monitor, 5, "Endpoints: " .. shorten(lastEndpoints, math.max(12, w - 11)))
+    writeAt(monitor, 6, "Positions: " .. shorten(lastPositions, math.max(12, w - 11)))
+    writeAt(monitor, 7, "Event: " .. shorten(lastEvent, math.max(12, w - 7)))
+    writeAt(monitor, 8, "Log: " .. LOG_PATH)
+    if h >= 10 then
+      writeAt(monitor, 9, string.rep("-", math.max(1, math.min(w, 40))))
+      local first = math.max(1, #tail - (h - 10))
+      local y = 10
       for i = first, #tail do
         if y > h then break end
         writeAt(monitor, y, tail[i])
@@ -122,8 +127,47 @@ local function sampleStatus()
   if encoded ~= lastStatus then
     stateChanges = stateChanges + 1
     lastStatus = encoded
-    log("STATE", encoded)
+    log("STATE", "main = " .. encoded)
   end
+
+  local count = speaker.getSpeakerCount()
+  local endpointParts = {}
+  local positionParts = {}
+  for i = 1, count do
+    local okStatus, endpoint = pcall(function() return speaker.audioStatusAt(i) end)
+    if okStatus and type(endpoint) == "table" then
+      endpointParts[#endpointParts + 1] = ("%d:%s/%s"):format(
+        i, tostring(endpoint.state or "?"), tostring(endpoint.kind or "?"))
+    else
+      endpointParts[#endpointParts + 1] = ("%d:ERR"):format(i)
+    end
+
+    local okPos, pos = pcall(function() return speaker.getSpeakerPos(i) end)
+    if okPos and type(pos) == "table" then
+      positionParts[#positionParts + 1] = ("%d:(%.2f,%.2f,%.2f)"):format(
+        i, tonumber(pos.x) or 0, tonumber(pos.y) or 0, tonumber(pos.z) or 0)
+    else
+      positionParts[#positionParts + 1] = ("%d:(ERR)"):format(i)
+    end
+  end
+
+  local endpoints = table.concat(endpointParts, " ")
+  if endpoints ~= lastEndpoints then
+    stateChanges = stateChanges + 1
+    lastEndpoints = endpoints
+    log("STATE", "endpoints = " .. endpoints)
+  end
+
+  local positions = table.concat(positionParts, " ")
+  local nowMs = os.epoch("utc")
+  if positions ~= lastPositions then
+    lastPositions = positions
+    if nowMs - lastPositionLogMs >= 1000 then
+      lastPositionLogMs = nowMs
+      log("POS", positions)
+    end
+  end
+
   render(encoded)
 end
 
