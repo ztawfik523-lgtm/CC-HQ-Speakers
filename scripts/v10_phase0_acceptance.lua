@@ -1,5 +1,5 @@
 -- Frozen protocol-v10 Phase 0 runtime acceptance runner.
--- Usage: v10_phase0_acceptance <mp3> [wav]
+-- Usage: v10_phase0_acceptance <mp3> <wav>
 --
 -- Runs the automated Phase 0 checks in one place with explicit timer-based waits,
 -- a readable monitor dashboard when a monitor is attached, and a persistent log.
@@ -7,7 +7,7 @@
 -- was actually heard.
 
 local args = {...}
-assert(args[1], "usage: v10_phase0_acceptance <mp3> [wav]")
+assert(args[1] and args[2], "usage: v10_phase0_acceptance <mp3> <wav>")
 
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach a ComputerCraft speaker")
@@ -256,12 +256,13 @@ do
 end
 
 local mp3 = readBinary(args[1])
-local wav = args[2] and readBinary(args[2]) or nil
+local wav = readBinary(args[2])
 
 local methods = {}
 for _, name in ipairs(peripheral.getMethods(speakerName) or {}) do methods[name] = true end
 
 state.speakerCount = speaker.getSpeakerCount()
+assert(state.speakerCount >= 2, "combined Phase 0 requires at least 2 attached speakers; use component scripts for single-speaker diagnosis")
 logLine("INFO", "speaker count = " .. state.speakerCount)
 logLine("INFO", "speakers = " .. serialize(speaker.getSpeakers()))
 logLine("INFO", "monitor = " .. (monitor and tostring(peripheral.getName(monitor)) or "none"))
@@ -337,10 +338,10 @@ check("2/6 Native CC:T contract", function()
   assert(idleEvents == 0, "idle speaker spammed speaker_audio_empty (" .. idleEvents .. " events)")
 
   setNow(nil, "playing native note + sound; listen")
-  assert(type(speaker.playNote("harp", 1.0, 1.0)) == "boolean", "playNote did not return boolean")
+  assert(speaker.playNote("harp", 1.0, 1.0) == true, "playNote was rejected")
   timerSleep(0.20)
-  assert(type(speaker.playSound("minecraft:entity.experience_orb.pickup", 0.5, 1.0)) == "boolean",
-    "playSound did not return boolean")
+  assert(speaker.playSound("minecraft:entity.experience_orb.pickup", 0.5, 1.0) == true,
+    "playSound was rejected")
   timerSleep(0.30)
   speaker.stop()
   timerSleep(0.05)
@@ -389,9 +390,13 @@ check("3/6 Finite MP3/WAV lifecycle", function()
       local s = speaker.audioStatus()
       state.lastStatus = serialize(s)
       assert(s.state == "playing", "loop stopped before wrap")
-      if s.position + 0.15 < previous then wrapped = true else previous = s.position end
+      if s.position + 0.15 < previous then
+        wrapped = true
+      else
+        previous = s.position
+        poll = os.startTimer(0.03)
+      end
       render()
-      poll = os.startTimer(0.03)
     end
   end
   os.cancelTimer(wrapDeadline)
@@ -411,16 +416,12 @@ check("3/6 Finite MP3/WAV lifecycle", function()
   speaker.audioStop()
   waitForStatus(function() return speaker.audioStatus() end, "idle", 5, "MP3")
 
-  if wav then
-    setNow(nil, "starting WAV")
-    assert(speaker.speakWav(wav, 0.35), "speakWav rejected valid WAV")
-    waitForStatus(function() return speaker.audioStatus() end, "playing", 15, "WAV")
-    timerSleep(0.30, "WAV playing; listen")
-    speaker.audioStop()
-    waitForStatus(function() return speaker.audioStatus() end, "idle", 5, "WAV")
-  else
-    logLine("SKIP", "WAV check skipped: no WAV argument")
-  end
+  setNow(nil, "starting WAV")
+  assert(speaker.speakWav(wav, 0.35), "speakWav rejected valid WAV")
+  waitForStatus(function() return speaker.audioStatus() end, "playing", 15, "WAV")
+  timerSleep(0.30, "WAV playing; listen")
+  speaker.audioStop()
+  waitForStatus(function() return speaker.audioStatus() end, "idle", 5, "WAV")
 end)
 
 check("4/6 RAW backpressure", function()
@@ -445,11 +446,6 @@ check("4/6 RAW backpressure", function()
 end)
 
 check("5/6 Multispeaker finite controls", function()
-  if state.speakerCount < 2 then
-    logLine("SKIP", "attach at least 2 speakers for multispeaker Phase 0 checks")
-    return
-  end
-
   speaker.audioStopAll()
   assert(speaker.speakMp3All(mp3, 0.35), "speakMp3All rejected")
   local first = waitForStatus(function() return speaker.audioStatusAt(1) end, "playing", 15, "finite endpoint 1")
@@ -482,11 +478,6 @@ check("5/6 Multispeaker finite controls", function()
 end)
 
 check("6/6 Multispeaker RAW All/At", function()
-  if state.speakerCount < 2 then
-    logLine("SKIP", "attach at least 2 speakers for RAW All/At checks")
-    return
-  end
-
   local short = {}
   for i = 1, 4800 do short[i] = math.floor(math.sin(i * 0.08) * 18000) end
 
