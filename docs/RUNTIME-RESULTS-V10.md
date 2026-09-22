@@ -15,6 +15,7 @@ Fill this during the frozen runtime pass.
 
 | Test | 21.1.247 | 21.1.248 | Notes |
 | --- | --- | --- | --- |
+| v10_phase0_acceptance |  |  | Preferred combined runner; attach `/v10-phase0.log` on failure |
 | p0_cc_speaker_contract |  |  |  |
 | p0_finite_regression |  |  |  |
 | v10_core_acceptance |  |  |  |
