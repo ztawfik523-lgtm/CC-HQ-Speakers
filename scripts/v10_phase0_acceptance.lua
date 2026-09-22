@@ -607,6 +607,9 @@ autoCheck("A6/6 RAW All/At mechanics", function()
   assert(speaker.speakPCMAll(short, 0.0), "speakPCMAll rejected")
   timerSleep(0.15)
   speaker.audioStopAll()
+  for i = 1, state.speakerCount do
+    waitForStatus(function() return speaker.audioStatusAt(i) end, "idle", 3, "RAW endpoint " .. i)
+  end
 
   assert(speaker.speakPCMAt(2, short, 0.0), "speakPCMAt(2) rejected")
   timerSleep(0.10)
@@ -679,11 +682,13 @@ manualGate("L3/5 WAV playback", {
   timerSleep(8.0, "WAV playing")
 end)
 
+local speaker2Pos = speaker.getSpeakerPos(2)
 manualGate("L4/5 Multispeaker sync + stopAt", {
-  "Stand where you can hear BOTH speakers.",
-  "First 8s: both play the same MP3 together.",
-  "Then speaker #2 stops; #1 continues 6s.",
-  "Fail for echo/drift, or if both stop together.",
+  "Stand roughly equally far from the speakers.",
+  "First 8s: all speakers play together.",
+  ("Then #2 at %.0f,%.0f,%.0f stops; others continue.")
+    :format(speaker2Pos.x, speaker2Pos.y, speaker2Pos.z),
+  "Fail for echo/drift or the wrong speakers stopping.",
 }, function()
   writeLog("INFO", "speaker positions = " .. serialize(speaker.getSpeakers()))
 
@@ -706,10 +711,13 @@ end)
 
 manualGate("L5/5 RAW multispeaker", {
   "Expect: about 6 seconds of continuous RAW tone",
-  "from BOTH speakers together.",
+  "from ALL speakers together.",
   "Fail for gaps, obvious echo/desync, or crackle.",
 }, function()
-  local chunk = makeRawChunk(12000, 0.08, 15000)
+  -- 12000 samples = exactly 0.25 s at 48 kHz = exactly 110 cycles at 440 Hz.
+  -- Reusing this chunk therefore preserves phase at chunk boundaries.
+  local rawStep = 2 * math.pi * 440 / 48000
+  local chunk = makeRawChunk(12000, rawStep, 15000)
 
   for i = 1, 24 do
     sendRawAll(chunk, 0.45, 5)
