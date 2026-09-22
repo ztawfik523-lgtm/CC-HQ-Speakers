@@ -221,6 +221,32 @@ local function safeStop()
   pcall(function() speaker.stop() end)
 end
 
+local function dumpSnapshot(reason)
+  logLine("DUMP", "snapshot: " .. tostring(reason))
+
+  local okMain, main = pcall(function() return speaker.audioStatus() end)
+  logLine("DUMP", "main status = " .. (okMain and serialize(main) or ("ERROR " .. tostring(main))))
+
+  local okStream, streamActive = pcall(function() return speaker.isStreaming() end)
+  local okUrl, streamUrl = pcall(function() return speaker.getStreamUrl() end)
+  local okMeta, streamMeta = pcall(function() return speaker.getStreamMeta() end)
+  logLine("DUMP", "stream active = " .. (okStream and tostring(streamActive) or ("ERROR " .. tostring(streamActive))))
+  logLine("DUMP", "stream url = " .. (okUrl and serialize(streamUrl) or ("ERROR " .. tostring(streamUrl))))
+  logLine("DUMP", "stream meta = " .. (okMeta and serialize(streamMeta) or ("ERROR " .. tostring(streamMeta))))
+
+  local okQueue, queueSize = pcall(function() return speaker.speakQueueSize() end)
+  logLine("DUMP", "RAW queue size = " .. (okQueue and tostring(queueSize) or ("ERROR " .. tostring(queueSize))))
+
+  for i = 1, state.speakerCount do
+    local okStatus, status = pcall(function() return speaker.audioStatusAt(i) end)
+    local okPos, pos = pcall(function() return speaker.getSpeakerPos(i) end)
+    logLine("DUMP", ("endpoint %d status = %s"):format(
+      i, okStatus and serialize(status) or ("ERROR " .. tostring(status))))
+    logLine("DUMP", ("endpoint %d pos = %s"):format(
+      i, okPos and serialize(pos) or ("ERROR " .. tostring(pos))))
+  end
+end
+
 local function check(name, fn)
   state.phase = name
   state.detail = "starting"
@@ -232,6 +258,7 @@ local function check(name, fn)
     state.detail = tostring(err)
     logLine("FAIL", name .. ": " .. tostring(err))
     render()
+    dumpSnapshot("failure in " .. name)
     safeStop()
     error(("PHASE 0 FAILED in %s\n%s\nDiagnostic log: %s"):format(name, tostring(err), LOG_PATH), 0)
   end
@@ -262,7 +289,13 @@ local methods = {}
 for _, name in ipairs(peripheral.getMethods(speakerName) or {}) do methods[name] = true end
 
 state.speakerCount = speaker.getSpeakerCount()
-assert(state.speakerCount >= 2, "combined Phase 0 requires at least 2 attached speakers; use component scripts for single-speaker diagnosis")
+if state.speakerCount < 2 then
+  state.result = "FAIL"
+  state.detail = "need at least 2 attached speakers"
+  logLine("FAIL", "combined Phase 0 requires at least 2 attached speakers; use component scripts for single-speaker diagnosis")
+  render()
+  error("combined Phase 0 requires at least 2 attached speakers", 0)
+end
 logLine("INFO", "speaker count = " .. state.speakerCount)
 logLine("INFO", "speakers = " .. serialize(speaker.getSpeakers()))
 logLine("INFO", "monitor = " .. (monitor and tostring(peripheral.getName(monitor)) or "none"))
@@ -493,6 +526,7 @@ check("6/6 Multispeaker RAW All/At", function()
   speaker.speakStop()
 end)
 
+dumpSnapshot("automated checks complete")
 safeStop()
 state.result = "AUTO PASS"
 state.phase = "complete"
