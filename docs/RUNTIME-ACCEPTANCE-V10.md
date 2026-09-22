@@ -39,7 +39,15 @@ Keep `latest.log` for failures. For performance problems, capture a Spark profil
 
 ## Phase 0 — native and frozen-surface preflight
 
-Run:
+Preferred complete run, with at least 2 attached speakers:
+
+```
+v10_phase0_acceptance <mp3> <wav>
+```
+
+The combined runner uses explicit timer-based waits, writes `/v10-phase0.log`, and displays a live dashboard on the first attached monitor when available. It requires both MP3 and WAV assets and refuses to declare complete Phase 0 with fewer than 2 speakers.
+
+If it fails, isolate the subsystem with:
 
 ```
 p0_cc_speaker_contract
