@@ -4,6 +4,8 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.client.audio.SharedStreamingGroup;
 import com.tom.hqspeaker.client.audio.StreamingAudioSource;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
+import com.tom.hqspeaker.mixin.client.ChannelAccessor;
+import com.tom.hqspeaker.mixin.client.SoundEngineAccessor;
 import com.mojang.blaze3d.audio.Channel;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.client.sounds.SoundEngine;
@@ -12,7 +14,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
-import java.util.concurrent.Executor;
 
 /** RAW PCM + optional live-stream adapter. Modern finite playback never enters this class. */
 public class HQAudioStream implements AudioStream {
@@ -32,7 +33,7 @@ public class HQAudioStream implements AudioStream {
 
     /** OpenAL channel for producer-fed RAW continuation, captured from NeoForge's streaming-source event. */
     private volatile Channel channel;
-    private volatile Executor soundExecutor;
+    private volatile net.minecraft.client.sounds.SoundEngineExecutor soundExecutor;
 
     public boolean hasRealData() {
         return hasRealData
@@ -155,7 +156,7 @@ public class HQAudioStream implements AudioStream {
     void attachChannel(SoundEngine engine, Channel channel) {
         if (engine == null || channel == null) return;
         this.channel = channel;
-        this.soundExecutor = engine.executor;
+        this.soundExecutor = ((SoundEngineAccessor) (Object) engine).hqspeaker$getExecutor();
     }
 
     private void startStreaming(HQSpeakerAudioPacket packet) {
@@ -227,10 +228,10 @@ public class HQAudioStream implements AudioStream {
         // Minecraft stops requesting streaming buffers once read() reports that RAW is exhausted. If more producer
         // data arrives on the same source, wake that existing channel just like CC:T's DfpwmStream does.
         Channel currentChannel = channel;
-        Executor executor = soundExecutor;
+        net.minecraft.client.sounds.SoundEngineExecutor executor = soundExecutor;
         if (exhausted && currentChannel != null && executor != null) {
             executor.execute(() -> {
-                if (!currentChannel.stopped()) currentChannel.pumpBuffers(1);
+                if (!currentChannel.stopped()) ((ChannelAccessor) (Object) currentChannel).hqspeaker$pumpBuffers(1);
             });
         }
     }
