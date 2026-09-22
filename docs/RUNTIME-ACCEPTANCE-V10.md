@@ -94,6 +94,8 @@ Start a long finite MP3. In another terminal run:
 v10_runtime_observer 180
 ```
 
+The observer writes `/v10-runtime-observer.log` and uses the first attached monitor as a live status/event dashboard when available.
+
 Perform:
 
 1. begin outside 32 blocks, then enter;
