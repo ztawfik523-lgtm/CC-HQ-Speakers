@@ -2,7 +2,7 @@
 
 Current frozen-v10 release-candidate scripts:
 
-- `v10_phase0_acceptance.lua <mp3> <wav>` — preferred complete Phase 0 runner. Requires at least 2 attached speakers, uses explicit timer-based waits, shows a live dashboard on the first attached monitor, and writes `/v10-phase0.log`.
+- `v10_phase0_acceptance.lua <mp3> <wav>` — preferred complete Phase 0 runner. Runs a fast mostly-silent mechanical preflight, then pauses for five human audible gates. ENTER starts each gate; P=pass, R=replay, F=fail. Uses the first attached monitor when available and writes `/v10-phase0.log`.
 - `p0_cc_speaker_contract.lua` — native CC:T contract/backpressure isolation.
 - `p0_finite_regression.lua <mp3>` — finite loop/end-state regression isolation.
 - `v10_core_acceptance.lua <mp3> [wav]` — frozen API + finite/RAW/core multispeaker isolation.
@@ -13,7 +13,7 @@ Current frozen-v10 release-candidate scripts:
 
 For Phase 0, run `v10_phase0_acceptance <mp3> <wav>`. Use the smaller P0/core/RAW scripts only to isolate a failure.
 
-Automated PASS never substitutes for the manual audibility, spatial synchronization, listener/recovery, movement, radio synchronization, Sound Physics Remastered, or performance gates.
+Phase 0 PASS now includes the script-recorded audible checks. Later listener/recovery, movement, radio synchronization, Sound Physics Remastered, and performance gates still require their own runtime phases.
 
 Run the later phases in the order defined by `docs/RUNTIME-ACCEPTANCE-V10.md`.
 
