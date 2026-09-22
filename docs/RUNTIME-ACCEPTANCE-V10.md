@@ -45,7 +45,7 @@ Preferred complete run, with at least 2 attached speakers:
 v10_phase0_acceptance <mp3> <wav>
 ```
 
-The combined runner uses explicit timer-based waits, writes `/v10-phase0.log`, and displays a live dashboard on the first attached monitor when available. It requires both MP3 and WAV assets and refuses to declare complete Phase 0 with fewer than 2 speakers.
+The combined runner first performs a fast mostly-silent mechanical preflight, then pauses at five audible checkpoints. Press ENTER to begin each audible check, then P=pass, R=replay, or F=fail. It writes `/v10-phase0.log`, records the human verdict for every audible gate, and displays a live dashboard on the first attached monitor when available. It requires both MP3 and WAV assets and at least 2 speakers.
 
 If it fails, isolate the subsystem with:
 
@@ -58,7 +58,7 @@ v10_raw_acceptance
 
 Pass criteria:
 
-- every script prints `[PASS]`;
+- the combined runner prints `[PASS] v10 INTERACTIVE Phase 0` after all automated and human audible gates pass;
 - native `playNote/playSound/playAudio` are audibly correct;
 - no idle `speaker_audio_empty` spam;
 - no retired API reappears;
