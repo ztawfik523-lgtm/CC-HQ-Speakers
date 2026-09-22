@@ -1,8 +1,8 @@
 # Roadmap
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
-The v10 public surface is frozen at `c61b052beee03ec0f36fed725fb37483bfb57d83`. Core source architecture is not the active workstream anymore.
+The v10 public surface is frozen at `c61b052beee03ec0f36fed725fb37483bfb57d83`. Runtime preparation is complete at `a234ba02b80532daf32f6849061b76f23c0eb4d3`. Core source architecture is not the active workstream anymore.
 
 ## Completed
 

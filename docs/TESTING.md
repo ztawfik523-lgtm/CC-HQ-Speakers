@@ -1,13 +1,15 @@
 # Testing
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 ## Evidence rule
 
 CI proves compilation, deterministic tests and package structure. It does not prove Minecraft audibility, OpenAL/SoundManager lifecycle, moving-ship behavior, spatial synchronization or realistic performance.
 
 Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`.  
-The source freeze passed build/tests/package verification/artifact upload on NeoForge 21.1.247 and 21.1.248.
+Source-freeze CI: `35655973164`.  
+Runtime-prep scripts/docs: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389`.  
+Both NeoForge 21.1.247 and 21.1.248 pass build/tests/package verification/artifact upload.
 
 Deterministic coverage includes finite analyzers/decoders/range transport/state machines/recovery/projection, storage/release limits, ordered multi-lock behavior, RAW feed lifetime, strict radio group sealing and URL policy.
 

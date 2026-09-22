@@ -1,9 +1,10 @@
 # Documentation index
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
+Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389`  
 Protocol: **v10**.
 
 Read current authority in this order:
@@ -22,7 +23,7 @@ Read current authority in this order:
 12. `SERVER-CONFIG.md`
 13. `SOURCES.md`
 
-Fresh-chat handoff: `HANDOFF-2026-09-21-RUNTIME-READY.md`.  
-Ready-to-paste prompt: `HANDOFF-PROMPT-2026-09-21.md`.
+Fresh-chat handoff: `HANDOFF-2026-09-22-RUNTIME.md`.  
+Ready-to-paste prompt: `HANDOFF-PROMPT-2026-09-22.md`.
 
 Historical dated handoffs and M0/M1 milestone documents remain evidence for their old checkpoints but are not current authority.

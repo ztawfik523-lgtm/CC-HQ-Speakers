@@ -1,11 +1,13 @@
 # CC:HQ Speakers — agent guide
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`  
 Active branch: `codex/m1j-multispeaker`  
 Frozen source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-CI: `35655973164` — NeoForge 21.1.247 and 21.1.248 PASS.  
+Source-freeze CI: `35655973164` — NeoForge 21.1.247 and 21.1.248 PASS.  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.  
+Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389` — PASS.  
 Protocol: **v10**, 9 payloads.
 
 ## Authority order
@@ -17,7 +19,8 @@ Protocol: **v10**, 9 payloads.
 5. `docs/VERIFIED-FACTS.md`
 6. `docs/ARCHITECTURE.md`
 7. `docs/LUA-API.md`
-8. exact current source and CI
+8. `docs/HANDOFF-2026-09-22-RUNTIME.md`
+9. exact current source and CI
 
 Older dated handoffs/milestone docs are historical.
 

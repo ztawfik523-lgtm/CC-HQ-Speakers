@@ -1,12 +1,14 @@
 # Current state
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 Frozen source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
+Source-freeze CI: `35655973164`.  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.  
+Runtime-prep branch head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389`.  
 Protocol: **v10**, 9 payloads.
 
-Both supported NeoForge targets passed the source-freeze build/tests/package checks.
+Both supported NeoForge targets pass the frozen source and runtime-prep builds/tests/package checks.
 
 ## Product
 
@@ -41,6 +43,6 @@ The cleanup/rethink pass closed:
 
 ## Runtime readiness
 
-The source/API is frozen. Runtime scripts and the ordered acceptance matrix are prepared in `RUNTIME-ACCEPTANCE-V10.md`.
+The source/API is frozen. Runtime scripts and the ordered acceptance matrix are prepared and committed at `a234ba02b80532daf32f6849061b76f23c0eb4d3`. Use `RUNTIME-ACCEPTANCE-V10.md` and record results in `RUNTIME-RESULTS-V10.md`.
 
 Runtime testing has **not** been declared complete. Remaining evidence is Minecraft-only: listener/recovery, moving Sable/VS2 sources, real 2/4/8+ synchronization and stress, RAW audibility/backpressure timing, strict radio synchronization/late membership, malformed/bounds testing, Sound Physics Remastered and realistic performance.

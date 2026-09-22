@@ -7,7 +7,9 @@ Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.247 baselin
 ## Frozen v10 release surface
 
 Source freeze checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-CI: `35655973164` — both NeoForge targets passed build, deterministic tests, package verification and artifact upload.  
+Source-freeze CI: `35655973164` — both NeoForge targets passed build, deterministic tests, package verification and artifact upload.  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.  
+Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389` — PASS on both targets.  
 Network protocol: **v10**, 9 payloads.
 
 The normal CC:T speaker is the only block product. The inherited standalone `hqspeaker:hq_speaker` block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License: MPL-2.0.
@@ -47,4 +49,4 @@ Prepared media is stored server-side as immutable encoded assets. Defaults are 5
 
 Green CI proves source/tests/package structure, not Minecraft audibility, OpenAL/SoundManager behavior, moving-ship behavior or real multispeaker synchronization. The next phase is runtime acceptance against this frozen v10 surface.
 
-See `docs/API-FREEZE-V10.md`, then `docs/TESTING.md`.
+See `docs/API-FREEZE-V10.md`, `docs/RUNTIME-ACCEPTANCE-V10.md`, then `docs/HANDOFF-2026-09-22-RUNTIME.md`.

@@ -1,6 +1,6 @@
 # Sources and provenance
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 Target stack:
 
@@ -12,7 +12,8 @@ Target stack:
 - JLayer 1.0.1.4
 
 Frozen source: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-CI: `35655973164`.
+Source-freeze CI: `35655973164`.  
+Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389`.
 
 CC:T target artifact: `cc.tweaked:cc-tweaked-1.21.1-forge:1.120.0`. Exact target CC:T source wins for native speaker semantics.
 
