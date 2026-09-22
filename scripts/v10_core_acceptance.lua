@@ -35,7 +35,8 @@ local required = {
   "speakMaxSamples", "speakSupportedFiles",
 
   "speakStream", "speakStreamAll", "speakStreamAt", "isStreaming",
-  "getStreamUrl", "getStreamFormats", "getStreamMeta", "getStreamMetaSerial",
+  "getStreamUrl", "getStreamFormats", "getStreamMeta", "getStreamTitle", "getStreamArtist",
+  "getStreamSong", "getStreamStation", "getStreamGenre", "getStreamMetaSerial",
 
   "getPeripheralType", "getPos", "getSpeakerCount", "getSpeakers", "getSpeakerPos",
 }
