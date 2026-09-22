@@ -4,12 +4,15 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.client.audio.SharedStreamingGroup;
 import com.tom.hqspeaker.client.audio.StreamingAudioSource;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
+import com.mojang.blaze3d.audio.Channel;
 import net.minecraft.client.sounds.AudioStream;
+import net.minecraft.client.sounds.SoundEngine;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
+import java.util.concurrent.Executor;
 
 /** RAW PCM + optional live-stream adapter. Modern finite playback never enters this class. */
 public class HQAudioStream implements AudioStream {
@@ -26,6 +29,10 @@ public class HQAudioStream implements AudioStream {
     private SharedStreamingGroup.Tap sharedStreamingTap;
     private volatile boolean isStreaming;
     private volatile boolean streamReady;
+
+    /** OpenAL channel for producer-fed RAW continuation, captured from NeoForge's streaming-source event. */
+    private volatile Channel channel;
+    private volatile Executor soundExecutor;
 
     public boolean hasRealData() {
         return hasRealData
@@ -103,17 +110,13 @@ public class HQAudioStream implements AudioStream {
             return silence(maxBytes);
         }
 
-        if (!hasRealData) {
-            if (closed) return null;
-            return silence(maxBytes);
-        }
-
+        // RAW is producer-fed, not a self-running network stream. Do not manufacture silence when the
+        // producer queue is temporarily empty: Minecraft may pre-buffer that silence ahead of later real PCM.
+        // Match CC:T's DfpwmStream contract instead: return no buffer, then explicitly pump the OpenAL channel when
+        // the next real RAW chunk arrives.
         synchronized (queue) {
             ByteBuffer chunk = queue.peek();
-            if (chunk == null) {
-                if (closed) return null;
-                return silence(maxBytes);
-            }
+            if (chunk == null) return null;
             if (chunk.remaining() <= maxBytes) return queue.poll();
             int wanted = maxBytes - Math.floorMod(maxBytes, 2);
             if (wanted <= 0) return silence(maxBytes);
@@ -145,6 +148,14 @@ public class HQAudioStream implements AudioStream {
             streamingSource = null;
         }
         synchronized (queue) { queue.clear(); }
+        channel = null;
+        soundExecutor = null;
+    }
+
+    void attachChannel(SoundEngine engine, Channel channel) {
+        if (engine == null || channel == null) return;
+        this.channel = channel;
+        this.soundExecutor = engine.executor;
     }
 
     private void startStreaming(HQSpeakerAudioPacket packet) {
@@ -200,14 +211,27 @@ public class HQAudioStream implements AudioStream {
         if (length <= 0) return;
         ByteBuffer buffer = ByteBuffer.allocateDirect(length).order(ByteOrder.LITTLE_ENDIAN);
         buffer.put(raw, 0, length).flip();
+
+        boolean exhausted;
         synchronized (queue) {
             if (queue.size() >= MAX_QUEUE_CHUNKS) {
                 HQSpeakerMod.warn("HQAudioStream: dropping PCM chunk; queue full");
                 return;
             }
+            exhausted = queue.isEmpty();
             if (audioFormat == null) audioFormat = monoFormat(SAMPLE_RATE);
             queue.add(buffer);
             hasRealData = true;
+        }
+
+        // Minecraft stops requesting streaming buffers once read() reports that RAW is exhausted. If more producer
+        // data arrives on the same source, wake that existing channel just like CC:T's DfpwmStream does.
+        Channel currentChannel = channel;
+        Executor executor = soundExecutor;
+        if (exhausted && currentChannel != null && executor != null) {
+            executor.execute(() -> {
+                if (!currentChannel.stopped()) currentChannel.pumpBuffers(1);
+            });
         }
     }
 
