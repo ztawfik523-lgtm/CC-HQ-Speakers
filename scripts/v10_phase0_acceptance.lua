@@ -275,7 +275,7 @@ do
     h.writeLine("CC:HQ Speakers v10 Phase 0 runtime diagnostics")
     h.writeLine("Started UTC ms: " .. tostring(startedMs))
     h.writeLine("Computer ID: " .. tostring(os.getComputerID()))
-    h.writeLine("Computer label: " .. tostring(os.getComputerLabel()))
+    local computerLabel = os.getComputerLabel()\n    h.writeLine("Computer label: " .. tostring(computerLabel or "<none>"))
     h.writeLine("OS: " .. tostring(os.version()))
     h.writeLine("Speaker peripheral: " .. speakerName)
     h.close()
