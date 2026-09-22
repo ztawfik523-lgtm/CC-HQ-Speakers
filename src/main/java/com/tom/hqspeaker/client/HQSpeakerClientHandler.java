@@ -301,5 +301,9 @@ public final class HQSpeakerClientHandler {
                 SoundBufferLibrary soundBuffers, Sound sound, boolean looping) {
             return CompletableFuture.completedFuture(stream);
         }
+
+        HQAudioStream hqStream() {
+            return stream;
+        }
     }
 }
