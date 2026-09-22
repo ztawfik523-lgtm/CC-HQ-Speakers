@@ -516,14 +516,17 @@ check("6/6 Multispeaker RAW All/At", function()
 
   assert(speaker.speakPCMAll(short, 0.18), "speakPCMAll rejected")
   timerSleep(0.25, "RAW All playing; listen for simultaneous start")
-  speaker.speakStop()
+  speaker.audioStopAll()
+  for i = 1, state.speakerCount do
+    waitForStatus(function() return speaker.audioStatusAt(i) end, "idle", 3, "RAW endpoint " .. i)
+  end
   timerSleep(0.10)
 
   assert(speaker.speakPCMAt(2, short, 0.18), "speakPCMAt(2) rejected")
   timerSleep(0.15, "RAW At(2) playing")
   speaker.audioStopAt(2)
   waitForStatus(function() return speaker.audioStatusAt(2) end, "idle", 3, "RAW endpoint 2")
-  speaker.speakStop()
+  speaker.audioStopAll()
 end)
 
 dumpSnapshot("automated checks complete")
