@@ -8,10 +8,10 @@ Run one master acceptance against the actual release JAR. The mod's built-in dia
 
 Chosen runtime scope for this release pass: **singleplayer + Sable/Aeronautics + Sound Physics Remastered**. Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance scope.
 
-## Build matrix
+## Build target
 
-- NeoForge 21.1.247: full target-scope pass.
-- NeoForge 21.1.248: compatibility confirmation after .247 is clean.
+- Build and test one artifact against NeoForge 21.1.247.
+- Use that same artifact across the supported NeoForge 21.1.x metadata range (`[21.1,21.2)`); do not produce a duplicate 21.1.248 build.
 - Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0.
 
 Protocol remains **v10 with 9 payloads**. Diagnostics use an in-process singleplayer bridge and do not add a network payload.
