@@ -80,7 +80,8 @@ public final class HQAudioDiagnosticsClient {
     }
 
     public static void detach(UUID source) {
-        if (source != null) BINDINGS.remove(source);
+        if (source == null) return;
+        if (BINDINGS.remove(source) != null) HQDiagnostics.channelDetached(source);
     }
 
     public static void soundEngineReloaded() {
@@ -122,7 +123,6 @@ public final class HQAudioDiagnosticsClient {
                     int source = binding.sourceId();
                     if (source <= 0 || !AL10.alIsSource(source)) continue;
 
-                    int state = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
                     int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
                     int processed = AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED);
 
@@ -149,6 +149,10 @@ public final class HQAudioDiagnosticsClient {
 
                     float[] actual = new float[3];
                     AL10.alGetSourcefv(source, AL10.AL_POSITION, actual);
+
+                    // Query state last. A streaming source can underrun between the offset query and state query;
+                    // checking last makes that race visible instead of reporting an older PLAYING state.
+                    int state = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
                     samples.add(new HQDiagnostics.ChannelSample(
                         binding.identity(),
                         stateName(state),
