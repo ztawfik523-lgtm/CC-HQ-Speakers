@@ -120,36 +120,28 @@ The last source pass fixed or closed:
 
 Do not redo these audits without new evidence.
 
-## Runtime package already prepared
+## Current runtime package
 
-Use these current scripts:
+Build/test/package only against **NeoForge 21.1.247**. The resulting JAR declares the NeoForge range `[21.1,21.2)` and is the one release artifact used across the supported 21.1.x line. Do not add a duplicate 21.1.248 CI job or a second runtime pass just because the loader patch version differs.
 
-- `scripts/p0_cc_speaker_contract.lua`
-- `scripts/p0_finite_regression.lua <mp3>`
-- `scripts/v10_core_acceptance.lua <mp3> [wav]`
-- `scripts/v10_raw_acceptance.lua`
-- `scripts/v10_multispeaker_stress.lua <mp3> [cycles]`
-- `scripts/v10_radio_acceptance.lua [radio-url]`
-- `scripts/v10_runtime_observer.lua [seconds]`
+Use the single user-facing runner:
 
-The full ordered procedure and pass criteria are in `docs/RUNTIME-ACCEPTANCE-V10.md`. Record evidence in `docs/RUNTIME-RESULTS-V10.md`.
+- `scripts/v10_acceptance.lua <mp3> <wav> [direct-mp3-or-icy-url]`
 
-## Runtime order
+The normal release JAR contains dormant built-in diagnostics. The runner enables them only during acceptance and judges real client/OpenAL behavior automatically. Smaller scripts are developer isolation tools only if the master run identifies a concrete failure.
 
-Start with NeoForge 21.1.247:
+Chosen runtime scope:
 
-1. Phase 0 native/API/finite/RAW preflight.
-2. 2/4/8+ finite multispeaker stress and endpoint-local controls.
-3. listener enter/leave/rejoin + reload/recovery.
-4. Sable/Aeronautics and VS2 movement for finite, RAW and radio.
-5. RAW audibility/backpressure/group start.
-6. direct + grouped MP3/ICY radio, strict late membership, long-run drift, metadata, bad URL/EOF/network loss.
-7. malformed/extreme media, storage/range/worker bounds and repeated replacement stress.
-8. Sound Physics Remastered.
-9. realistic performance; use Spark when performance is questionable.
-10. repeat required smoke/full confirmation on NeoForge 21.1.248 as described in the runtime plan.
+- singleplayer;
+- Sable/Aeronautics;
+- Sound Physics Remastered;
+- native CC:T, finite, RAW and MP3/ICY radio;
+- 2-speaker core plus 8+ speaker scale stress;
+- range, dimension and F3+T recovery.
 
-If Phase 0 fails, stop and diagnose that concrete failure before broader runtime work.
+Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance scope.
+
+The person running the test only performs physical actions Minecraft cannot perform itself: walk out of range, change dimension, press F3+T, move/rotate the Sable contraption, move behind the prepared wall, connect a late radio speaker and connect enough speakers to reach 8+. The diagnostics determine PASS/FAIL.
 
 ## Evidence boundary
 
