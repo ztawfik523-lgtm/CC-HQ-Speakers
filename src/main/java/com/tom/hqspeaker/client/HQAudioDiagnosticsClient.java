@@ -177,6 +177,23 @@ public final class HQAudioDiagnosticsClient {
                     float[] actual = new float[3];
                     AL10.alGetSourcefv(source, AL10.AL_POSITION, actual);
 
+                    int directFilter = 0;
+                    float directGain = 1.0f;
+                    float directGainHF = 1.0f;
+                    if (ModList.get().isLoaded("sound_physics_remastered")) {
+                        try {
+                            directFilter = AL10.alGetSourcei(source, EXTEfx.AL_DIRECT_FILTER);
+                            if (directFilter != 0 && EXTEfx.alIsFilter(directFilter)) {
+                                directGain = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAIN);
+                                directGainHF = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAINHF);
+                            }
+                        } catch (RuntimeException ignored) {
+                            directFilter = 0;
+                            directGain = 1.0f;
+                            directGainHF = 1.0f;
+                        }
+                    }
+
                     // Query state last. A streaming source can underrun between the offset query and state query;
                     // checking last makes that race visible instead of reporting an older PLAYING state.
                     int state = AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE);
@@ -193,7 +210,10 @@ public final class HQAudioDiagnosticsClient {
                         request.z(),
                         actual[0],
                         actual[1],
-                        actual[2]
+                        actual[2],
+                        directFilter,
+                        directGain,
+                        directGainHF
                     ));
                 }
                 HQDiagnostics.recordBatch(samples);
