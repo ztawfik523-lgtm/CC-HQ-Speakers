@@ -60,6 +60,7 @@ public final class HQDiagnostics {
         float actualX,
         float actualY,
         float actualZ,
+        float sourceGain,
         int directFilter,
         float directGain,
         float directGainHF
@@ -323,6 +324,9 @@ public final class HQDiagnostics {
         private double actualMovement;
         private double maxPositionError;
         private double lastPositionError;
+        private float lastSourceGain = 1.0f;
+        private float minSourceGain = Float.POSITIVE_INFINITY;
+        private float maxSourceGain;
 
         private long pcmInputBytes;
         private long pcmReadBytes;
@@ -429,6 +433,12 @@ public final class HQDiagnostics {
                 sample.actualX(), sample.actualY(), sample.actualZ());
             maxPositionError = Math.max(maxPositionError, lastPositionError);
 
+            if (Float.isFinite(sample.sourceGain())) {
+                lastSourceGain = sample.sourceGain();
+                minSourceGain = Math.min(minSourceGain, sample.sourceGain());
+                maxSourceGain = Math.max(maxSourceGain, sample.sourceGain());
+            }
+
             observeSoundPhysics(sample.directFilter(), sample.directGain(), sample.directGainHF(), true);
         }
 
@@ -486,6 +496,9 @@ public final class HQDiagnostics {
             out.put("actualMovement", actualMovement);
             out.put("maxPositionError", maxPositionError);
             out.put("lastPositionError", lastPositionError);
+            out.put("sourceGain", lastSourceGain);
+            out.put("minSourceGain", minSourceGain == Float.POSITIVE_INFINITY ? lastSourceGain : minSourceGain);
+            out.put("maxSourceGain", maxSourceGain);
 
             out.put("pcmInputBytes", pcmInputBytes);
             out.put("pcmReadBytes", pcmReadBytes);
