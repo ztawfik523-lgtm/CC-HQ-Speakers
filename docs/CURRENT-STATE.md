@@ -8,7 +8,7 @@ API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.
 Runtime-prep branch head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389`.  
 Protocol: **v10**, 9 payloads.
 
-Both supported NeoForge targets pass the frozen source and runtime-prep builds/tests/package checks.
+Historical dual-version CI passed both 21.1.247 and 21.1.248. Current release policy builds one artifact against NeoForge 21.1.247 and uses it across the supported `[21.1,21.2)` metadata range.
 
 ## Product
 
