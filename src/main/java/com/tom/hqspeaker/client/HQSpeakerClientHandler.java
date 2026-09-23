@@ -2,6 +2,7 @@ package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import com.tom.hqspeaker.compat.MovingSourcePosition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
@@ -56,7 +57,23 @@ public final class HQSpeakerClientHandler {
             }
         }
 
+        HQDiagnostics.registerSource(diagnosticIdentity(packet));
         states.computeIfAbsent(packet.source, ignored -> new SpeakerState()).push(packet);
+    }
+
+    private static HQDiagnostics.SourceIdentity diagnosticIdentity(HQSpeakerAudioPacket packet) {
+        String kind = packet.isStreamingFormat() ? "stream" : "raw";
+        String group = "";
+        if (packet.syncGroupId != null) {
+            group = "stream:" + packet.syncGroupId;
+        } else if (!packet.isStreamingFormat() && packet.startTick > 0L) {
+            group = "raw:" + packet.startTick;
+        }
+        return new HQDiagnostics.SourceIdentity(
+            packet.source, kind, group,
+            packet.blockX, packet.blockY, packet.blockZ,
+            HQAudioStream.SAMPLE_RATE
+        );
     }
 
     private static boolean isPacketSafe(HQSpeakerAudioPacket packet) {
@@ -247,8 +264,10 @@ public final class HQSpeakerClientHandler {
 
         private void resetPlayback() {
             Minecraft minecraft = Minecraft.getInstance();
+            UUID source = packet == null ? null : packet.source;
             if (sound != null) minecraft.getSoundManager().stop(sound);
             if (stream != null) stream.closeAndStop();
+            if (source != null) HQAudioDiagnosticsClient.detach(source);
             sound = null;
             stream = null;
             packet = null;
@@ -263,9 +282,10 @@ public final class HQSpeakerClientHandler {
 
     @OnlyIn(Dist.CLIENT)
     public static final class HQSpeakerSound extends AbstractSoundInstance
-            implements TickableSoundInstance {
+            implements TickableSoundInstance, HQDiagnosticSource {
         private final HQAudioStream stream;
         private final boolean streaming;
+        private final HQDiagnostics.SourceIdentity diagnosticIdentity;
 
         HQSpeakerSound(HQAudioStream stream, HQSpeakerAudioPacket packet,
                        float volume, float x, float y, float z) {
@@ -278,6 +298,7 @@ public final class HQSpeakerClientHandler {
             this.attenuation = Attenuation.LINEAR;
             this.looping = false;
             this.streaming = packet.isStreamingFormat();
+            this.diagnosticIdentity = HQSpeakerClientHandler.diagnosticIdentity(packet);
         }
 
         void update(float volume, float x, float y, float z) {
@@ -304,6 +325,11 @@ public final class HQSpeakerClientHandler {
 
         HQAudioStream hqStream() {
             return stream;
+        }
+
+        @Override
+        public HQDiagnostics.SourceIdentity hqspeaker$diagnosticIdentity() {
+            return diagnosticIdentity;
         }
     }
 }
