@@ -1,11 +1,13 @@
 package com.tom.hqspeaker.client;
 
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import net.minecraft.client.sounds.AudioStream;
 
 import javax.sound.sampled.AudioFormat;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.UUID;
 
 /** Nonblocking Minecraft AudioStream view over one bounded M1G mono-S16 PCM queue. */
 public final class FinitePcmAudioStream implements AudioStream {
@@ -16,19 +18,26 @@ public final class FinitePcmAudioStream implements AudioStream {
     private final AudioFormat format;
     private final int silenceBytes;
     private final FiniteRecoveryCoordinator recovery;
+    private final UUID diagnosticSource;
     private volatile boolean closed;
     private volatile boolean reachedEof;
 
     public FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate) {
-        this(queue, sampleRate, new FiniteRecoveryCoordinator());
+        this(queue, sampleRate, new FiniteRecoveryCoordinator(), null);
     }
 
     FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate, FiniteRecoveryCoordinator recovery) {
+        this(queue, sampleRate, recovery, null);
+    }
+
+    FinitePcmAudioStream(FinitePcmQueue queue, int sampleRate, FiniteRecoveryCoordinator recovery,
+                         UUID diagnosticSource) {
         if (queue == null) throw new NullPointerException("queue");
         if (recovery == null) throw new NullPointerException("recovery");
         if (sampleRate <= 0) throw new IllegalArgumentException("sampleRate must be positive");
         this.queue = queue;
         this.recovery = recovery;
+        this.diagnosticSource = diagnosticSource;
         this.format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
             sampleRate, 16, 1, 2, sampleRate, false);
         // About 20 ms of mono S16 silence, hard capped so a huge source rate cannot inflate sound-thread allocation.
@@ -54,7 +63,14 @@ public final class FinitePcmAudioStream implements AudioStream {
         FinitePcmReadAdapter.Result result =
             FinitePcmReadAdapter.read(queue, wanted, silenceBytes, recovery, System.nanoTime());
         return switch (result.state()) {
-            case DATA, SILENCE -> direct(result.data());
+            case DATA -> {
+                HQDiagnostics.pcmRead(diagnosticSource, result.data().length, 0L, false);
+                yield direct(result.data());
+            }
+            case SILENCE -> {
+                HQDiagnostics.pcmRead(diagnosticSource, 0L, result.data().length, false);
+                yield direct(result.data());
+            }
             case EOF -> {
                 reachedEof = true;
                 yield null;
