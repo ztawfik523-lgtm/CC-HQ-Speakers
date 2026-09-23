@@ -340,13 +340,15 @@ public final class HQDiagnostics {
         }
 
         synchronized void updateIdentity(SourceIdentity next) {
-            String group = identity.group();
-            if ((group == null || group.isBlank()) && next.group() != null && !next.group().isBlank()) {
+            String currentGroup = identity.group();
+            String nextGroup = next.group();
+            if (nextGroup != null && !nextGroup.isBlank()) {
+                // A new explicit group means a new playback/group identity for this physical source.
                 identity = next;
                 return;
             }
             // Preserve an existing useful group key across later RAW continuation packets with startTick=0.
-            identity = new SourceIdentity(next.source(), next.kind(), group, next.blockX(), next.blockY(), next.blockZ(),
+            identity = new SourceIdentity(next.source(), next.kind(), currentGroup, next.blockX(), next.blockY(), next.blockZ(),
                 next.sampleRate() > 0 ? next.sampleRate() : identity.sampleRate(), next.contentStartSeconds());
         }
 
