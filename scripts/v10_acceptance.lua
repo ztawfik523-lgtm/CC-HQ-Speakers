@@ -419,6 +419,8 @@ end
 local DIAG_START_SKEW_MS = 75
 local DIAG_LOGICAL_DRIFT_MS = 50
 local DIAG_PCM_SPREAD_BYTES = 65536
+local DIAG_MAX_SILENCE_RATIO = 0.02
+local DIAG_MAX_BASE_SILENCE_BYTES = 32768
 local DIAG_POSITION_MOVE = 1.0
 
 local function diagReset(label)
@@ -490,6 +492,19 @@ local function assertSourceHealthy(source, label, minimumPlayingSamples, require
   if requireContinuous then
     assert((source.playingToStoppedTransitions or 0) == 0,
       label .. ": OpenAL source stopped unexpectedly while playback should have remained active")
+
+    local realBytes = source.pcmReadBytes or 0
+    local silenceBytes = source.silenceReadBytes or 0
+    local totalBytes = realBytes + silenceBytes
+    if totalBytes > 0 then
+      local allowedSilence = math.max(
+        DIAG_MAX_BASE_SILENCE_BYTES,
+        math.floor(totalBytes * DIAG_MAX_SILENCE_RATIO)
+      )
+      assert(silenceBytes <= allowedSilence,
+        ("%s: renderer inserted %d bytes of starvation silence (limit %d)"):format(
+          label, silenceBytes, allowedSilence))
+    end
   end
 end
 
@@ -531,6 +546,31 @@ local function assertFiniteGroup(snapshot, expected, label, checkDrift, requireC
     label, group.channelStartSkewMs or -1, group.startSkewMs or -1,
     group.maxLogicalAudibleOffsetSpreadMs or -1,
     group.maxAudibleOffsetSpreadMs or -1, group.pcmReadBytesSpread or -1))
+  return sources, group
+end
+
+local function assertRawContinuityWhileActive(snapshot, expected, expectedBytes, label)
+  assertClientBridge(snapshot)
+  local sources = diagSources(snapshot, "raw")
+  assert(#sources == expected,
+    ("%s: expected %d active RAW client sources, got %d"):format(label, expected, #sources))
+  for i, source in ipairs(sources) do
+    assertSourceHealthy(source, label .. " source " .. i, 3, true)
+    assert((source.pcmInputBytes or 0) == expectedBytes,
+      ("%s source %d: expected %d admitted RAW bytes, got %d"):format(
+        label, i, expectedBytes, source.pcmInputBytes or -1))
+    assert((source.channelStarts or 0) == 1,
+      label .. " source " .. i .. ": RAW continuation recreated the client channel")
+  end
+  local group = assert(diagLargestGroup(snapshot, "raw:"), label .. ": active RAW sync group missing")
+  assert((group.sourceCount or 0) == expected, label .. ": active RAW group source count mismatch")
+  assert((group.playingMembers or 0) == expected, label .. ": an active RAW endpoint never reached PLAYING")
+  assert((group.channelStartSkewMs or 999999) <= DIAG_START_SKEW_MS,
+    ("%s: active RAW start skew %.2f ms exceeds %.0f ms"):format(
+      label, group.channelStartSkewMs or -1, DIAG_START_SKEW_MS))
+  assert((group.maxAudibleOffsetSpreadMs or 999999) <= DIAG_LOGICAL_DRIFT_MS,
+    ("%s: active RAW drift %.2f ms exceeds %.0f ms"):format(
+      label, group.maxAudibleOffsetSpreadMs or -1, DIAG_LOGICAL_DRIFT_MS))
   return sources, group
 end
 
@@ -1065,6 +1105,13 @@ runtimeDiag("R6/9 Continuous RAW client delivery", function()
     sendRawAll(chunk, 0.45, 10)
     log("RAW", "accepted 2-second chunk " .. i .. "/" .. chunks)
   end
+
+  -- The third accepted 2-second chunk leaves more than two seconds of admitted audio outstanding.
+  -- Sample while it must still be active so a mid-stream underrun cannot hide behind the final natural stop.
+  waitTimer(0.75, "checking RAW continuity before natural EOF")
+  local active = diagSnapshot("continuous RAW active")
+  assertRawContinuityWhileActive(active, expectedSources, expectedBytes, "continuous RAW active")
+
   assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for RAW drain"),
     "RAW server lifetime did not drain")
   local snap = diagSnapshot("continuous RAW", 0.5)
@@ -1386,6 +1433,11 @@ actionGate("C6 8+ speaker scale stress", {
   local chunks = 3
   local raw = makeRawChunk(samplesPerChunk, 440, 14000)
   for i = 1, chunks do sendRawAll(raw, 0.35, 10) end
+  waitTimer(0.75, "checking 8+ RAW continuity before natural EOF")
+  local rawActive = diagSnapshot("8+ RAW active")
+  assertRawContinuityWhileActive(
+    rawActive, current, samplesPerChunk * 2 * chunks, "8+ RAW active")
+
   assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for 8+ RAW drain"),
     "8+ RAW server lifetime did not drain")
   local rawSnap = diagSnapshot("8+ RAW", 0.5)
