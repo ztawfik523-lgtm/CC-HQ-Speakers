@@ -4,6 +4,7 @@ import com.tom.hqspeaker.HQSpeakerMod;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.sound.PlaySoundSourceEvent;
 import net.neoforged.neoforge.client.event.sound.PlayStreamingSourceEvent;
 
 /**
@@ -12,6 +13,12 @@ import net.neoforged.neoforge.client.event.sound.PlayStreamingSourceEvent;
 @EventBusSubscriber(modid = HQSpeakerMod.MOD_ID, value = Dist.CLIENT)
 public final class HQSpeakerClientEvents {
     private HQSpeakerClientEvents() {}
+
+    @SubscribeEvent
+    public static void playStatic(PlaySoundSourceEvent event) {
+        HQAudioDiagnosticsClient.attachNativeComputerCraft(
+            event.getEngine(), event.getSound(), event.getChannel());
+    }
 
     @SubscribeEvent
     public static void playStreaming(PlayStreamingSourceEvent event) {
