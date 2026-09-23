@@ -185,6 +185,7 @@ public final class HQAudioDiagnosticsClient {
 
                     float[] actual = new float[3];
                     AL10.alGetSourcefv(source, AL10.AL_POSITION, actual);
+                    float sourceGain = AL10.alGetSourcef(source, AL10.AL_GAIN);
 
                     int directFilter = 0;
                     float directGain = 1.0f;
@@ -220,6 +221,7 @@ public final class HQAudioDiagnosticsClient {
                         actual[0],
                         actual[1],
                         actual[2],
+                        sourceGain,
                         directFilter,
                         directGain,
                         directGainHF
