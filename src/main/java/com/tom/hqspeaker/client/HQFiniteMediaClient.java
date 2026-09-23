@@ -580,6 +580,10 @@ public final class HQFiniteMediaClient {
     }
 
     private static HQDiagnostics.SourceIdentity diagnosticIdentity(Session session) {
+        int sampleRate = session.begin.descriptor().sampleRate();
+        double consumedSeconds = sampleRate <= 0
+            ? 0.0 : session.pcmDiscardedBytes / (sampleRate * 2.0);
+        double contentStartSeconds = Math.max(0.0, session.pcmTimelineStart + consumedSeconds);
         return new HQDiagnostics.SourceIdentity(
             session.begin.source(),
             "finite",
@@ -587,7 +591,8 @@ public final class HQFiniteMediaClient {
             session.begin.blockX(),
             session.begin.blockY(),
             session.begin.blockZ(),
-            session.begin.descriptor().sampleRate()
+            sampleRate,
+            contentStartSeconds
         );
     }
 
