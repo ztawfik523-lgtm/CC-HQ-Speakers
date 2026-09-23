@@ -152,7 +152,17 @@ public final class HQDiagnostics {
     }
 
     public static void recordBatch(List<ChannelSample> samples) {
-        if (!enabled() || samples == null || samples.isEmpty()) return;
+        recordBatch(epoch(), samples);
+    }
+
+    /**
+     * Record one sound-executor sample batch only if it still belongs to the diagnostic epoch which scheduled it.
+     *
+     * <p>The OpenAL query runs asynchronously. A Lua test can reset diagnostics while an old query is already queued,
+     * so the scheduling epoch must be checked here or that stale batch could repopulate a freshly-cleared snapshot.</p>
+     */
+    public static synchronized void recordBatch(long expectedEpoch, List<ChannelSample> samples) {
+        if (!enabled() || expectedEpoch != epoch() || samples == null || samples.isEmpty()) return;
         long now = System.nanoTime();
 
         HashMap<String, ArrayList<ChannelSample>> grouped = new HashMap<>();
