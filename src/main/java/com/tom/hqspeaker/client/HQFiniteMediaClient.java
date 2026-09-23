@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
 import com.tom.hqspeaker.media.FinitePlaybackProjection;
@@ -91,6 +92,7 @@ public final class HQFiniteMediaClient {
         }
 
         void stopRenderer() {
+            HQAudioDiagnosticsClient.detach(begin.source());
             FiniteSpeakerSound currentSound = sound;
             sound = null;
             if (currentSound != null) {
@@ -200,6 +202,7 @@ public final class HQFiniteMediaClient {
         }
 
         Session session = new Session(packet);
+        HQDiagnostics.registerSource(diagnosticIdentity(session));
         SESSIONS.put(packet.source(), session);
         report(session, HQFiniteMediaStatusPacket.Transition.READY, "");
     }
@@ -296,6 +299,7 @@ public final class HQFiniteMediaClient {
 
     private static void restartDecodeEpoch(Session session, long startOffset,
                                            double decodeAnchorTime, double decodeTargetTime) {
+        HQDiagnostics.decoderRestart(session.begin.source());
         session.cancelDecodeEpoch();
         try {
             session.window.reset(startOffset);
@@ -346,6 +350,7 @@ public final class HQFiniteMediaClient {
         if (session.terminal || !session.coordinator.isCurrentLocalEpoch(epoch)
                 || SESSIONS.get(session.begin.source()) != session) return;
 
+        HQDiagnostics.decoderFailure(session.begin.source());
         FinitePcmAudioStream stream = session.rendererStream;
         if (stream != null && stream.closed() && !stream.reachedEof()) {
             HQSpeakerMod.warn("M1H finite decoder was cancelled by renderer close; rejoining current server time source="
@@ -368,8 +373,8 @@ public final class HQFiniteMediaClient {
         if (queued <= 0 || (queued < threshold && !pcm.eofMarked())) return;
 
         FinitePcmAudioStream stream = new FinitePcmAudioStream(
-            pcm, session.begin.descriptor().sampleRate(), session.recovery);
-        FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, session.volume,
+            pcm, session.begin.descriptor().sampleRate(), session.recovery, session.begin.source());
+        FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, diagnosticIdentity(session), session.volume,
             session.begin.x(), session.begin.y(), session.begin.z());
         session.rendererStream = stream;
         session.sound = sound;
@@ -411,6 +416,7 @@ public final class HQFiniteMediaClient {
 
     private static void handleLocalEof(Session session, long nowNanos) {
         if (session.terminal) return;
+        HQDiagnostics.eof(session.begin.source());
         if (session.looping && session.volume > 0.0f) {
             double target = projectedServerPosition(session, nowNanos);
             restartDecodeEpoch(session, loopStartOffset(session), 0.0, target);
@@ -425,6 +431,7 @@ public final class HQFiniteMediaClient {
 
     private static void requestAuthoritativeRejoin(Session session, long nowNanos) {
         if (session.terminal) return;
+        HQDiagnostics.recoveryRejoin(session.begin.source());
         session.cancelDecodeEpoch();
         session.window.cancel();
         session.localExhausted = false;
@@ -570,6 +577,18 @@ public final class HQFiniteMediaClient {
                 return;
             }
         }
+    }
+
+    private static HQDiagnostics.SourceIdentity diagnosticIdentity(Session session) {
+        return new HQDiagnostics.SourceIdentity(
+            session.begin.source(),
+            "finite",
+            "finite:" + session.begin.playbackId(),
+            session.begin.blockX(),
+            session.begin.blockY(),
+            session.begin.blockZ(),
+            session.begin.descriptor().sampleRate()
+        );
     }
 
     private static boolean matches(Session session, UUID assetId, long generation) {
