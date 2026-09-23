@@ -68,6 +68,58 @@ class HQDiagnosticsTest {
         assertTrue(((Number) group.get("maxSecondsOffsetSpreadMs")).doubleValue() >= 4.0);
     }
 
+
+    @Test
+    void explicitNewGroupReplacesOldGroupButBlankContinuationDoesNot() {
+        HQDiagnostics.setEnabled(true);
+
+        UUID source = UUID.fromString("00000000-0000-0000-0000-000000000010");
+        var first = new HQDiagnostics.SourceIdentity(source, "raw", "raw:100", 0, 64, 0, 48_000);
+        var continuation = new HQDiagnostics.SourceIdentity(source, "raw", "", 0, 64, 0, 48_000);
+        var replacement = new HQDiagnostics.SourceIdentity(source, "raw", "raw:200", 0, 64, 0, 48_000);
+
+        HQDiagnostics.registerSource(first);
+        HQDiagnostics.registerSource(continuation);
+        assertEquals("raw:100", onlySource(HQDiagnostics.snapshot()).get("group"));
+
+        HQDiagnostics.registerSource(replacement);
+        assertEquals("raw:200", onlySource(HQDiagnostics.snapshot()).get("group"));
+    }
+
+    @Test
+    void logicalSyncUsesCanonicalContentBase() {
+        HQDiagnostics.setEnabled(true);
+
+        UUID one = UUID.fromString("00000000-0000-0000-0000-000000000021");
+        UUID two = UUID.fromString("00000000-0000-0000-0000-000000000022");
+        var id1 = new HQDiagnostics.SourceIdentity(one, "finite", "finite:logical", 0, 64, 0, 48_000, 10.000);
+        var id2 = new HQDiagnostics.SourceIdentity(two, "finite", "finite:logical", 2, 64, 0, 48_000, 10.040);
+
+        HQDiagnostics.registerSource(id1);
+        HQDiagnostics.registerSource(id2);
+        HQDiagnostics.recordBatch(List.of(
+            sample(id1, "playing", 0.100, 0, 64, 0, 0, 64, 0, 0, 1.0f, 1.0f),
+            sample(id2, "playing", 0.060, 2, 64, 0, 2, 64, 0, 0, 1.0f, 1.0f)
+        ));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> groups = (List<Map<String, Object>>) HQDiagnostics.snapshot().get("groups");
+        Map<String, Object> group = groups.stream()
+            .filter(row -> "finite:logical".equals(row.get("group")))
+            .findFirst()
+            .orElseThrow();
+
+        assertTrue(((Number) group.get("maxSecondsOffsetSpreadMs")).doubleValue() >= 39.0);
+        assertTrue(((Number) group.get("maxLogicalOffsetSpreadMs")).doubleValue() < 0.1);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> onlySource(Map<String, Object> snapshot) {
+        List<Map<String, Object>> sources = (List<Map<String, Object>>) snapshot.get("sources");
+        assertEquals(1, sources.size());
+        return sources.getFirst();
+    }
+
     private static HQDiagnostics.ChannelSample sample(
         HQDiagnostics.SourceIdentity identity,
         String state,
