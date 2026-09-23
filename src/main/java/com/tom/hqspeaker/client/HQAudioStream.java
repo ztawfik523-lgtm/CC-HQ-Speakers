@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import com.tom.hqspeaker.client.audio.SharedStreamingGroup;
 import com.tom.hqspeaker.client.audio.StreamingAudioSource;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
+import java.util.UUID;
 
 /** RAW PCM + optional live-stream adapter. Modern finite playback never enters this class. */
 public class HQAudioStream implements AudioStream {
@@ -25,6 +27,7 @@ public class HQAudioStream implements AudioStream {
     private volatile javax.sound.sampled.AudioFormat audioFormat;
     private volatile boolean hasRealData;
     private volatile boolean closed;
+    private volatile UUID diagnosticSource;
 
     private StreamingAudioSource streamingSource;
     private SharedStreamingGroup.Tap sharedStreamingTap;
@@ -72,6 +75,7 @@ public class HQAudioStream implements AudioStream {
 
     public void push(HQSpeakerAudioPacket packet) {
         if (closed || packet == null || packet.format == null) return;
+        diagnosticSource = packet.source;
         switch (packet.format) {
             case PCM_S16LE -> pushPCM(packet.data);
             case MP3_STREAM -> startStreaming(packet);
@@ -103,12 +107,18 @@ public class HQAudioStream implements AudioStream {
         if (isStreaming && (sharedStreamingTap != null || streamingSource != null)) {
             ByteBuffer data = sharedStreamingTap != null
                 ? sharedStreamingTap.readPCM(maxBytes) : streamingSource.readPCM(maxBytes);
-            if (data == null) return null;
+            if (data == null) {
+                HQDiagnostics.pcmRead(diagnosticSource, 0L, 0L, true);
+                return null;
+            }
             if (data.remaining() > 0) {
                 hasRealData = true;
+                HQDiagnostics.pcmRead(diagnosticSource, data.remaining(), 0L, false);
                 return data;
             }
-            return silence(maxBytes);
+            ByteBuffer quiet = silence(maxBytes);
+            HQDiagnostics.pcmRead(diagnosticSource, 0L, quiet.remaining(), false);
+            return quiet;
         }
 
         // RAW is producer-fed, not a self-running network stream. Do not manufacture silence when the
@@ -117,14 +127,22 @@ public class HQAudioStream implements AudioStream {
         // the next real RAW chunk arrives.
         synchronized (queue) {
             ByteBuffer chunk = queue.peek();
-            if (chunk == null) return null;
-            if (chunk.remaining() <= maxBytes) return queue.poll();
+            if (chunk == null) {
+                HQDiagnostics.pcmRead(diagnosticSource, 0L, 0L, true);
+                return null;
+            }
+            if (chunk.remaining() <= maxBytes) {
+                ByteBuffer out = queue.poll();
+                if (out != null) HQDiagnostics.pcmRead(diagnosticSource, out.remaining(), 0L, false);
+                return out;
+            }
             int wanted = maxBytes - Math.floorMod(maxBytes, 2);
             if (wanted <= 0) return silence(maxBytes);
             byte[] bytes = new byte[wanted];
             chunk.get(bytes);
             ByteBuffer head = ByteBuffer.allocateDirect(wanted).order(ByteOrder.LITTLE_ENDIAN);
             head.put(bytes).flip();
+            HQDiagnostics.pcmRead(diagnosticSource, head.remaining(), 0L, false);
             return head;
         }
     }
@@ -212,6 +230,7 @@ public class HQAudioStream implements AudioStream {
         if (length <= 0) return;
         ByteBuffer buffer = ByteBuffer.allocateDirect(length).order(ByteOrder.LITTLE_ENDIAN);
         buffer.put(raw, 0, length).flip();
+        HQDiagnostics.pcmInput(diagnosticSource, length);
 
         boolean exhausted;
         synchronized (queue) {
@@ -231,7 +250,10 @@ public class HQAudioStream implements AudioStream {
         net.minecraft.client.sounds.SoundEngineExecutor executor = soundExecutor;
         if (exhausted && currentChannel != null && executor != null) {
             executor.execute(() -> {
-                if (!currentChannel.stopped()) ((ChannelAccessor) (Object) currentChannel).hqspeaker$pumpBuffers(1);
+                if (!currentChannel.stopped()) {
+                    HQDiagnostics.pumpWake(diagnosticSource);
+                    ((ChannelAccessor) (Object) currentChannel).hqspeaker$pumpBuffers(1);
+                }
             });
         }
     }
