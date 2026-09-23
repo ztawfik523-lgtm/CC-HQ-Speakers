@@ -101,7 +101,7 @@ public final class HQDiagnostics {
         return EPOCH.get();
     }
 
-    public static long reset() {
+    public static synchronized long reset() {
         long epoch = EPOCH.incrementAndGet();
         RESET_NANOS.set(System.nanoTime());
         SOUND_ENGINE_RELOADS.set(0L);
