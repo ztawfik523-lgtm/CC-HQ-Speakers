@@ -93,6 +93,7 @@ public class HQSpeakerMod {
     public void onClientTick(ClientTickEvent.Post event) {
         com.tom.hqspeaker.client.HQSpeakerClientHandler.tick();
         com.tom.hqspeaker.client.HQFiniteMediaClient.tick();
+        com.tom.hqspeaker.client.HQAudioDiagnosticsClient.tick();
     }
 
     public static void log(String msg)   { LOGGER.info("[HQSpeaker] {}", msg); }
