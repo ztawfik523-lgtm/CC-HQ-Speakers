@@ -420,6 +420,7 @@ local DIAG_START_SKEW_MS = 75
 local DIAG_LOGICAL_DRIFT_MS = 50
 local DIAG_PCM_SPREAD_BYTES = 65536
 local DIAG_POSITION_MOVE = 1.0
+local DIAG_FINAL_POSITION_ERROR = 0.5
 
 local function diagReset(label)
   safeStop()
@@ -947,17 +948,33 @@ log("DIAG", "built-in diagnostics enabled epoch=" .. tostring(diagnosticEpoch))
 -- These are judged by the mod. No human PASS/FAIL input.
 -- ============================================================================
 
-runtimeDiag("R1/9 Native CC:T playAudio client channel", function()
+runtimeDiag("R1/9 Native CC:T real client channels", function()
   diagReset("native CC:T")
+
+  assert(speaker.playNote("harp", 0.8, 12), "native playNote rejected")
+  waitTimer(0.30, "observing native CC:T note channel")
+  assert(speaker.playSound("minecraft:entity.experience_orb.pickup", 0.8, 1.0), "native playSound rejected")
+  waitTimer(0.30, "observing native CC:T sound channel")
+
   local audio = {}
   for i = 1, 48000 do audio[i] = math.floor(math.sin(i * 0.08) * 90) end
   assert(speaker.playAudio(audio, 0.8), "native playAudio rejected")
-  waitTimer(0.70, "observing native CC:T client channel")
+  waitTimer(0.70, "observing native CC:T DFPWM channel")
+
   local snap = diagSnapshot("native CC:T")
   assertClientBridge(snap)
-  local sources = diagSources(snap, "native")
-  assert(#sources >= 1, "CC:T native DFPWM stream never reached a real client audio channel")
-  assertSourceHealthy(sources[1], "native CC:T", 3)
+
+  local staticSources = diagSources(snap, "native-static")
+  assert(#staticSources >= 2,
+    "native playNote/playSound did not both reach real static client audio channels")
+  for i, source in ipairs(staticSources) do
+    assert((source.channelStarts or 0) >= 1,
+      "native static source " .. i .. " never obtained a real OpenAL channel")
+  end
+
+  local streams = diagSources(snap, "native")
+  assert(#streams >= 1, "CC:T native playAudio never reached a real streaming client audio channel")
+  assertSourceHealthy(streams[1], "native CC:T playAudio", 3)
   waitTimer(0.5, "letting native buffer finish")
 end)
 
@@ -1203,8 +1220,12 @@ actionGate("C2 Sable/Aeronautics source tracking", {
       ("Sable source %d: HQ sound position moved only %.3f blocks"):format(i, source.requestedMovement or 0))
     assert((source.actualMovement or 0) >= DIAG_POSITION_MOVE,
       ("Sable source %d: OpenAL source moved only %.3f blocks"):format(i, source.actualMovement or 0))
-    log("MEASURE", ("Sable source %d requestedMove=%.3f actualMove=%.3f maxPosDelta=%.3f"):format(
-      i, source.requestedMovement or 0, source.actualMovement or 0, source.maxPositionError or 0))
+    assert((source.lastPositionError or 999999) <= DIAG_FINAL_POSITION_ERROR,
+      ("Sable source %d: OpenAL did not settle onto HQ position (error %.3f blocks)"):format(
+        i, source.lastPositionError or 999999))
+    log("MEASURE", ("Sable source %d requestedMove=%.3f actualMove=%.3f finalDelta=%.3f maxDelta=%.3f"):format(
+      i, source.requestedMovement or 0, source.actualMovement or 0,
+      source.lastPositionError or -1, source.maxPositionError or 0))
   end
 end, true)
 actionGate("C3 Sound Physics Remastered processing", {
