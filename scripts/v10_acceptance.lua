@@ -299,7 +299,17 @@ local function fail(test, err)
   state.detail = tostring(err)
   render()
   log("FAIL", test .. ": " .. tostring(err))
+
+  -- Preserve the real client/OpenAL evidence before stopping playback. Stopping first can
+  -- detach channels and obscure the state which actually caused the failure.
+  pcall(function()
+    if speaker.hqDiagSnapshot then
+      local snap = speaker.hqDiagSnapshot()
+      log("DIAGFAIL", serialize(snap))
+    end
+  end)
   dumpSnapshot("failure in " .. test)
+
   safeStop()
   pcall(function() if speaker.hqDiagEnable then speaker.hqDiagEnable(false) end end)
   error(("MASTER ACCEPTANCE FAILED in %s\n%s\nLog: %s"):format(test, tostring(err), LOG), 0)
@@ -354,8 +364,8 @@ local function actionGate(name, instructions, action, optional)
   log("ACTION", name .. " started")
 
   local ok, err = pcall(action)
-  safeStop()
   if not ok then fail(name, err) end
+  safeStop()
 
   if optional then state.optionalPassed = state.optionalPassed + 1
   else state.runtimePassed = state.runtimePassed + 1 end
@@ -557,8 +567,8 @@ local function runtimeDiag(name, fn)
   display("RUNTIME", name, "automatic client/audio diagnostic", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
-  safeStop()
   if not ok then fail(name, err) end
+  safeStop()
   state.runtimePassed = state.runtimePassed + 1
   log("PASS", name .. " = automatic diagnostic PASS")
   render()
