@@ -690,6 +690,8 @@ auto("A1/19 Frozen API surface", function()
 end)
 
 auto("A2/19 Discovery + declared limits", function()
+  -- Make reruns deterministic even if a previous acceptance was manually terminated while diagnostics were enabled.
+  speaker.hqDiagEnable(false)
   assert(speaker.getPeripheralType() == "speaker", "peripheral type changed")
   assert(speaker.getSpeakerCount() == speakerCount, "speaker count changed during startup")
   assert(speaker.speakSampleRate() == 48000, "RAW sample rate changed")
