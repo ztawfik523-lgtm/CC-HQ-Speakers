@@ -36,7 +36,7 @@ Finite playback intentionally keeps independent endpoint decoders/renderers. Pro
 
 ### KI-RELEASE-010 — integrated acceptance
 
-Before release, run malformed/extreme media, storage/range/worker bounds, repeated replacement/control stress, Sound Physics Remastered, and final checks on both NeoForge targets.
+Before release, run malformed/extreme media, storage/range/worker bounds, repeated replacement/control stress, Sound Physics Remastered, and the final target-scope checks using the single NeoForge 21.1.247-built artifact.
 
 ### KI-REPO-011 — release branch hygiene
 
