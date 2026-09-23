@@ -322,6 +322,7 @@ public final class HQDiagnostics {
         private double requestedMovement;
         private double actualMovement;
         private double maxPositionError;
+        private double lastPositionError;
 
         private long pcmInputBytes;
         private long pcmReadBytes;
@@ -423,9 +424,10 @@ public final class HQDiagnostics {
             actualMovement = Math.max(actualMovement, distance(
                 firstActualX, firstActualY, firstActualZ,
                 sample.actualX(), sample.actualY(), sample.actualZ()));
-            maxPositionError = Math.max(maxPositionError, distance(
+            lastPositionError = distance(
                 sample.requestedX(), sample.requestedY(), sample.requestedZ(),
-                sample.actualX(), sample.actualY(), sample.actualZ()));
+                sample.actualX(), sample.actualY(), sample.actualZ());
+            maxPositionError = Math.max(maxPositionError, lastPositionError);
 
             observeSoundPhysics(sample.directFilter(), sample.directGain(), sample.directGainHF(), true);
         }
@@ -483,6 +485,7 @@ public final class HQDiagnostics {
             out.put("requestedMovement", requestedMovement);
             out.put("actualMovement", actualMovement);
             out.put("maxPositionError", maxPositionError);
+            out.put("lastPositionError", lastPositionError);
 
             out.put("pcmInputBytes", pcmInputBytes);
             out.put("pcmReadBytes", pcmReadBytes);
