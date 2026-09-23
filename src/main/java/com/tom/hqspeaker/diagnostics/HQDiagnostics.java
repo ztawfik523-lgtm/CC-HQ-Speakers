@@ -578,11 +578,20 @@ public final class HQDiagnostics {
 
             double firstMin = Double.POSITIVE_INFINITY;
             double firstMax = Double.NEGATIVE_INFINITY;
+            double channelMin = Double.POSITIVE_INFINITY;
+            double channelMax = Double.NEGATIVE_INFINITY;
             long readMin = Long.MAX_VALUE;
             long readMax = Long.MIN_VALUE;
             int playingMembers = 0;
+            int channelMembers = 0;
             for (SourceMetrics member : members) {
                 Map<String, Object> row = member.snapshot(RESET_NANOS.get());
+                double channel = ((Number) row.get("firstChannelMs")).doubleValue();
+                if (channel >= 0.0) {
+                    channelMin = Math.min(channelMin, channel);
+                    channelMax = Math.max(channelMax, channel);
+                    channelMembers++;
+                }
                 double first = ((Number) row.get("firstPlayingMs")).doubleValue();
                 if (first >= 0.0) {
                     firstMin = Math.min(firstMin, first);
@@ -598,9 +607,11 @@ public final class HQDiagnostics {
             out.put("group", group);
             out.put("sourceCount", members.size());
             out.put("playingMembers", playingMembers);
+            out.put("channelMembers", channelMembers);
             out.put("batches", batches);
             out.put("completeBatches", completeBatches);
             out.put("mixedStateBatches", mixedStateBatches);
+            out.put("channelStartSkewMs", channelMembers >= 2 ? channelMax - channelMin : -1.0);
             out.put("startSkewMs", playingMembers >= 2 ? firstMax - firstMin : -1.0);
             out.put("maxSecondsOffsetSpreadMs", maxSecondsOffsetSpreadMs);
             out.put("maxAudibleOffsetSpreadMs", maxAudibleOffsetSpreadMs);
