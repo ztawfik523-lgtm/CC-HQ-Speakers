@@ -1,241 +1,125 @@
-# Runtime acceptance — frozen protocol v10
+# Runtime acceptance — protocol v10
 
-Prepared: 2026-09-21
-
-Run this only against the frozen v10 surface in `API-FREEZE-V10.md`.
+Updated: 2026-09-23
 
 ## Goal
 
-Prove the parts CI cannot: real Minecraft/SoundManager/OpenAL behavior, spatial synchronization, moving-source projection, recovery, backpressure timing, Sound Physics integration and realistic performance.
+Run one master acceptance against the actual release JAR. The mod's built-in diagnostics judge client/Minecraft/OpenAL behavior automatically; the person running the test only performs physical actions Minecraft cannot perform by itself.
 
-Do not redesign the API during this pass. A failure should first be treated as a bug against the frozen contract.
+Chosen runtime scope for this release pass: **singleplayer + Sable/Aeronautics + Sound Physics Remastered**. Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance scope.
 
-## Test build
+## Build matrix
 
-Use the candidate JAR produced from the current branch after the freeze/runtime-prep commits. Client and server must use the same JAR/protocol.
+- NeoForge 21.1.247: full target-scope pass.
+- NeoForge 21.1.248: compatibility confirmation after .247 is clean.
+- Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0.
 
-Target matrix:
+Protocol remains **v10 with 9 payloads**. Diagnostics use an in-process singleplayer bridge and do not add a network payload.
 
-| Target | Full pass |
-| --- | --- |
-| NeoForge 21.1.247 | required |
-| NeoForge 21.1.248 | required |
+## Built-in diagnostic surface
 
-Run the full deep pass on .247 first. On .248, rerun the automated scripts plus focused finite/radio/movement/SPR smoke unless .247 exposes a version-specific concern requiring broader repetition.
+The normal release JAR exposes:
 
-## Test assets/setup
+- `hqDiagEnable(boolean)`
+- `hqDiagReset()`
+- `hqDiagSnapshot()`
+- `hqDiagCapabilities()`
 
-Prepare:
+Diagnostics are dormant until explicitly enabled by the acceptance runner. They do not replace or change audio ownership/control semantics.
 
-- one valid MP3 at least 30 seconds long;
-- one supported common WAV;
-- one public direct MP3/ICY radio URL;
-- 1, then 2, 4 and ideally 8 speakers attached to the same ComputerCraft computer/peripheral network;
-- Sable/Aeronautics moving-sublevel setup;
-- VS2 moving-ship setup;
-- a client profile with Sound Physics Remastered for the SPR phase.
+While enabled, the client records the real HQ/CC:T audio channels: play/pause/stop state, channel creation/detach, queued/processed OpenAL buffers, source position, playback offset and output latency when supported, PCM input/delivery, RAW wakeups, finite decoder/recovery activity, sound-engine reloads, multispeaker start skew and Sound Physics direct-filter application.
 
-Keep `latest.log` for failures. For performance problems, capture a Spark profile rather than guessing.
+## Setup
 
-## Phase 0 — native and frozen-surface preflight
+Start with:
 
-Preferred complete run, with at least 2 attached speakers:
+- the current diagnostic-enabled release candidate JAR;
+- one ComputerCraft computer;
+- 2 attached normal CC:T speakers;
+- the supplied 40-second MP3 and WAV test assets;
+- Sable/Aeronautics available for the moving-source check;
+- Sound Physics Remastered 1.21.1-1.5.1 enabled;
+- a solid wall/room for the SPR occlusion comparison;
+- 6 extra speakers available so the final scale check can reach at least 8 total;
+- one direct public MP3/ICY URL if radio acceptance is being completed;
+- a way to keep the source chunk loaded for the optional dimension leave/rejoin check.
 
-```
-v10_phase0_acceptance <mp3> <wav>
-```
+Keep `latest.log` if anything fails. The runner itself writes `/v10-acceptance.log`.
 
-The combined runner first performs a fast mostly-silent mechanical preflight, then pauses at five audible checkpoints. Press ENTER to begin each audible check, then P=pass, R=replay, or F=fail. It writes `/v10-phase0.log`, records the human verdict for every audible gate, and displays a live dashboard on the first attached monitor when available. It requires both MP3 and WAV assets and at least 2 speakers.
-
-If it fails, isolate the subsystem with:
-
-```
-p0_cc_speaker_contract
-p0_finite_regression <mp3>
-v10_core_acceptance <mp3> <wav>
-v10_raw_acceptance
-```
-
-Pass criteria:
-
-- the combined runner prints `[PASS] v10 INTERACTIVE Phase 0` after all automated and human audible gates pass;
-- native `playNote/playSound/playAudio` are audibly correct;
-- no idle `speaker_audio_empty` spam;
-- no retired API reappears;
-- finite MP3/WAV controls work;
-- RAW rejection/retry event works;
-- `audioStopAt` leaves finite survivors running.
-
-If this phase fails, stop and fix before broader testing.
-
-## Phase 1 — finite multispeaker and command stress
-
-Run `v10_multispeaker_stress <mp3> 8` with 2 speakers, then 4, then 8+ where practical.
-
-Listen while it runs.
-
-Pass criteria:
-
-- starts are spatially synchronized;
-- no obvious phasing/drift caused by timeline mismatch;
-- shared pause/resume/seek/loop acts as one playback;
-- endpoint volume/mute affects only intended speakers;
-- `audioStopAt(2)` silences only endpoint 2;
-- repeated controls/replacements do not deadlock, crash or leave ghost playback;
-- final stop always reaches idle.
-
-For extra concurrency proof, run the stress script from one computer while a second computer attached to overlapping speakers issues ordinary `audioStop`, `speakMp3`, or native speaker commands. The final command should win without a hang or partial corrupt state.
-
-## Phase 2 — finite listener lifecycle and recovery
-
-Start a long finite MP3. In another terminal run:
+## Single master run
 
 ```
-v10_runtime_observer 180
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
 ```
 
-The observer writes `/v10-runtime-observer.log` and uses the first attached monitor as a live status/event dashboard when available.
+There are no separate user-facing phases. Smaller scripts are only isolation tools if the master run finds a bug.
 
-Perform:
+The runner first performs deterministic API/admission/control/bounds tests. It then enables built-in diagnostics and runs real-client checks for:
 
-1. begin outside 32 blocks, then enter;
-2. stay in range;
-3. leave beyond 32 blocks;
-4. re-enter;
-5. change dimension/disconnect/reconnect where practical;
-6. trigger client resource reload;
-7. reproduce renderer loss/starvation conditions if available.
+- native CC:T `playAudio` reaching a real client channel;
+- MP3 pause/resume;
+- WAV renderer continuity;
+- finite multispeaker synchronization;
+- endpoint-local `audioStopAt` client detach behavior;
+- continuous producer-fed RAW delivery;
+- loop-boundary renderer restart/synchronization;
+- leave-range/rejoin;
+- F3+T sound-engine reload recovery.
 
-Pass criteria:
+For physical checks the script tells the operator what to do, then decides PASS/FAIL itself.
 
-- entry joins current playback rather than restarting from zero;
-- staying in range does not restart repeatedly;
-- leaving cleans local playback;
-- re-entry resumes at current canonical time;
-- reload/recovery rebuilds rather than permanently dying;
-- terminal/stop/replacement cleanup is clean.
+Target-scope environment/scale checks are:
 
-## Phase 3 — moving speakers
+1. dimension leave/rejoin while the source stays loaded;
+2. Sable translation/rotation source tracking;
+3. Sound Physics open-air vs behind-wall processing;
+4. grouped MP3/ICY radio;
+5. strict radio membership snapshot/rerun;
+6. 8+ speaker finite + RAW stress.
 
-Test each of finite, RAW and MP3 radio on:
+Dedicated-server reconnect and VS2 are not missing gates for this chosen scope.
 
-1. static speaker baseline;
-2. Sable/Aeronautics moving sublevel;
-3. VS2 moving ship.
+## What the diagnostics prove
 
-Use `v10_runtime_observer` while moving.
+A successful client diagnostic is not based only on server state. It requires evidence from the actual Minecraft/OpenAL source. Depending on the test this includes:
 
-Pass criteria:
+- the expected number of client sources actually existed;
+- each source reached OpenAL PLAYING;
+- group start skew stayed within the runner threshold;
+- endpoints continued consuming comparable PCM;
+- RAW delivered all admitted PCM through the client stream;
+- endpoint-local stop detached only the selected client channel;
+- loop/recovery created the expected new renderer epoch without decoder failure;
+- F3+T was observed as a real sound-engine reload and playback rejoined;
+- Sable movement changed both the HQ requested source position and the live OpenAL source position;
+- SPR was detected and attached its direct filter to HQ sources, with the prepared wall producing a measurable occlusion change;
+- late radio speakers did not receive a source until the group command was rerun.
 
-- audio follows the moving physical speaker;
-- attenuation/panning follow world position;
-- no teleport to plot-space/static block coordinates;
-- no continuous server position-packet requirement;
-- stop/replacement still targets the right source while moving.
+The runner logs the measured values rather than relying on a human judgement such as "sounds synchronized".
 
-The source resolver is Sable -> VS2 -> static for every HQ positional path; runtime should match that contract.
+## Human actions still required
 
-## Phase 4 — RAW
+The test process cannot move the player or contraption or press client key combinations. The operator may therefore be asked to:
 
-Run `v10_raw_acceptance` first, then listen to a longer producer loop if desired.
+- walk more than 32 blocks away and return;
+- press F3+T and wait for reload;
+- change dimension and return;
+- move/rotate the Sable contraption;
+- move behind the prepared wall;
+- connect an extra speaker;
+- connect enough speakers to reach 8 total.
 
-Pass criteria:
+Press ENTER after completing the requested action. The operator does **not** choose PASS/FAIL.
 
-- signed-16 PCM is audibly correct;
-- repeated chunks are continuous enough for the chosen producer cadence;
-- capacity rejection returns false;
-- only a producer which observed rejection receives `hqspeaker_audio_empty`;
-- retry succeeds after the event;
-- All starts together without waiting for invisible/global members;
-- At targets the selected endpoint;
-- drain/grace releases HQ ownership.
+## Failure evidence
 
-## Phase 5 — MP3/ICY radio
+On failure provide:
 
-Run:
-
-```
-v10_radio_acceptance <radio-url>
-```
-
-Then manually repeat with 4/8 speakers where practical.
-
-Strict-membership test:
-
-1. start `speakStreamAll` with the initial group;
-2. add/attach a new speaker or move into a client-local situation that did not receive that start;
-3. verify it does not join automatically;
-4. rerun `speakStreamAll`;
-5. verify the fresh snapshot now includes it.
-
-Pass criteria:
-
-- direct/At/All are audible;
-- grouped members release together after prebuffer;
-- no growing drift during a multi-minute listen;
-- late/new members remain out until rerun;
-- `audioStopAt` removes only one radio endpoint;
-- `audioStopAll` stops the group;
-- ICY metadata/event updates when the station provides metadata;
-- bad URL, EOF and network loss do not crash/hang the client;
-- stopping a blocked/slow startup is responsive.
-
-Remember: `isStreaming()` is server-side request/ownership state. Do not fail a test merely because it stays true after a client-local remote failure until server stop/replacement.
-
-## Phase 6 — malformed media and bounds
-
-Exercise:
-
-- wrong bytes passed to `speakMp3` / `speakWav`;
-- truncated MP3/WAV;
-- extreme but valid duration/file size within policy;
-- repeated prepare/play/release;
-- configured per-asset and total-store limits;
-- repeated range/seek activity;
-- server stop/restart after active media.
-
-Pass criteria:
-
-- invalid media rejects cleanly;
-- no partial destructive replacement on failed admission;
-- memory/disk/network workers remain bounded;
-- shutdown does not strand the media root/store.
-
-## Phase 7 — Sound Physics Remastered
-
-Enable SPR and repeat:
-
-- native sound;
-- one finite source;
-- 4/8 finite sources;
-- RAW;
-- grouped radio;
-- moving source if compatible with the setup.
-
-Pass criteria:
-
-- HQ sounds are processed through the normal Minecraft sound pipeline;
-- spatial/acoustic effect is present as expected;
-- no duplicate/reprocessed sound;
-- performance is acceptable.
-
-If performance is questionable, capture Spark + client observations before changing architecture.
-
-## Phase 8 — NeoForge 21.1.248 confirmation
-
-Repeat Phase 0, finite multispeaker smoke, radio smoke, movement smoke and SPR smoke on 21.1.248.
-
-## Evidence to record
-
-Use `RUNTIME-RESULTS-V10.md`. For every failure include:
-
+- `/v10-acceptance.log`;
+- Minecraft `latest.log`;
 - exact NeoForge version;
-- script/phase;
-- speaker count;
-- source type (finite/RAW/radio/native);
-- whether Sable/VS2/SPR was enabled;
-- observed vs expected behavior;
-- relevant `latest.log` excerpt;
-- Spark profile if performance-related.
+- anything unusual that happened while performing the requested physical action.
+
+The diagnostic log should already contain source counts, channel state, start skew, PCM delivery, renderer/recovery counters and relevant compatibility measurements.
 
 Do not mark runtime acceptance complete from CI alone.
