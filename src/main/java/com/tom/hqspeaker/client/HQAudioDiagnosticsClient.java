@@ -18,6 +18,7 @@ import org.lwjgl.openal.EXTEfx;
 import org.lwjgl.openal.SOFTSourceLatency;
 
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -100,7 +101,8 @@ public final class HQAudioDiagnosticsClient {
             renderer
         );
         HQDiagnostics.channelStarted(identity, directFilter, directGain, directGainHF);
-        BINDINGS.put(identity.source(), new Binding(identity, sound, sourceId, executor));
+        BINDINGS.put(identity.source(),
+            new Binding(identity, sound, sourceId, executor, HQDiagnostics.epoch()));
     }
 
     public static void detach(UUID source) {
@@ -120,8 +122,14 @@ public final class HQAudioDiagnosticsClient {
 
         ArrayList<Request> requests = new ArrayList<>();
         SoundEngineExecutor executor = null;
-        for (Binding binding : BINDINGS.values()) {
+        long epoch = HQDiagnostics.epoch();
+        for (Map.Entry<UUID, Binding> entry : BINDINGS.entrySet()) {
+            Binding binding = entry.getValue();
             if (binding == null) continue;
+            if (binding.epoch() != epoch) {
+                BINDINGS.remove(entry.getKey(), binding);
+                continue;
+            }
             if (executor == null) executor = binding.executor();
             if (binding.executor() != executor) continue;
             SoundInstance sound = binding.sound();
@@ -237,7 +245,8 @@ public final class HQAudioDiagnosticsClient {
         HQDiagnostics.SourceIdentity identity,
         SoundInstance sound,
         int sourceId,
-        SoundEngineExecutor executor
+        SoundEngineExecutor executor,
+        long epoch
     ) {}
 
     private record Request(Binding binding, float x, float y, float z) {}
