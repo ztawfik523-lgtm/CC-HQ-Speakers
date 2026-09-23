@@ -45,8 +45,16 @@ hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
 
 Prepared media is stored server-side as immutable encoded assets. Defaults are 512 MiB per asset and 2048 MiB total; server config can change those limits.
 
+## Built-in runtime diagnostics
+
+The normal release JAR now carries a dormant diagnostic subsystem used by the v10 acceptance runner. It is off during ordinary use and is enabled explicitly by the test through `hqDiagEnable(true)`.
+
+While enabled it observes the actual client audio channels and records OpenAL play/pause/stop state, queued/processed buffers, source position, playback offset/latency when supported, decoded/RAW PCM delivery, renderer restarts/recovery, multispeaker start skew, sound-engine reloads, Sable source movement and Sound Physics direct-filter application. In singleplayer the integrated server and client share this diagnostic state in-process, so protocol v10 remains at exactly 9 payloads.
+
+Diagnostic Lua surface: `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDiagCapabilities`. These methods are test instrumentation and do not change normal playback ownership or command ordering.
+
 ## Evidence boundary
 
-Green CI proves source/tests/package structure, not Minecraft audibility, OpenAL/SoundManager behavior, moving-ship behavior or real multispeaker synchronization. The next phase is runtime acceptance against this frozen v10 surface.
+Green CI proves build/tests/package structure on NeoForge 21.1.247 and 21.1.248. The built-in diagnostic runner adds real-client/OpenAL evidence, but runtime acceptance still requires launching Minecraft and performing physical actions which cannot be simulated in CI, such as moving a Sable contraption, leaving listener range and pressing F3+T.
 
 See `docs/API-FREEZE-V10.md`, `docs/RUNTIME-ACCEPTANCE-V10.md`, then `docs/HANDOFF-2026-09-22-RUNTIME.md`.
