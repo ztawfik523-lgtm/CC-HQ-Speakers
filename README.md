@@ -2,7 +2,7 @@
 
 CC:HQ Speakers upgrades the normal CC:Tweaked `computercraft:speaker` with higher-quality programmable audio while preserving CC:T's native speaker behavior.
 
-Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.247 baseline and 21.1.248 compatibility.
+Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The release is built once against 21.1.247; the mod metadata accepts the 21.1.x line (`[21.1,21.2)`).
 
 ## Frozen v10 release surface
 
@@ -55,6 +55,6 @@ Diagnostic Lua surface: `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDiag
 
 ## Evidence boundary
 
-Green CI proves build/tests/package structure on NeoForge 21.1.247 and 21.1.248. The built-in diagnostic runner adds real-client/OpenAL evidence, but runtime acceptance still requires launching Minecraft and performing physical actions which cannot be simulated in CI, such as moving a Sable contraption, leaving listener range and pressing F3+T.
+Current CI builds/tests/packages only against NeoForge 21.1.247. That single artifact is the release artifact for the supported NeoForge 21.1.x metadata range; older dual-build CI remains historical evidence, not a continuing build requirement. The built-in diagnostic runner adds real-client/OpenAL evidence, but runtime acceptance still requires launching Minecraft and performing physical actions which cannot be simulated in CI, such as moving a Sable contraption, leaving listener range and pressing F3+T.
 
 See `docs/API-FREEZE-V10.md`, `docs/RUNTIME-ACCEPTANCE-V10.md`, then `docs/HANDOFF-2026-09-22-RUNTIME.md`.
