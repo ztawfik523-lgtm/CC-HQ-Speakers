@@ -1072,17 +1072,33 @@ runtimeDiag("R4/9 Multispeaker finite synchronization", function()
   assertFiniteGroup(snap, expected, "finite group sync", true, true)
 end)
 
-runtimeDiag("R5/9 Endpoint-local stop reaches client", function()
-  diagReset("endpoint-local stop")
+runtimeDiag("R5/9 Endpoint-local controls reach client", function()
+  diagReset("endpoint-local controls")
   local expected = speaker.getSpeakerCount()
   assert(speaker.speakMp3All(mp3, 0.60), "group MP3 rejected")
   verifySharedPlaying()
   waitTimer(4.0, "establishing group playback")
-  local before = diagSnapshot("endpoint stop before")
-  assertFiniteGroup(before, expected, "endpoint stop before", true, true)
+  local before = diagSnapshot("endpoint controls before")
+  assertFiniteGroup(before, expected, "endpoint controls before", true, true)
 
   local targetBefore = assert(sourceForEndpoint(before, 2, "finite"), "endpoint 2 diagnostic source missing")
   local survivorBefore = assert(sourceForEndpoint(before, 1, "finite"), "endpoint 1 diagnostic source missing")
+
+  -- Endpoint volume must reach the actual OpenAL channel, not only the server status table.
+  local baseGain = survivorBefore.sourceGain or 0
+  assert(baseGain > 0.0001,
+    "endpoint 1 OpenAL gain is zero; make sure Minecraft Master and Blocks volumes are not muted")
+  assert(speaker.audioSetVolumeAt(1, 0.20), "endpoint 1 volume change rejected")
+  waitTimer(0.75, "measuring endpoint 1 OpenAL gain")
+  local quieter = diagSnapshot("endpoint volume lowered")
+  local quieterSource = assert(sourceById(quieter, survivorBefore.source), "endpoint 1 source missing after volume change")
+  assert((quieterSource.sourceGain or baseGain) < baseGain * 0.60,
+    ("endpoint 1 OpenAL gain did not fall enough: %.4f -> %.4f"):format(
+      baseGain, quieterSource.sourceGain or -1))
+  assert(speaker.audioSetVolumeAt(1, 0.60), "endpoint 1 volume restore rejected")
+  waitTimer(0.50, "restoring endpoint 1 gain")
+
+  -- audioStopAt must still be endpoint-local on the real client renderer.
   speaker.audioStopAt(2)
   waitAt(2, "idle", 5, "endpoint 2")
   waitTimer(3.0, "checking endpoint-local client stop")
@@ -1096,6 +1112,28 @@ runtimeDiag("R5/9 Endpoint-local stop reaches client", function()
     "endpoint 1 did not continue rendering after endpoint 2 stopped")
   local serverSurvivor = speaker.audioStatusAt(1)
   assert(serverSurvivor.state == "playing", "endpoint 1 server playback did not survive audioStopAt(2)")
+
+  -- Muting hibernates only the surviving endpoint's local renderer while shared server time keeps running.
+  local startsBeforeMute = survivor.channelStarts or 0
+  local detachesBeforeMute = survivor.channelDetaches or 0
+  local playbackId = serverSurvivor.playbackId
+  assert(speaker.audioSetMutedAt(1, true), "endpoint 1 mute rejected")
+  assert(speaker.audioStatusAt(1).muted == true, "endpoint 1 server mute state missing")
+  waitTimer(0.75, "checking endpoint 1 mute projection")
+  local mutedSnap = diagSnapshot("endpoint muted")
+  local mutedSource = assert(sourceById(mutedSnap, survivor.source), "endpoint 1 source history missing while muted")
+  assert((mutedSource.channelDetaches or 0) > detachesBeforeMute,
+    "endpoint 1 mute did not detach/hibernate its real client renderer")
+
+  assert(speaker.audioSetMutedAt(1, false), "endpoint 1 unmute rejected")
+  local resumed = waitAt(1, "playing", 15, "endpoint 1 after unmute")
+  assert(resumed.playbackId == playbackId, "unmute changed the shared playback authority")
+  waitTimer(1.5, "checking endpoint 1 unmute recovery")
+  local unmutedSnap = diagSnapshot("endpoint unmuted")
+  local unmutedSource = assert(sourceById(unmutedSnap, survivor.source), "endpoint 1 source history missing after unmute")
+  assert((unmutedSource.channelStarts or 0) > startsBeforeMute,
+    "endpoint 1 unmute did not recreate its real client renderer")
+  assert((unmutedSource.decoderFailures or 0) == 0, "endpoint 1 mute/unmute caused a decoder failure")
 end)
 
 runtimeDiag("R6/9 Continuous RAW client delivery", function()
