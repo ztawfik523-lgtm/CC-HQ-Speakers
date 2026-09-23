@@ -9,6 +9,7 @@ Source-freeze CI: `35655973164` — NeoForge 21.1.247 and 21.1.248 PASS.
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.  
 Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389` — PASS.  
 Protocol: **v10**, 9 payloads.
+Current build policy: build/test/package only against NeoForge 21.1.247. The resulting artifact declares `[21.1,21.2)` and is the single release artifact for the supported 21.1.x range; do not add a duplicate 21.1.248 CI job.
 
 ## Authority order
 
