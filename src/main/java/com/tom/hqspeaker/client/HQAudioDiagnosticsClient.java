@@ -4,6 +4,7 @@ import com.mojang.blaze3d.audio.Channel;
 import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import com.tom.hqspeaker.mixin.client.ChannelAccessor;
 import com.tom.hqspeaker.mixin.client.SoundEngineAccessor;
+import dan200.computercraft.client.sound.SpeakerSound;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundEngine;
@@ -35,9 +36,32 @@ public final class HQAudioDiagnosticsClient {
     private HQAudioDiagnosticsClient() {}
 
     public static void attach(SoundEngine engine, SoundInstance sound, Channel channel, HQDiagnosticSource diagnostic) {
-        if (!HQDiagnostics.enabled() || engine == null || sound == null || channel == null || diagnostic == null) return;
+        if (diagnostic == null) return;
+        attachIdentity(engine, sound, channel, diagnostic.hqspeaker$diagnosticIdentity());
+    }
 
-        HQDiagnostics.SourceIdentity identity = diagnostic.hqspeaker$diagnosticIdentity();
+    /** Observe CC:T's own DFPWM stream too, so preserving native playAudio is verified on the real client channel. */
+    public static void attachNativeComputerCraft(SoundEngine engine, SoundInstance sound, Channel channel) {
+        if (!(sound instanceof SpeakerSound ccSound) || ccSound.getStream() == null) return;
+        long key = Integer.toUnsignedLong(System.identityHashCode(sound));
+        UUID source = new UUID(0x4343544e41544956L, key); // "CCTNATIV" + per-instance identity.
+        HQDiagnostics.SourceIdentity identity = new HQDiagnostics.SourceIdentity(
+            source,
+            "native",
+            "",
+            (int) Math.floor(sound.getX()),
+            (int) Math.floor(sound.getY()),
+            (int) Math.floor(sound.getZ()),
+            48_000
+        );
+        attachIdentity(engine, sound, channel, identity);
+    }
+
+    private static void attachIdentity(
+        SoundEngine engine, SoundInstance sound, Channel channel, HQDiagnostics.SourceIdentity identity
+    ) {
+        if (!HQDiagnostics.enabled() || engine == null || sound == null || channel == null || identity == null) return;
+
         int sourceId = ((ChannelAccessor) (Object) channel).hqspeaker$getSource();
         SoundEngineExecutor executor = ((SoundEngineAccessor) (Object) engine).hqspeaker$getExecutor();
         if (sourceId <= 0 || executor == null) return;
@@ -121,7 +145,10 @@ public final class HQAudioDiagnosticsClient {
                 for (Request request : requests) {
                     Binding binding = request.binding();
                     int source = binding.sourceId();
-                    if (source <= 0 || !AL10.alIsSource(source)) continue;
+                    if (source <= 0 || !AL10.alIsSource(source)) {
+                        BINDINGS.remove(binding.identity().source(), binding);
+                        continue;
+                    }
 
                     int queued = AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED);
                     int processed = AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED);
