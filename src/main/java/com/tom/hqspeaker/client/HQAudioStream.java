@@ -230,7 +230,6 @@ public class HQAudioStream implements AudioStream {
         if (length <= 0) return;
         ByteBuffer buffer = ByteBuffer.allocateDirect(length).order(ByteOrder.LITTLE_ENDIAN);
         buffer.put(raw, 0, length).flip();
-        HQDiagnostics.pcmInput(diagnosticSource, length);
 
         boolean exhausted;
         synchronized (queue) {
@@ -243,6 +242,8 @@ public class HQAudioStream implements AudioStream {
             queue.add(buffer);
             hasRealData = true;
         }
+        // Count only PCM which was actually admitted to the client queue, not a packet dropped for queue overflow.
+        HQDiagnostics.pcmInput(diagnosticSource, length);
 
         // Minecraft stops requesting streaming buffers once read() reports that RAW is exhausted. If more producer
         // data arrives on the same source, wake that existing channel just like CC:T's DfpwmStream does.
