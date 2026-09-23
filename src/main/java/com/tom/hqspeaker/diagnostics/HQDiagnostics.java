@@ -26,13 +26,22 @@ public final class HQDiagnostics {
         int blockX,
         int blockY,
         int blockZ,
-        int sampleRate
+        int sampleRate,
+        double contentStartSeconds
     ) {
+        public SourceIdentity(
+            UUID source, String kind, String group,
+            int blockX, int blockY, int blockZ, int sampleRate
+        ) {
+            this(source, kind, group, blockX, blockY, blockZ, sampleRate, 0.0);
+        }
+
         public SourceIdentity {
             if (source == null) throw new NullPointerException("source");
             kind = kind == null || kind.isBlank() ? "unknown" : kind;
             group = group == null ? "" : group;
             if (sampleRate < 0) sampleRate = 0;
+            if (!Double.isFinite(contentStartSeconds) || contentStartSeconds < 0.0) contentStartSeconds = 0.0;
         }
     }
 
@@ -338,7 +347,7 @@ public final class HQDiagnostics {
             }
             // Preserve an existing useful group key across later RAW continuation packets with startTick=0.
             identity = new SourceIdentity(next.source(), next.kind(), group, next.blockX(), next.blockY(), next.blockZ(),
-                next.sampleRate() > 0 ? next.sampleRate() : identity.sampleRate());
+                next.sampleRate() > 0 ? next.sampleRate() : identity.sampleRate(), next.contentStartSeconds());
         }
 
         synchronized void channelStarted(int directFilter, float directGain, float directGainHF) {
@@ -439,6 +448,7 @@ public final class HQDiagnostics {
             out.put("blockY", identity.blockY());
             out.put("blockZ", identity.blockZ());
             out.put("sampleRate", identity.sampleRate());
+            out.put("contentStartSeconds", identity.contentStartSeconds());
 
             out.put("channelStarts", channelStarts);
             out.put("firstChannelMs", firstChannelNanos == 0L ? -1.0 : nanosToMillis(firstChannelNanos - resetNanos));
@@ -455,6 +465,7 @@ public final class HQDiagnostics {
             out.put("maxProcessedBuffers", maxProcessed);
             out.put("lastFixedSampleOffset", lastFixedSampleOffset);
             out.put("lastSecondsOffset", lastSecondsOffset);
+            out.put("lastLogicalSeconds", lastSecondsOffset < 0.0 ? -1.0 : identity.contentStartSeconds() + lastSecondsOffset);
             out.put("lastOutputLatencySeconds", lastOutputLatencySeconds);
 
             out.put("requestedMovement", requestedMovement);
@@ -498,6 +509,8 @@ public final class HQDiagnostics {
         private long mixedStateBatches;
         private double maxSecondsOffsetSpreadMs;
         private double maxAudibleOffsetSpreadMs;
+        private double maxLogicalOffsetSpreadMs;
+        private double maxLogicalAudibleOffsetSpreadMs;
 
         private SyncMetrics(String group) {
             this.group = group;
@@ -530,15 +543,29 @@ public final class HQDiagnostics {
             double maxOffset = Double.NEGATIVE_INFINITY;
             double minAudible = Double.POSITIVE_INFINITY;
             double maxAudible = Double.NEGATIVE_INFINITY;
+            double minLogical = Double.POSITIVE_INFINITY;
+            double maxLogical = Double.NEGATIVE_INFINITY;
+            double minLogicalAudible = Double.POSITIVE_INFINITY;
+            double maxLogicalAudible = Double.NEGATIVE_INFINITY;
             for (ChannelSample sample : playing) {
                 minOffset = Math.min(minOffset, sample.secondsOffset());
                 maxOffset = Math.max(maxOffset, sample.secondsOffset());
                 double audible = sample.secondsOffset() - sample.outputLatencySeconds();
                 minAudible = Math.min(minAudible, audible);
                 maxAudible = Math.max(maxAudible, audible);
+
+                double logical = sample.identity().contentStartSeconds() + sample.secondsOffset();
+                double logicalAudible = logical - sample.outputLatencySeconds();
+                minLogical = Math.min(minLogical, logical);
+                maxLogical = Math.max(maxLogical, logical);
+                minLogicalAudible = Math.min(minLogicalAudible, logicalAudible);
+                maxLogicalAudible = Math.max(maxLogicalAudible, logicalAudible);
             }
             maxSecondsOffsetSpreadMs = Math.max(maxSecondsOffsetSpreadMs, (maxOffset - minOffset) * 1000.0);
             maxAudibleOffsetSpreadMs = Math.max(maxAudibleOffsetSpreadMs, (maxAudible - minAudible) * 1000.0);
+            maxLogicalOffsetSpreadMs = Math.max(maxLogicalOffsetSpreadMs, (maxLogical - minLogical) * 1000.0);
+            maxLogicalAudibleOffsetSpreadMs = Math.max(
+                maxLogicalAudibleOffsetSpreadMs, (maxLogicalAudible - minLogicalAudible) * 1000.0);
         }
 
         synchronized Map<String, Object> snapshot(ConcurrentHashMap<UUID, SourceMetrics> sources) {
@@ -575,6 +602,8 @@ public final class HQDiagnostics {
             out.put("startSkewMs", playingMembers >= 2 ? firstMax - firstMin : -1.0);
             out.put("maxSecondsOffsetSpreadMs", maxSecondsOffsetSpreadMs);
             out.put("maxAudibleOffsetSpreadMs", maxAudibleOffsetSpreadMs);
+            out.put("maxLogicalOffsetSpreadMs", maxLogicalOffsetSpreadMs);
+            out.put("maxLogicalAudibleOffsetSpreadMs", maxLogicalAudibleOffsetSpreadMs);
             out.put("pcmReadBytesSpread", members.size() >= 2 ? Math.max(0L, readMax - readMin) : 0L);
             return out;
         }
