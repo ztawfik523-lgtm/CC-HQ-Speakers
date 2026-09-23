@@ -224,7 +224,7 @@ public final class HQAudioDiagnosticsClient {
                         directGainHF
                     ));
                 }
-                HQDiagnostics.recordBatch(samples);
+                HQDiagnostics.recordBatch(epoch, samples);
             } catch (RuntimeException ignored) {
                 // Measurement failure must never break the actual audio path.
             } finally {
