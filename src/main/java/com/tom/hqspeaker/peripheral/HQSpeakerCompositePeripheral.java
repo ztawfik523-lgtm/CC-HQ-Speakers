@@ -1,5 +1,6 @@
 package com.tom.hqspeaker.peripheral;
 
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import com.tom.hqspeaker.media.FiniteMediaFormat;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
@@ -64,6 +65,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> STREAM_START = Set.of("speakStream");
     private static final Set<String> STREAM_ALL = Set.of("speakStreamAll");
     private static final Set<String> STREAM_AT = Set.of("speakStreamAt");
+    private static final Set<String> DIAGNOSTICS = Set.of(
+        "hqDiagEnable", "hqDiagReset", "hqDiagSnapshot", "hqDiagCapabilities"
+    );
     private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
         "audioSetVolumeAll", "audioSetLoopingAll", "audioStopAll"
@@ -147,6 +151,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.addAll(FINITE_CONTROLS);
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
+        names.addAll(DIAGNOSTICS);
         names.add("speakMaxSamples");
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
@@ -471,6 +476,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         if (method < 0 || method >= dynamicNames.length) throw new LuaException("invalid peripheral method");
         String name = dynamicNames[method];
 
+        if (DIAGNOSTICS.contains(name)) return callDiagnostics(name, args);
+
         if (MODERN_BYTE_FINITE.contains(name)) {
             return startModernByteFinite(name, computer, context, args);
         }
@@ -515,6 +522,16 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         synchronized (commandLock) {
             return callMethodOrdered(computer, context, method, args);
         }
+    }
+
+    private MethodResult callDiagnostics(String name, IArguments args) throws LuaException {
+        return switch (name) {
+            case "hqDiagEnable" -> MethodResult.of(HQDiagnostics.setEnabled(args.getBoolean(0)));
+            case "hqDiagReset" -> MethodResult.of(HQDiagnostics.reset());
+            case "hqDiagSnapshot" -> MethodResult.of((Object) HQDiagnostics.snapshot());
+            case "hqDiagCapabilities" -> MethodResult.of((Object) HQDiagnostics.capabilities());
+            default -> throw new LuaException("No such diagnostics method " + name);
+        };
     }
 
     private MethodResult callStopCoordinated(String name, IComputerAccess computer, ILuaContext context)
