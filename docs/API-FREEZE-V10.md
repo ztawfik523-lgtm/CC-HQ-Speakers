@@ -3,7 +3,7 @@
 Frozen: 2026-09-21  
 Source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 CI: `35655973164`  
-Target: MC 1.21.1 / Java 21 / CC:T 1.120.0 / NeoForge 21.1.247 + 21.1.248
+Target: MC 1.21.1 / Java 21 / CC:T 1.120.0 / NeoForge 21.1.x; build baseline 21.1.247, metadata range `[21.1,21.2)`
 
 This is the release-candidate public contract. Runtime testing may justify bug fixes, but method additions/removals and semantic redesign are frozen unless a release-blocking defect requires them.
 
