@@ -50,7 +50,10 @@ public final class HQDiagnostics {
         float requestedZ,
         float actualX,
         float actualY,
-        float actualZ
+        float actualZ,
+        int directFilter,
+        float directGain,
+        float directGainHF
     ) {
         public ChannelSample {
             if (identity == null) throw new NullPointerException("identity");
@@ -313,6 +316,8 @@ public final class HQDiagnostics {
         private long eofCount;
 
         private long soundPhysicsChannelStarts;
+        private long soundPhysicsSamples;
+        private long playingToStoppedTransitions;
         private int lastDirectFilter;
         private float lastDirectGain = 1.0f;
         private float lastDirectGainHF = 1.0f;
@@ -339,10 +344,15 @@ public final class HQDiagnostics {
         synchronized void channelStarted(int directFilter, float directGain, float directGainHF) {
             channelStarts++;
             if (firstChannelNanos == 0L) firstChannelNanos = System.nanoTime();
+            if (directFilter != 0) soundPhysicsChannelStarts++;
+            observeSoundPhysics(directFilter, directGain, directGainHF, false);
+        }
+
+        private void observeSoundPhysics(int directFilter, float directGain, float directGainHF, boolean sample) {
             lastDirectFilter = directFilter;
             lastDirectGain = directGain;
             lastDirectGainHF = directGainHF;
-            if (directFilter != 0) soundPhysicsChannelStarts++;
+            if (directFilter != 0 && sample) soundPhysicsSamples++;
             if (Float.isFinite(directGain)) {
                 minDirectGain = Math.min(minDirectGain, directGain);
                 maxDirectGain = Math.max(maxDirectGain, directGain);
@@ -355,6 +365,9 @@ public final class HQDiagnostics {
 
         synchronized void sample(ChannelSample sample, long now) {
             samples++;
+            if ("playing".equals(lastState) && "stopped".equals(sample.state())) {
+                playingToStoppedTransitions++;
+            }
             lastState = sample.state();
             switch (sample.state()) {
                 case "playing" -> {
@@ -392,6 +405,8 @@ public final class HQDiagnostics {
             maxPositionError = Math.max(maxPositionError, distance(
                 sample.requestedX(), sample.requestedY(), sample.requestedZ(),
                 sample.actualX(), sample.actualY(), sample.actualZ()));
+
+            observeSoundPhysics(sample.directFilter(), sample.directGain(), sample.directGainHF(), true);
         }
 
         synchronized void pcmInput(long bytes) { pcmInputBytes += bytes; }
@@ -433,6 +448,7 @@ public final class HQDiagnostics {
             out.put("playingSamples", playingSamples);
             out.put("pausedSamples", pausedSamples);
             out.put("stoppedSamples", stoppedSamples);
+            out.put("playingToStoppedTransitions", playingToStoppedTransitions);
             out.put("lastState", lastState);
             out.put("minQueuedBuffers", minQueued == Integer.MAX_VALUE ? 0 : minQueued);
             out.put("maxQueuedBuffers", maxQueued);
@@ -456,8 +472,9 @@ public final class HQDiagnostics {
             out.put("decoderFailures", decoderFailures);
             out.put("eofCount", eofCount);
 
-            out.put("soundPhysicsProcessed", soundPhysicsChannelStarts > 0L);
+            out.put("soundPhysicsProcessed", soundPhysicsChannelStarts > 0L || soundPhysicsSamples > 0L);
             out.put("soundPhysicsChannelStarts", soundPhysicsChannelStarts);
+            out.put("soundPhysicsSamples", soundPhysicsSamples);
             out.put("directFilter", lastDirectFilter);
             out.put("directGain", lastDirectGain);
             out.put("directGainHF", lastDirectGainHF);
@@ -465,6 +482,11 @@ public final class HQDiagnostics {
             out.put("maxDirectGain", maxDirectGain);
             out.put("minDirectGainHF", minDirectGainHF == Float.POSITIVE_INFINITY ? 1.0 : minDirectGainHF);
             out.put("maxDirectGainHF", maxDirectGainHF);
+            double gainRange = minDirectGain == Float.POSITIVE_INFINITY ? 0.0 : Math.max(0.0, maxDirectGain - minDirectGain);
+            double gainHFRange = minDirectGainHF == Float.POSITIVE_INFINITY ? 0.0 : Math.max(0.0, maxDirectGainHF - minDirectGainHF);
+            out.put("directGainRange", gainRange);
+            out.put("directGainHFRange", gainHFRange);
+            out.put("soundPhysicsChanged", gainRange > 1.0e-4 || gainHFRange > 1.0e-4);
             return out;
         }
     }
