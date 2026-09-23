@@ -709,6 +709,14 @@ auto("A2/19 Discovery + declared limits", function()
   assert(type(streams) == "table" and streams.mp3 and streams.hls == nil and streams.ts == nil,
     "stream format set changed")
 
+  local basePos = speaker.getPos()
+  assert(type(basePos) == "table" and type(basePos.x) == "number"
+    and type(basePos.y) == "number" and type(basePos.z) == "number", "base speaker position missing")
+
+  local diagCaps = speaker.hqDiagCapabilities()
+  assert(type(diagCaps) == "table" and diagCaps.enabled == false,
+    "diagnostics should be dormant before runtime acceptance")
+
   local discovered = speaker.getSpeakers()
   assert(type(discovered) == "table" and #discovered == speakerCount, "speaker discovery count mismatch")
   for i = 1, speakerCount do
@@ -762,7 +770,7 @@ auto("A3/19 Staged media lifecycle", function()
   if not ok then error(err, 0) end
 end)
 
-auto("A4/19 Native CC:T methods + backpressure", function()
+auto("A4/19 Native CC:T single/all/indexed + backpressure", function()
   assert(speaker.playNote("harp", 0.0, 12), "native playNote rejected")
   waitTimer(0.10, "native note dispatch")
   assert(speaker.playSound("minecraft:entity.experience_orb.pickup", 0.0, 1.0), "native playSound rejected")
@@ -776,7 +784,23 @@ auto("A4/19 Native CC:T methods + backpressure", function()
   assert(speaker.playAudio(audio, 0.0) == false, "native second buffer should backpressure")
   waitEvent("speaker_audio_empty", 5, "waiting for native capacity")
   assert(speaker.playAudio(audio, 0.0), "native retry rejected")
+  waitTimer(0.20, "letting native retry drain")
   speaker.stop()
+
+  assert(speaker.playNoteAll("harp", 0.0, 12), "playNoteAll rejected")
+  waitTimer(0.10, "native all-note dispatch")
+  assert(speaker.playSoundAll("minecraft:entity.experience_orb.pickup", 0.0, 1.0), "playSoundAll rejected")
+  waitTimer(0.15, "native all-sound dispatch")
+  assert(speaker.playAudioAll(audio, 0.0), "playAudioAll rejected")
+  waitTimer(0.30, "native all-audio dispatch")
+
+  assert(speaker.playNoteAt(2, "harp", 0.0, 12), "playNoteAt(2) rejected")
+  waitTimer(0.10, "native indexed note")
+  assert(speaker.playSoundAt(2, "minecraft:entity.experience_orb.pickup", 0.0, 1.0),
+    "playSoundAt(2) rejected")
+  waitTimer(0.15, "native indexed sound")
+  assert(speaker.playAudioAt(2, audio, 0.0), "playAudioAt(2) rejected")
+  waitTimer(0.30, "native indexed audio")
 end)
 
 auto("A5/19 MP3 lifecycle + EOF", function()
@@ -809,11 +833,28 @@ auto("A6/19 Loop-wrap authority", function()
   speaker.audioStop()
 end)
 
-auto("A7/19 WAV lifecycle", function()
+auto("A7/19 WAV + indexed finite start paths", function()
   assert(speaker.speakWav(wav, 0.0), "WAV rejected")
   waitStatus(function() return speaker.audioStatus() end, "playing", 15, "WAV")
   speaker.audioStop()
   waitStatus(function() return speaker.audioStatus() end, "idle", 5, "WAV")
+
+  assert(speaker.speakWavAll(wav, 0.0), "speakWavAll rejected")
+  verifySharedPlaying()
+  speaker.audioStopAll()
+  for i = 1, speakerCount do waitAt(i, "idle", 5, "WAV-all endpoint " .. i) end
+
+  assert(speaker.speakWavAt(2, wav, 0.0), "speakWavAt(2) rejected")
+  waitAt(2, "playing", 15, "WAV-at endpoint 2")
+  assert(speaker.audioStatusAt(1).state == "idle", "speakWavAt(2) also started endpoint 1")
+  speaker.audioStopAt(2)
+  waitAt(2, "idle", 5, "WAV-at endpoint 2")
+
+  assert(speaker.speakMp3At(2, mp3, 0.0), "speakMp3At(2) rejected")
+  waitAt(2, "playing", 15, "MP3-at endpoint 2")
+  assert(speaker.audioStatusAt(1).state == "idle", "speakMp3At(2) also started endpoint 1")
+  speaker.audioStopAt(2)
+  waitAt(2, "idle", 5, "MP3-at endpoint 2")
 end)
 
 auto("A8/19 Malformed finite-media rejection", function()
@@ -896,9 +937,17 @@ auto("A13/19 Endpoint-local stop", function()
   speaker.audioStopAll()
 end)
 
-auto("A14/19 Endpoint gain + mute + clamp", function()
+auto("A14/19 Singular/all/indexed gain + mute + clamp", function()
   assert(speaker.speakMp3All(mp3, 0.0), "group start rejected")
   verifySharedPlaying()
+
+  assert(speaker.audioSetVolume(0.50), "singular finite volume set failed")
+  assert(math.abs((speaker.audioStatus().volume or -1) - 0.50) < 0.001,
+    "singular finite volume state mismatch")
+  assert(speaker.audioSetMuted(true), "singular finite mute failed")
+  assert(speaker.audioStatus().muted == true, "singular finite mute state missing")
+  assert(speaker.audioSetMuted(false), "singular finite unmute failed")
+
   assert(speaker.audioSetVolumeAt(1, 99.0), "endpoint high volume set failed")
   assert(math.abs((speaker.audioStatusAt(1).volume or -1) - 3.0) < 0.001, "endpoint volume did not clamp to 3")
   assert(speaker.audioSetVolumeAt(1, -5.0), "endpoint low volume set failed")
@@ -906,26 +955,54 @@ auto("A14/19 Endpoint gain + mute + clamp", function()
   assert(speaker.audioSetMutedAt(2, true), "endpoint mute failed")
   assert(speaker.audioStatusAt(2).muted == true, "endpoint mute state missing")
   assert(speaker.audioSetMutedAt(2, false), "endpoint unmute failed")
+
   assert(speaker.audioSetVolumeAll(0.30), "all volume failed")
+  assert(speaker.audioSetMutedAll(true), "all mute failed")
+  for i = 1, speakerCount do
+    assert(speaker.audioStatusAt(i).muted == true, "all mute missed endpoint " .. i)
+  end
+  assert(speaker.audioSetMutedAll(false), "all unmute failed")
+  for i = 1, speakerCount do
+    assert(speaker.audioStatusAt(i).muted == false, "all unmute missed endpoint " .. i)
+  end
   speaker.audioStopAll()
 end)
 
-auto("A15/19 Shared pause/resume/seek", function()
+auto("A15/19 Shared all/indexed pause/resume/seek/loop", function()
   assert(speaker.speakMp3All(mp3, 0.0), "group start rejected")
   local first = verifySharedPlaying()
+  local allStatus = speaker.audioStatusAll()
+  assert(allStatus.playbackId == first.playbackId, "audioStatusAll lost shared playback authority")
+
   assert(speaker.audioPauseAll(), "group pause rejected")
   for i = 1, speakerCount do waitAt(i, "paused", 5, "paused endpoint " .. i) end
   assert(speaker.audioResumeAll(), "group resume rejected")
   for i = 1, speakerCount do waitAt(i, "playing", 5, "resumed endpoint " .. i) end
+
+  assert(speaker.audioPauseAt(2), "audioPauseAt(2) rejected")
+  for i = 1, speakerCount do waitAt(i, "paused", 5, "indexed-pause endpoint " .. i) end
+  assert(speaker.audioResumeAt(2), "audioResumeAt(2) rejected")
+  for i = 1, speakerCount do waitAt(i, "playing", 5, "indexed-resume endpoint " .. i) end
+
   local target = math.min(2.0, math.max(0.25, (first.duration or 10) * 0.2))
   assert(speaker.audioSeekAll(target), "group seek rejected")
   waitTimer(0.15)
+  assert(speaker.audioSeekAt(2, target + 0.25), "audioSeekAt(2) rejected")
+  waitTimer(0.15)
+
+  assert(speaker.audioSetLoopingAt(2, true), "audioSetLoopingAt(2,true) rejected")
+  for i = 1, speakerCount do
+    assert(speaker.audioStatusAt(i).looping == true, "indexed loop enable missed endpoint " .. i)
+  end
+  assert(speaker.audioSetLoopingAt(2, false), "audioSetLoopingAt(2,false) rejected")
+
   local reference = speaker.audioStatusAt(1)
   for i = 2, speakerCount do
     local s = speaker.audioStatusAt(i)
-    assert(s.playbackId == reference.playbackId, "group seek changed playback authority at endpoint " .. i)
+    assert(s.playbackId == reference.playbackId, "indexed shared control changed playback authority at endpoint " .. i)
     assert(math.abs((s.position or 0) - (reference.position or 0)) < 0.20,
-      "group seek positions diverged at endpoint " .. i)
+      "indexed shared control positions diverged at endpoint " .. i)
+    assert(s.looping == false, "indexed loop disable missed endpoint " .. i)
   end
   speaker.audioStopAll()
 end)
@@ -984,6 +1061,11 @@ log("PASS", "ALL AUTOMATED CORE CHECKS PASSED")
 
 -- Built-in diagnostics are dormant during normal play. Enable them only for this acceptance run.
 local diagnosticEpoch = speaker.hqDiagEnable(true)
+local enabledCaps = speaker.hqDiagCapabilities()
+assert(type(enabledCaps) == "table" and enabledCaps.enabled == true,
+  "built-in diagnostics did not enable")
+assert(enabledCaps.transport == "in-process-singleplayer",
+  "unexpected diagnostic transport: " .. tostring(enabledCaps.transport))
 log("DIAG", "built-in diagnostics enabled epoch=" .. tostring(diagnosticEpoch))
 
 -- ============================================================================
@@ -1400,6 +1482,27 @@ if RADIO_URL then
     log("MEASURE", ("radio channelStart=%.2fms drift=%.2fms pcmSpread=%dB"):format(
       group.channelStartSkewMs or -1, group.maxAudibleOffsetSpreadMs or -1,
       group.pcmReadBytesSpread or -1))
+
+    safeStop()
+    diagReset("single radio")
+    assert(speaker.speakStream(RADIO_URL, 0.35), "single speakStream rejected valid radio URL")
+    waitStatus(function() return speaker.audioStatus() end, "playing", 25, "single radio")
+    waitTimer(4.0, "checking single radio client source")
+    local single = diagSnapshot("single radio")
+    local singleSources = diagSources(single, "stream")
+    assert(#singleSources == 1, "single speakStream did not create exactly one client source")
+    assertSourceHealthy(singleSources[1], "single radio", 5, true)
+
+    safeStop()
+    diagReset("indexed radio")
+    assert(speaker.speakStreamAt(2, RADIO_URL, 0.35), "speakStreamAt(2) rejected valid radio URL")
+    waitAt(2, "playing", 25, "indexed radio endpoint 2")
+    assert(speaker.audioStatusAt(1).state == "idle", "speakStreamAt(2) also started endpoint 1")
+    waitTimer(4.0, "checking indexed radio client source")
+    local indexed = diagSnapshot("indexed radio")
+    local indexedSource = sourceForEndpoint(indexed, 2, "stream")
+    assert(indexedSource, "speakStreamAt(2) client source missing")
+    assertSourceHealthy(indexedSource, "indexed radio", 5, true)
   end, true)
 
   actionGate("C5 Radio strict membership snapshot", {
