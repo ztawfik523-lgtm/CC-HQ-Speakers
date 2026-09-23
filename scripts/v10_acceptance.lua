@@ -397,7 +397,7 @@ local function verifySharedPlaying()
   local first = waitAt(1, "playing", 15, "group endpoint 1")
   local id = first.playbackId
   for i = 2, speaker.getSpeakerCount() do
-    local s = waitAt(i, "playing", 15, "group endpoint " .. i)    if id and s.playbackId then
+    local s = waitAt(i, "playing", 15, "group endpoint " .. i)\n    if id and s.playbackId then
       assert(s.playbackId == id, "playbackId mismatch at endpoint " .. i)
     end
   end
@@ -796,7 +796,7 @@ auto("A9/19 Argument and RAW bounds", function()
 end)
 
 auto("A10/19 RAW backpressure + retry", function()
-  local chunk = makeRawChunk(24000, 420, 22000)  local accepted, rejected = 0, false
+  local chunk = makeRawChunk(24000, 420, 22000)\n  local accepted, rejected = 0, false
   for _ = 1, 20 do
     if speaker.speakPCM(chunk, 0.0) then accepted = accepted + 1 else rejected = true break end
   end
