@@ -15,7 +15,11 @@ public final class HQSpeakerClientEvents {
 
     @SubscribeEvent
     public static void playStreaming(PlayStreamingSourceEvent event) {
-        if (!(event.getSound() instanceof HQSpeakerClientHandler.HQSpeakerSound sound)) return;
-        sound.hqStream().attachChannel(event.getEngine(), event.getChannel());
+        if (event.getSound() instanceof HQSpeakerClientHandler.HQSpeakerSound sound) {
+            sound.hqStream().attachChannel(event.getEngine(), event.getChannel());
+        }
+        if (event.getSound() instanceof HQDiagnosticSource diagnostic) {
+            HQAudioDiagnosticsClient.attach(event.getEngine(), event.getSound(), event.getChannel(), diagnostic);
+        }
     }
 }
