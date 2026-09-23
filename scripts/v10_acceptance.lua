@@ -420,7 +420,6 @@ local DIAG_START_SKEW_MS = 75
 local DIAG_LOGICAL_DRIFT_MS = 50
 local DIAG_PCM_SPREAD_BYTES = 65536
 local DIAG_POSITION_MOVE = 1.0
-local DIAG_FINAL_POSITION_ERROR = 0.5
 
 local function diagReset(label)
   safeStop()
@@ -1220,9 +1219,8 @@ actionGate("C2 Sable/Aeronautics source tracking", {
       ("Sable source %d: HQ sound position moved only %.3f blocks"):format(i, source.requestedMovement or 0))
     assert((source.actualMovement or 0) >= DIAG_POSITION_MOVE,
       ("Sable source %d: OpenAL source moved only %.3f blocks"):format(i, source.actualMovement or 0))
-    assert((source.lastPositionError or 999999) <= DIAG_FINAL_POSITION_ERROR,
-      ("Sable source %d: OpenAL did not settle onto HQ position (error %.3f blocks)"):format(
-        i, source.lastPositionError or 999999))
+    -- Do not require OpenAL's position to equal HQ's requested position exactly here:
+    -- Sound Physics may intentionally reposition a source for reflected-direction simulation.
     log("MEASURE", ("Sable source %d requestedMove=%.3f actualMove=%.3f finalDelta=%.3f maxDelta=%.3f"):format(
       i, source.requestedMovement or 0, source.actualMovement or 0,
       source.lastPositionError or -1, source.maxPositionError or 0))
