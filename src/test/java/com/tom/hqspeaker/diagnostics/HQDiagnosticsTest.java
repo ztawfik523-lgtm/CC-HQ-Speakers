@@ -72,6 +72,22 @@ class HQDiagnosticsTest {
 
 
     @Test
+    void staleAsyncBatchCannotRepopulateAfterReset() {
+        HQDiagnostics.setEnabled(true);
+
+        UUID source = UUID.fromString("00000000-0000-0000-0000-000000000030");
+        var identity = new HQDiagnostics.SourceIdentity(source, "finite", "finite:stale", 0, 64, 0, 48_000);
+        long staleEpoch = HQDiagnostics.epoch();
+
+        HQDiagnostics.reset();
+        HQDiagnostics.recordBatch(staleEpoch, List.of(
+            sample(identity, "playing", 0.100, 0, 64, 0, 0, 64, 0, 0, 1.0f, 1.0f)
+        ));
+
+        assertEquals(0, ((Number) HQDiagnostics.snapshot().get("sourceCount")).intValue());
+    }
+
+    @Test
     void explicitNewGroupReplacesOldGroupButBlankContinuationDoesNot() {
         HQDiagnostics.setEnabled(true);
 
