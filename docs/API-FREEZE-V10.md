@@ -79,6 +79,17 @@ HLS and MPEG-TS are not supported.
 
 Discovery/status reads do not intentionally supersede an in-flight radio admission.
 
+## Built-in diagnostic instrumentation
+
+The normal release JAR also carries four dormant test-instrumentation methods:
+
+- `hqDiagEnable(boolean)`
+- `hqDiagReset()`
+- `hqDiagSnapshot()`
+- `hqDiagCapabilities()`
+
+These were added after the original playback/API freeze specifically to replace subjective runtime listening checks with measurable client/OpenAL evidence. They do not add an audio feature, change playback ownership/control semantics, or alter the v10 network protocol. Diagnostics are off unless explicitly enabled by the runtime acceptance runner.
+
 ## Removed names
 
 Retired and must remain absent:
