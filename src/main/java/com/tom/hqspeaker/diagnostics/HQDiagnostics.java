@@ -175,6 +175,11 @@ public final class HQDiagnostics {
         if (metrics != null) metrics.pumpWake();
     }
 
+    public static void channelDetached(UUID source) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null) metrics.channelDetached();
+    }
+
     public static void decoderRestart(UUID source) {
         SourceMetrics metrics = active(source);
         if (metrics != null) metrics.decoderRestart();
@@ -301,6 +306,7 @@ public final class HQDiagnostics {
         private long silenceReadBytes;
         private long emptyReads;
         private long pumpWakes;
+        private long channelDetaches;
         private long decoderRestarts;
         private long recoveryRejoins;
         private long decoderFailures;
@@ -397,6 +403,7 @@ public final class HQDiagnostics {
         }
 
         synchronized void pumpWake() { pumpWakes++; }
+        synchronized void channelDetached() { channelDetaches++; }
         synchronized void decoderRestart() { decoderRestarts++; }
         synchronized void recoveryRejoin() { recoveryRejoins++; }
         synchronized void decoderFailure() { decoderFailures++; }
@@ -443,6 +450,7 @@ public final class HQDiagnostics {
             out.put("silenceReadBytes", silenceReadBytes);
             out.put("emptyReads", emptyReads);
             out.put("pumpWakes", pumpWakes);
+            out.put("channelDetaches", channelDetaches);
             out.put("decoderRestarts", decoderRestarts);
             out.put("recoveryRejoins", recoveryRejoins);
             out.put("decoderFailures", decoderFailures);
