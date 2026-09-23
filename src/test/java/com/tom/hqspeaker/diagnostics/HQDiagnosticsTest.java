@@ -65,6 +65,8 @@ class HQDiagnosticsTest {
         assertEquals(2, ((Number) group.get("sourceCount")).intValue());
         assertEquals(3L, ((Number) group.get("completeBatches")).longValue());
         assertEquals(1L, ((Number) group.get("mixedStateBatches")).longValue());
+        assertEquals(2, ((Number) group.get("channelMembers")).intValue());
+        assertTrue(((Number) group.get("channelStartSkewMs")).doubleValue() >= 0.0);
         assertTrue(((Number) group.get("maxSecondsOffsetSpreadMs")).doubleValue() >= 4.0);
     }
 
