@@ -1,61 +1,61 @@
 # Runtime results — protocol v10
 
-Fill this during the frozen runtime pass.
+Fill this during the final diagnostic master run.
 
 ## Build
 
 - commit/JAR:
-- NeoForge:
+- built against NeoForge: **21.1.247**
+- supported NeoForge metadata range: **[21.1,21.2)**
 - CC:Tweaked:
 - Sable/Aeronautics:
-- VS2:
 - Sound Physics Remastered:
+- direct MP3/ICY radio URL used: yes / no
 
-## Automated scripts
+The release is built once against NeoForge 21.1.247. Do not create a separate 21.1.248 artifact.
 
-| Test | 21.1.247 | 21.1.248 | Notes |
-| --- | --- | --- | --- |
-| v10_phase0_acceptance |  |  | Preferred combined runner; attach `/v10-phase0.log` on failure |
-| p0_cc_speaker_contract |  |  |  |
-| p0_finite_regression |  |  |  |
-| v10_core_acceptance |  |  |  |
-| v10_raw_acceptance |  |  |  |
-| v10_multispeaker_stress 2 speakers |  |  |  |
-| v10_multispeaker_stress 4 speakers |  |  |  |
-| v10_multispeaker_stress 8+ speakers |  |  |  |
-| v10_radio_acceptance |  |  |  |
+## Master acceptance
 
-## Manual gates
+Run:
 
-| Gate | Result | Notes |
+```
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+```
+
+| Result | Status | Notes |
 | --- | --- | --- |
-| native audibility |  |  |
-| finite spatial sync |  |  |
-| listener enter/leave/rejoin |  |  |
-| resource reload/recovery |  |  |
-| Sable movement finite |  |  |
-| Sable movement RAW |  |  |
-| Sable movement radio |  |  |
-| VS2 movement finite |  |  |
-| VS2 movement RAW |  |  |
-| VS2 movement radio |  |  |
-| RAW backpressure/audibility |  |  |
-| radio strict late membership |  |  |
-| radio long-run drift |  |  |
-| ICY metadata |  |  |
-| malformed/extreme media |  |  |
-| storage/range/worker bounds |  |  |
-| SPR native/finite/RAW/radio |  |  |
-| realistic 2/4/8+ performance |  |  |
+| deterministic A1-A19 |  | API, staged media, native CC:T, finite/RAW bounds, control stress, security |
+| real-client R1-R7 |  | native client channel, MP3/WAV continuity, sync, endpoint stop, RAW, loop |
+| R8 range leave/rejoin |  | physical action; diagnostics judge result |
+| R9 F3+T recovery |  | physical action; diagnostics judge result |
+| C1 dimension leave/rejoin |  | target check; may be skipped only if source cannot remain loaded |
+| C2 Sable/Aeronautics tracking |  | target check |
+| C3 Sound Physics Remastered |  | target check |
+| C4 grouped MP3/ICY radio |  | target check; requires radio URL |
+| C5 strict radio membership |  | target check; requires extra speaker + radio URL |
+| C6 8+ speaker scale stress |  | target check |
+
+A **TARGET FULL PASS** requires every required runtime diagnostic and every selected target-scope check to pass. A **CORE PASS / TARGET INCOMPLETE** means the automatic core passed but one or more target checks were skipped.
+
+## Evidence
+
+Keep:
+
+- `/v10-acceptance.log`
+- Minecraft `latest.log` if anything fails
+- the exact JAR hash
+- any unusual event while performing a requested physical action
+
+The operator performs requested actions but does not assign PASS/FAIL; the built-in diagnostics do that.
 
 ## Failures
 
-For each failure record exact reproduction steps, expected/observed behavior, latest.log excerpt, and performance profile when relevant.
+For each failure record the exact test name, diagnostic message, relevant measured values, reproduction steps and `latest.log` excerpt.
 
 ## Release verdict
 
-Do not fill until every required gate has evidence.
+Do not fill until the master runner has completed.
 
-- 21.1.247:
-- 21.1.248:
+- master result:
+- target-scope acceptance:
 - release blocker(s):
