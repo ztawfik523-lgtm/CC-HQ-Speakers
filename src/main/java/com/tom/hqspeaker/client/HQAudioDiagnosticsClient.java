@@ -41,19 +41,20 @@ public final class HQAudioDiagnosticsClient {
         attachIdentity(engine, sound, channel, diagnostic.hqspeaker$diagnosticIdentity());
     }
 
-    /** Observe CC:T's own DFPWM stream too, so preserving native playAudio is verified on the real client channel. */
+    /** Observe CC:T's own speaker channels, including static playNote/playSound and DFPWM playAudio. */
     public static void attachNativeComputerCraft(SoundEngine engine, SoundInstance sound, Channel channel) {
-        if (!(sound instanceof SpeakerSound ccSound) || ccSound.getStream() == null) return;
+        if (!(sound instanceof SpeakerSound ccSound)) return;
+        boolean streaming = ccSound.getStream() != null;
         long key = Integer.toUnsignedLong(System.identityHashCode(sound));
         UUID source = new UUID(0x4343544e41544956L, key); // "CCTNATIV" + per-instance identity.
         HQDiagnostics.SourceIdentity identity = new HQDiagnostics.SourceIdentity(
             source,
-            "native",
+            streaming ? "native" : "native-static",
             "",
             (int) Math.floor(sound.getX()),
             (int) Math.floor(sound.getY()),
             (int) Math.floor(sound.getZ()),
-            48_000
+            streaming ? 48_000 : 0
         );
         attachIdentity(engine, sound, channel, identity);
     }
