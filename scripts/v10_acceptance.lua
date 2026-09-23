@@ -456,6 +456,10 @@ local function diagLargestGroup(snapshot, prefix)
   return best
 end
 
+local function speakerPosKey(p)
+  return ("%s:%s:%s"):format(tostring(p.x), tostring(p.y), tostring(p.z))
+end
+
 local function sourceForEndpoint(snapshot, index, kind)
   local p = speaker.getSpeakerPos(index)
   for _, source in ipairs(snapshot.sources or {}) do
@@ -1368,6 +1372,11 @@ if RADIO_URL then
   }, function()
     diagReset("radio membership initial")
     local initial = speaker.getSpeakerCount()
+    local initialPositions = {}
+    for _, entry in ipairs(speaker.getSpeakers()) do
+      initialPositions[speakerPosKey(entry)] = true
+    end
+
     assert(speaker.speakStreamAll(RADIO_URL, 0.40), "strict-membership radio start rejected")
     for i = 1, initial do waitAt(i, "playing", 25, "radio endpoint " .. i) end
     waitTimer(3.0, "sealing radio membership")
@@ -1381,13 +1390,24 @@ if RADIO_URL then
     waitEnter()
     local afterCount = speaker.getSpeakerCount()
     assert(afterCount > initial, "speaker count did not increase")
+
+    local newIndices = {}
+    for _, entry in ipairs(speaker.getSpeakers()) do
+      if not initialPositions[speakerPosKey(entry)] then
+        newIndices[#newIndices + 1] = entry.index
+      end
+    end
+    assert(#newIndices == afterCount - initial,
+      "could not identify the newly attached speaker(s) by physical position")
+
     waitTimer(3.0, "checking sealed membership")
     local late = diagSnapshot("radio after late speaker")
     local lateGroup = assert(diagLargestGroup(late, "stream:"), "radio group disappeared after late attach")
     assert((lateGroup.sourceCount or 0) == initial,
       "late speaker received a client radio source before the group command was rerun")
-    for i = initial + 1, afterCount do
-      assert(speaker.audioStatusAt(i).state == "idle", "late speaker joined sealed server radio group")
+    for _, index in ipairs(newIndices) do
+      assert(speaker.audioStatusAt(index).state == "idle",
+        "newly attached speaker joined the sealed server radio group")
     end
 
     safeStop()
