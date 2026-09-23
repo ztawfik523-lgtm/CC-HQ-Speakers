@@ -55,6 +55,7 @@ class HQDiagnosticsTest {
         assertEquals(1L, ((Number) first.get("playingToStoppedTransitions")).longValue());
         assertTrue(((Number) first.get("requestedMovement")).doubleValue() >= 5.0);
         assertEquals(0.0, ((Number) first.get("lastPositionError")).doubleValue(), 1.0e-6);
+        assertEquals(0.75, ((Number) first.get("sourceGain")).doubleValue(), 1.0e-6);
         assertTrue((Boolean) first.get("soundPhysicsProcessed"));
         assertTrue((Boolean) first.get("soundPhysicsChanged"));
         assertTrue(((Number) first.get("directGainHFRange")).doubleValue() > 0.5);
@@ -167,6 +168,7 @@ class HQDiagnosticsTest {
             actualX,
             actualY,
             actualZ,
+            0.75f,
             directFilter,
             directGain,
             directGainHF
