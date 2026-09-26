@@ -6,10 +6,10 @@ Fill this during the final diagnostic master run.
 
 ## Build
 
-- current code/test checkpoint: `1c46b6b4804b342ca02416171afd9bfc1c55d940`
-- CI: `36237053212` — PASS
-- GitHub artifact: `10905015122`
-- JAR SHA-256: `c404ba80fae0910b5d3c9de4da25c5ea70718815a1abc863a6766c489f31562a`
+- current code/test checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`
+- CI: `36238699768` — PASS
+- GitHub artifact: `10905071824`
+- JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`
 - previous locked pre-runtime checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
 - built against NeoForge: **21.1.247**
 - supported NeoForge metadata range: **[21.1,21.2)**
@@ -31,16 +31,16 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
 
 | Result | Status | Notes |
 | --- | --- | --- |
-| A1-A19 deterministic | PASS (attempts 2-3) | complete deterministic core passed on exactly 2 speakers |
-| R1 native client channels | PENDING RERUN | attempt 3 proved the Sable position fix and real native static/streaming channels; runner attribution + OpenAL-safe diagnostics fixed afterward |
-| R2 MP3 pause/resume renderer | PENDING | client/OpenAL |
-| R3 WAV renderer continuity | PENDING | client/OpenAL |
-| R4 finite multispeaker sync | PENDING | channel-start skew + canonical drift |
-| R5 endpoint-local client controls | PENDING | stop/gain/mute isolation |
-| R6 continuous RAW | PENDING | confirms producer-fed continuation fix in-game |
-| R7 loop-boundary recovery/sync | PENDING | renderer recovery |
-| R8 range leave/rejoin | PENDING | physical action; diagnostics judge |
-| R9 F3+T recovery | PENDING | physical action; diagnostics judge |
+| A1-A19 deterministic | PASS (attempts 2-4) | complete deterministic core passed on exactly 2 speakers |
+| R1 native client channels | PASS (attempt 4) | real native static + DFPWM client channels observed |
+| R2 MP3 pause/resume renderer | PASS (attempt 4) | real OpenAL pause/resume + PCM continuity |
+| R3 WAV renderer continuity | PASS (attempt 4) | real WAV renderer stayed healthy |
+| R4 finite multispeaker sync | PASS (attempt 4) | 2 real client sources synchronized within limits |
+| R5 endpoint-local client controls | PASS (attempt 4) | stop/gain/mute isolation reached client |
+| R6 continuous RAW | PASS (attempt 4) | producer-fed continuation fix runtime-confirmed |
+| R7 loop-boundary recovery/sync | PASS (attempt 4) | authoritative loop recovery + sync passed |
+| R8 range leave/rejoin | PASS (attempt 4) | real leave/rejoin recovery passed |
+| R9 F3+T recovery | PENDING RERUN | attempt 4 exposed harness timing ambiguity + expected reload cancellation misclassified as decoder failure; both fixed |
 | C1 dimension leave/rejoin | PENDING | run only with source chunk kept loaded |
 | C2 Sable/Aeronautics tracking | PENDING | target check |
 | C3 Sound Physics Remastered | PENDING | target check |
@@ -95,6 +95,21 @@ The operator performs requested actions but does not assign PASS/FAIL; built-in 
 - regression tests now guard both the CraftOS runner contract and the forbidden OpenAL getter;
 - NeoForge 21.1.247 CI passed with the complete R1/SPR diagnostic fix;
 - R2-R9 and C1-C6 were not reached and remain pending.
+
+## Attempt 4 — 2026-09-26
+
+- startup again saw exactly 2 attached speakers and A1-A19 all passed;
+- R1-R8 all passed automatically, including the previously unconfirmed continuous RAW client-delivery fix in R6 and real range leave/rejoin in R8;
+- R9 started a healthy looping 2-speaker finite group, but the first action-gate text already told the operator to press F3+T. The reload was triggered about 1.8 seconds after playback start, while the runner was still collecting its required 2-second pre-reload baseline;
+- because F3+T happened inside the baseline window, the eventual `resource reload baseline` snapshot already contained the reload/rejoin history and could not serve as a clean pre-reload baseline;
+- the Minecraft log confirms a real resource reload: the ResourceManager reload began at 14:16:08.355, both finite renderer streams were closed for recovery at 14:16:09.645-09.646, and OpenAL/Sound Physics/sound engine were reinitialized at 14:16:12.892-12.896;
+- the finite decoder cancellation caused by renderer teardown was already handled by the product as an authoritative rejoin and both server endpoints remained in the same playing playback. However, diagnostics incremented `decoderFailures` before checking the expected renderer-close cancellation path, so the recovered reload was incorrectly labeled a decoder failure;
+- fix 1: expected renderer-close decoder cancellation now counts only as recovery/rejoin; `decoderFailures` is incremented only for a real decoder exception which is not the renderer-close recovery path;
+- fix 2: R9 now explicitly says ENTER only prepares the baseline and **DO NOT press F3+T yet**; after the clean baseline is captured it shows a second `BASELINE READY -- NOW` prompt;
+- regression tests guard both the cancellation classification and the R9 baseline-before-action ordering;
+- the brief OS-level "Not Responding" observation is consistent with the heavy F3+T resource/shader/sound rebuild in this modpack; the logs show the render thread resumed and the sound engine reinitialized, with no HQSpeaker crash or deadlock;
+- NeoForge 21.1.247 CI passed with the complete R9 harness/diagnostic fixes;
+- R9 still requires one clean rerun on the corrected artifact; C1-C6 remain pending because the run stopped at R9.
 
 ## Failures
 
