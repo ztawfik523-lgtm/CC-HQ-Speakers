@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Compile the shipped master acceptance script with the same Cobalt parser CC:T uses at runtime. */
@@ -17,6 +18,9 @@ class MasterAcceptanceLuaSyntaxTest {
     void masterAcceptanceCompilesWithComputerCraftLua() throws Exception {
         Path script = Path.of("scripts", "v10_acceptance.lua");
         assertTrue(Files.isRegularFile(script), "master acceptance script is missing");
+        String source = Files.readString(script);
+        assertFalse(source.matches("(?s).*\\bcollectgarbage\\s*\\(.*"),
+            "CraftOS does not expose collectgarbage; the master runner must not call it");
 
         LuaState state = LuaState.builder().build();
         try (InputStream input = Files.newInputStream(script)) {
