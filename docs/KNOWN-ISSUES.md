@@ -8,7 +8,7 @@ Only unresolved release-target evidence and concrete deferred risks are listed h
 
 ### KI-RUNTIME-001 — finite listener/recovery lifecycle
 
-The code and diagnostics exist, but the current candidate still needs in-game proof for leave/re-enter at current playback time, F3+T sound-engine rebuild recovery and the selected dimension leave/rejoin scenario.
+Range leave/re-enter at current playback time is now runtime-confirmed by R8. F3+T reached the real sound-engine rebuild/rejoin path in attempt 4, but a harness timing ambiguity and diagnostic misclassification required fixes, so R9 still needs one clean rerun. The selected dimension leave/rejoin scenario remains pending.
 
 ### KI-RUNTIME-003 — Sable movement
 
@@ -16,7 +16,7 @@ All HQ positional paths use Sable -> VS2 -> static resolution. The selected rele
 
 ### KI-RUNTIME-005 — finite multispeaker
 
-Current diagnostics can measure real channel starts, canonical playback drift, PCM feed spread, endpoint-local gain/mute/stop and recovery. The current JAR still needs the in-game 2-speaker core and 8+ speaker stress pass.
+The 2-speaker real-client finite synchronization and endpoint-local control checks passed in R4-R5. Only the 8+ speaker finite/RAW scale stress remains as release-target evidence.
 
 ### KI-RUNTIME-006 — MP3/ICY radio
 
@@ -24,7 +24,7 @@ If radio is included in final target acceptance, verify grouped radio, metadata,
 
 ### KI-RUNTIME-007 — RAW continuation
 
-The producer-fed RAW continuation bug was fixed by waking the existing Minecraft/OpenAL streaming channel when later PCM arrives. CI is green and diagnostics now detect mid-stream stop/starvation, but the fix still needs current in-game confirmation in R6 and scale stress.
+The producer-fed RAW continuation fix is now runtime-confirmed by R6: later PCM continued on the existing Minecraft/OpenAL streaming channel without recreating it. The remaining RAW evidence is the 8+ speaker portion of C6 scale stress.
 
 ### KI-RUNTIME-008 — Sound Physics Remastered
 
