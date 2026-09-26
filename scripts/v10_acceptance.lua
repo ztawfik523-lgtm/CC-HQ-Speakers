@@ -654,6 +654,14 @@ local function assertRawGroup(snapshot, expected, expectedBytes, label)
 end
 
 local function runtimeDiag(name, fn)
+  if RESUME and resumePassed[name] then
+    state.runtimePassed = state.runtimePassed + 1
+    display("RESUME", name, "reusing prior PASS from existing master log", {})
+    log("RESUME", name .. " = prior PASS")
+    render()
+    return
+  end
+
   display("RUNTIME", name, "automatic client/audio diagnostic", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
