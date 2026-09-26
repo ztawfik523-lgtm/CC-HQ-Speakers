@@ -4,7 +4,8 @@
   "package": "com.tom.hqspeaker.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "ComputerCraftSpeakerBlockEntityMixin"
+    "ComputerCraftSpeakerBlockEntityMixin",
+    "ComputerCraftSpeakerPositionMixin"
   ],
   "client": [
     "client.SoundManagerAccessor",
