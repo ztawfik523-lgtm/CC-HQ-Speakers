@@ -6,10 +6,10 @@ Fill this during the final diagnostic master run.
 
 ## Build
 
-- current code/test checkpoint: `1213c5a67469011449f637cd78bdcd543e6e607f`
-- CI: `36235585325` — PASS
-- GitHub artifact: `10903453956`
-- JAR SHA-256: `0e1af590054cc0065aabfc09ba1454dfd8f97455b17517420fbdf5fb0724a74f`
+- current code/test checkpoint: `57cdde8de45d7884205b49fda512bf379caa9953`
+- CI: `36236224366` — PASS
+- GitHub artifact: `10903909145`
+- JAR SHA-256: `27fc46c9be49d0fcd4804e454791a1a35a5d012538d9cc512ac45301fdbad7fe`
 - previous locked pre-runtime checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
 - built against NeoForge: **21.1.247**
 - supported NeoForge metadata range: **[21.1,21.2)**
@@ -31,9 +31,8 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
 
 | Result | Status | Notes |
 | --- | --- | --- |
-| A1-A8 deterministic | PASS (attempt 1) | API through malformed finite-media rejection passed before harness failure |
-| A9-A19 deterministic | PENDING RERUN | A9 reached and passed all rejection checks through `RAW maxSamples+1`, then old runner called unavailable CraftOS `collectgarbage()`; runner fixed |
-| R1 native client channels | PENDING | real CC:T client audio evidence |
+| A1-A19 deterministic | PASS (attempt 2) | complete deterministic core passed on exactly 2 speakers |
+| R1 native client channels | PENDING RERUN | attempt 2 exposed native CC:T Sable position bug; position resolver fixed in current artifact |
 | R2 MP3 pause/resume renderer | PENDING | client/OpenAL |
 | R3 WAV renderer continuity | PENDING | client/OpenAL |
 | R4 finite multispeaker sync | PENDING | channel-start skew + canonical drift |
@@ -72,6 +71,17 @@ The operator performs requested actions but does not assign PASS/FAIL; built-in 
 - startup evidence showed 4 attached speakers. The corrected master runner now requires exactly 2 at startup so the 2-speaker core and later membership/8+ transitions are unambiguous;
 - Sound Physics Remastered was not loaded in that launch, so C3 could not have produced a target full pass;
 - no R1-R9/C1-C6 client diagnostic result was reached; those remain pending.
+
+## Attempt 2 — 2026-09-26
+
+- startup correctly saw exactly 2 attached speakers on the Sable contraption;
+- A1-A19 all passed; the complete deterministic core is now runtime-confirmed;
+- diagnostics enabled successfully, then R1 failed with `clientSeen=false`, `sourceCount=0`, and no OpenAL renderer/vendor evidence because no native CC:T sound channel was created;
+- root cause: the real CC:T block speaker publishes its raw block-centre coordinates for native `playNote`, `playSound`, and `playAudio`. Inside a Sable sub-level those are plot-space coordinates (for this run around x/z 20,481,0xx), not the contraption's actual world-space position, so Minecraft culls the native source before a real client channel exists;
+- fix: a narrow mixin replaces only CC:T's returned `SpeakerPosition` with the existing `MovingSourcePosition` Sable/VS2/static resolver. The real CC:T peripheral still owns native playback, buffering, packets, events, and stop semantics;
+- static speakers retain the same block-centre coordinates through the resolver fallback;
+- NeoForge 21.1.247 CI passed with the position fix;
+- R2-R9 and C1-C6 were not reached and remain pending.
 
 ## Failures
 
