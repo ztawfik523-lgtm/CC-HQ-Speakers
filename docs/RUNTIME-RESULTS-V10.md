@@ -6,17 +6,18 @@ Fill this during the final diagnostic master run.
 
 ## Build
 
-- code/test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
-- CI: `36205257110` — PASS
-- GitHub artifact: `10892998704`
-- JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`
+- current code/test checkpoint: `1213c5a67469011449f637cd78bdcd543e6e607f`
+- CI: `36235585325` — PASS
+- GitHub artifact: `10903453956`
+- JAR SHA-256: `0e1af590054cc0065aabfc09ba1454dfd8f97455b17517420fbdf5fb0724a74f`
+- previous locked pre-runtime checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
 - built against NeoForge: **21.1.247**
 - supported NeoForge metadata range: **[21.1,21.2)**
 - Minecraft: 1.21.1
 - CC:Tweaked: 1.120.0
-- Sable/Aeronautics: _fill at runtime_
-- Sound Physics Remastered: expected 1.21.1-1.5.1; _confirm at runtime_
-- direct MP3/ICY radio URL used: yes / no
+- Sable/Aeronautics: Sable 2.0.5 / Create Aeronautics 1.3.2 observed in first attempted run
+- Sound Physics Remastered: expected 1.21.1-1.5.1; **not loaded in first attempted run**
+- direct MP3/ICY radio URL supplied: `https://stream.nightride.fm/nightride.mp3`
 
 Do not create a separate 21.1.248 artifact.
 
@@ -30,7 +31,8 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
 
 | Result | Status | Notes |
 | --- | --- | --- |
-| A1-A19 deterministic | PENDING | API, staging, native CC:T, finite/RAW admission/bounds, controls, stress, security |
+| A1-A8 deterministic | PASS (attempt 1) | API through malformed finite-media rejection passed before harness failure |
+| A9-A19 deterministic | PENDING RERUN | A9 reached and passed all rejection checks through `RAW maxSamples+1`, then old runner called unavailable CraftOS `collectgarbage()`; runner fixed |
 | R1 native client channels | PENDING | real CC:T client audio evidence |
 | R2 MP3 pause/resume renderer | PENDING | client/OpenAL |
 | R3 WAV renderer continuity | PENDING | client/OpenAL |
@@ -57,6 +59,19 @@ A **TARGET FULL PASS** requires every required runtime diagnostic and every sele
 - any unusual event while performing a requested physical action
 
 The operator performs requested actions but does not assign PASS/FAIL; built-in diagnostics do.
+
+## Attempt 1 — 2026-09-26
+
+- runner reached A9 in about 9.3 seconds;
+- A1-A8 passed;
+- A9 successfully rejected empty/out-of-range/non-number/non-finite RAW, non-finite volume, out-of-range speaker index, and maxSamples+1 before the runner itself failed;
+- harness failure: `/v10_acceptance.lua:887: attempt to call global 'collectgarbage' (a nil value)`;
+- fix: removed the unsupported call and added a regression guard against reintroducing it;
+- Minecraft log also exposed `java.util.Optional` being returned directly by `getStreamUrl()`; CC:T converted that unknown Java type to nil;
+- fix: `getStreamUrl()` now returns zero Lua values for inactive/nil and one string value when active, with a regression check;
+- startup evidence showed 4 attached speakers. The corrected master runner now requires exactly 2 at startup so the 2-speaker core and later membership/8+ transitions are unambiguous;
+- Sound Physics Remastered was not loaded in that launch, so C3 could not have produced a target full pass;
+- no R1-R9/C1-C6 client diagnostic result was reached; those remain pending.
 
 ## Failures
 
