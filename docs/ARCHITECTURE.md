@@ -1,6 +1,6 @@
 # Architecture
 
-Updated: 2026-09-21
+Updated: 2026-09-26
 
 ## Product boundary
 
@@ -33,13 +33,15 @@ Finite client transport is bounded/progressive. Each endpoint currently keeps it
 
 ## RAW
 
-RAW is separate producer-fed signed-16 mono 48-kHz PCM. The composite owns admission/backpressure/group preflight; the legacy peripheral is only the lower-level bounded queue/packet substrate.
+RAW is separate producer-fed signed-16 mono 48-kHz PCM. The composite owns admission/backpressure/group preflight; the legacy peripheral is the lower-level bounded queue/packet substrate.
+
+When the client RAW stream exhausts its local queue, it returns no buffer rather than manufacturing silence. If later producer PCM arrives, the existing Minecraft channel is explicitly pumped again on the sound executor, mirroring the continuation strategy used by CC:T's own DFPWM stream.
 
 ## MP3/ICY radio
 
 Direct radio creates one client decoder for one endpoint.
 
-Grouped radio is strict-snapshot. Server speaker membership is captured at command time. A client collects only packets it receives before the seal tick. Sealing starts one shared decoder for that client-local group; every accepted tap receives the same decoded PCM stream and all ready endpoints are released together after prebuffering. Late packets are rejected for that group.
+Grouped radio is strict-snapshot. Server membership is captured at command time. A client collects only packets received before the seal deadline. Sealing starts one shared decoder for that client-local group; accepted taps consume the same decoded PCM and ready endpoints are released together after prebuffering. Late packets are rejected for that group.
 
 There is no expected-member count and no automatic membership. Rerunning the Lua command creates a new group.
 
@@ -53,11 +55,31 @@ All HQ positional paths call `MovingSourcePosition`:
 2. VS2 transform;
 3. static block center.
 
-Legacy RAW/radio client sources also resolve movement locally every tick, so movement is not dependent on continuous server position packets.
+Legacy RAW/radio client sources also resolve movement locally every tick, so movement is not dependent on a continuous server position packet.
+
+## Built-in diagnostics
+
+The production JAR contains a dormant `HQDiagnostics` subsystem plus client-side channel sampling.
+
+When diagnostics are enabled:
+
+- HQ/CC:T sound instances are associated with stable diagnostic source identities;
+- NeoForge sound events expose the actual Minecraft `Channel`;
+- a small accessor exposes the OpenAL source id needed for measurements;
+- client ticks sample source state, position, gain, queued/processed buffers and playback offset/latency where available;
+- finite/RAW/radio stream paths count PCM input/read, silence/starvation, wakeups and decoder/recovery events;
+- sound-engine reload events invalidate old bindings and are counted;
+- group metrics aggregate channel-start skew, logical playback drift and PCM feed spread;
+- Sound Physics direct-filter state is sampled when the mod is loaded;
+- Sable tracking compares requested movement with the live OpenAL source position.
+
+Diagnostic state is shared directly with the integrated server in singleplayer. No diagnostic network payload was added; protocol v10 remains 9 payloads.
+
+The Lua surface is `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDiagCapabilities`.
 
 ## Radio URL/lifecycle
 
-Blocking URL/DNS validation stays outside sensitive ownership locks. Starts are revision/lifecycle guarded and the final world/network commit runs on the server thread. Client startup is cancellable; drained/failed client radio state is retired.
+Blocking URL/DNS validation stays outside sensitive ownership locks. Starts are revision/lifecycle guarded and final world/network commit runs on the server thread. Client startup is cancellable; drained/failed client radio state is retired.
 
 The URL policy is a safety filter, not a substitute for normal server/client network security policy.
 
@@ -65,8 +87,12 @@ The URL policy is a safety filter, not a substitute for normal server/client net
 
 Default prepared-media limits: 512 MiB per asset, 2048 MiB total, configurable server-side.
 
-Finite range IO: 2 workers, queue 64, max 128 KiB/response, 4 outstanding requests and 512 KiB outstanding bytes/player, 512 KiB client encoded window.
+Finite range IO remains bounded: 2 workers, queue 64, max 128 KiB/response, 4 outstanding requests and 512 KiB outstanding bytes/player, 512 KiB client encoded window.
 
 ## Protocol
 
-Protocol v10, 9 payloads.
+Protocol v10, exactly 9 payloads.
+
+## Build
+
+Current build/test/package baseline is NeoForge 21.1.247. The one artifact declares `[21.1,21.2)`; there is no second current 21.1.248 build.
