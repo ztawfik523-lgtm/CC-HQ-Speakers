@@ -70,6 +70,7 @@ dependencies {
         }
     }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'cc.tweaked:cobalt:0.9.9'
 }
 
 tasks.named('test', Test) {
