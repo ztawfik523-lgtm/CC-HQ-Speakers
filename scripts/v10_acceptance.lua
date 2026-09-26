@@ -1334,14 +1334,14 @@ actionGate("R8/9 Range leave/rejoin", {
 end, false)
 
 actionGate("R9/9 F3+T resource reload recovery", {
-  "A looping group will start automatically.",
-  "Exit the computer GUI and press F3+T.",
-  "Wait for resource reload, return and reopen this computer, then ENTER.",
+  "Press ENTER to prepare the looping playback baseline.",
+  "DO NOT press F3+T until the computer shows the second prompt.",
+  "Then exit the GUI, press F3+T, wait for reload, reopen this computer, and ENTER.",
   "Diagnostics verify the real sound engine was rebuilt and playback rejoined.",
 }, function()
   local id, baseline = startRecoveryPlayback("resource reload")
-  state.detail = "perform F3+T, return, reopen, ENTER"
-  state.prompt = {"Exit GUI.", "Press F3+T.", "Wait for reload.", "Return and press ENTER."}
+  state.detail = "baseline ready: NOW perform F3+T, return, reopen, ENTER"
+  state.prompt = {"BASELINE READY -- NOW exit GUI.", "Press F3+T.", "Wait for reload.", "Return and press ENTER."}
   render()
   waitEnter()
   local after = verifyRecoveryPlayback("resource reload", id, baseline, true)
