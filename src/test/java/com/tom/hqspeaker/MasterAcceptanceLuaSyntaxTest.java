@@ -22,7 +22,7 @@ class MasterAcceptanceLuaSyntaxTest {
         assertFalse(source.matches("(?s).*\\bcollectgarbage\\s*\\(.*"),
             "CraftOS does not expose collectgarbage; the master runner must not call it");
 
-        int reloadBaseline = source.indexOf("local id, baseline = startRecoveryPlayback(\\\"resource reload\\\")");
+        int reloadBaseline = source.indexOf("local id, baseline = startRecoveryPlayback(\"resource reload\")");
         int reloadActionPrompt = source.indexOf("BASELINE READY -- NOW exit GUI.", reloadBaseline);
         assertTrue(reloadBaseline >= 0 && reloadActionPrompt > reloadBaseline,
             "R9 must finish its clean baseline before telling the operator to press F3+T");
