@@ -198,6 +198,11 @@ public final class HQDiagnostics {
         if (metrics != null) metrics.pumpWake();
     }
 
+    public static void soundPhysicsApplied(UUID source, float directGain, float directGainHF) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null) metrics.soundPhysicsApplied(directGain, directGainHF);
+    }
+
     public static void channelDetached(UUID source) {
         SourceMetrics metrics = active(source);
         if (metrics != null) metrics.channelDetached();
@@ -370,15 +375,16 @@ public final class HQDiagnostics {
         synchronized void channelStarted(int directFilter, float directGain, float directGainHF) {
             channelStarts++;
             if (firstChannelNanos == 0L) firstChannelNanos = System.nanoTime();
-            if (directFilter != 0) soundPhysicsChannelStarts++;
-            observeSoundPhysics(directFilter, directGain, directGainHF, false);
         }
 
-        private void observeSoundPhysics(int directFilter, float directGain, float directGainHF, boolean sample) {
-            lastDirectFilter = directFilter;
+        synchronized void soundPhysicsApplied(float directGain, float directGainHF) {
+            if (soundPhysicsSamples == 0L) soundPhysicsChannelStarts++;
+            soundPhysicsSamples++;
+            // OpenAL Soft intentionally rejects querying AL_DIRECT_FILTER. The SPR integration hook
+            // records the actual gain values at the point SPR applies its filter instead.
+            lastDirectFilter = 0;
             lastDirectGain = directGain;
             lastDirectGainHF = directGainHF;
-            if (directFilter != 0 && sample) soundPhysicsSamples++;
             if (Float.isFinite(directGain)) {
                 minDirectGain = Math.min(minDirectGain, directGain);
                 maxDirectGain = Math.max(maxDirectGain, directGain);
@@ -439,7 +445,6 @@ public final class HQDiagnostics {
                 maxSourceGain = Math.max(maxSourceGain, sample.sourceGain());
             }
 
-            observeSoundPhysics(sample.directFilter(), sample.directGain(), sample.directGainHF(), true);
         }
 
         synchronized void pcmInput(long bytes) { pcmInputBytes += bytes; }
