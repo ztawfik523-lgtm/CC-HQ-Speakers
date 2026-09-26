@@ -1092,12 +1092,15 @@ runtimeDiag("R1/9 Native CC:T real client channels", function()
   assertClientBridge(snap)
 
   local staticSources = diagSources(snap, "native-static")
-  assert(#staticSources >= 2,
-    "native playNote/playSound did not both reach real static client audio channels")
+  assert(#staticSources >= 1,
+    "native playSound did not reach a real static client audio channel")
   for i, source in ipairs(staticSources) do
     assert((source.channelStarts or 0) >= 1,
       "native static source " .. i .. " never obtained a real OpenAL channel")
   end
+  -- CC:T playNote is intentionally sent as Minecraft's ordinary ClientboundSoundPacket,
+  -- not a SpeakerSound instance. A4 verifies its native API/admission path; R1 verifies
+  -- the attributable real client channels for native playSound and streaming playAudio.
 
   local streams = diagSources(snap, "native")
   assert(#streams >= 1, "CC:T native playAudio never reached a real streaming client audio channel")
