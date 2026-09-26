@@ -350,15 +350,17 @@ public final class HQFiniteMediaClient {
         if (session.terminal || !session.coordinator.isCurrentLocalEpoch(epoch)
                 || SESSIONS.get(session.begin.source()) != session) return;
 
-        HQDiagnostics.decoderFailure(session.begin.source());
         FinitePcmAudioStream stream = session.rendererStream;
         if (stream != null && stream.closed() && !stream.reachedEof()) {
+            // Sound-engine/resource reload tears down the renderer underneath the decoder. That cancellation
+            // is an expected recovery path, not a decoder fault. Count the authoritative rejoin instead.
             HQSpeakerMod.warn("M1H finite decoder was cancelled by renderer close; rejoining current server time source="
                 + session.begin.source() + " generation=" + session.begin.generation());
             requestAuthoritativeRejoin(session, System.nanoTime());
             return;
         }
 
+        HQDiagnostics.decoderFailure(session.begin.source());
         fail(session, "finite decoder failed: " + safeMessage(failure));
     }
 
