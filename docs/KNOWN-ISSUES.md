@@ -8,7 +8,7 @@ Only unresolved release-target evidence and concrete deferred risks are listed h
 
 ### KI-RUNTIME-001 — finite listener/recovery lifecycle
 
-Range leave/re-enter at current playback time is now runtime-confirmed by R8. F3+T reached the real sound-engine rebuild/rejoin path in attempt 4, but a harness timing ambiguity and diagnostic misclassification required fixes, so R9 still needs one clean rerun. The selected dimension leave/rejoin scenario remains pending.
+Range leave/re-enter at current playback time is runtime-confirmed by R8, and the corrected R9 now runtime-confirms a real F3+T sound-engine rebuild/rejoin with decoderFailures=0. C1 dimension leave/rejoin still has no verdict: on the current Sable contraption, changing dimension caused the Sable-hosted computer/sub-level to be torn down/re-attached, so the runner could not survive to judge the return. C1 should only be retried with a setup that can actually keep that computer/sub-level alive, or explicitly skipped as unavailable for this environment.
 
 ### KI-RUNTIME-003 — Sable movement
 
@@ -29,6 +29,10 @@ The producer-fed RAW continuation fix is now runtime-confirmed by R6: later PCM 
 ### KI-RUNTIME-008 — Sound Physics Remastered
 
 The diagnostics can observe Sound Physics direct-filter processing and measurable filter changes. The current candidate still needs the prepared open-air/behind-wall in-game check.
+
+### KI-RUNTIME-009 — audible attenuation versus 32-block relevance radius
+
+R8 confirms client range leave/rejoin behavior, but it does not grade subjective loudness. During the range action at test volume 0.55, the operator reported the speaker was inaudible at 32 blocks, faint at roughly 22 blocks, and inaudible farther away. The finite relevance radius is 32 blocks while the Minecraft sound source still uses linear attenuation, so useful audible range can end before the transport/relevance boundary. Release behavior should explicitly choose whether to keep vanilla-like falloff or extend HQ-speaker audibility.
 
 ### KI-PERF-006 — finite per-endpoint decode cost
 
