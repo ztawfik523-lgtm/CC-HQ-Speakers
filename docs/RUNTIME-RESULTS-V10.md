@@ -6,10 +6,12 @@ Fill this during the final diagnostic master run.
 
 ## Build
 
-- current code/test checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`
-- CI: `36238699768` — PASS
-- GitHub artifact: `10905071824`
-- JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`
+- runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`
+- runtime-tested candidate CI: `36238699768` — PASS
+- runtime-tested artifact: `10905071824`
+- runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`
+- current master-runner checkpoint: `1360eb2f04d0e22420175040ce2e3735c4e9b294`
+- current master-runner CI: `36240136369` — PASS on retry; first attempt failed only because NeoForge Maven returned HTTP 502
 - previous locked pre-runtime checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
 - built against NeoForge: **21.1.247**
 - supported NeoForge metadata range: **[21.1,21.2)**
@@ -26,22 +28,22 @@ Do not create a separate 21.1.248 artifact.
 Run:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
 | Result | Status | Notes |
 | --- | --- | --- |
-| A1-A19 deterministic | PASS (attempts 2-4) | complete deterministic core passed on exactly 2 speakers |
-| R1 native client channels | PASS (attempt 4) | real native static + DFPWM client channels observed |
-| R2 MP3 pause/resume renderer | PASS (attempt 4) | real OpenAL pause/resume + PCM continuity |
-| R3 WAV renderer continuity | PASS (attempt 4) | real WAV renderer stayed healthy |
-| R4 finite multispeaker sync | PASS (attempt 4) | 2 real client sources synchronized within limits |
-| R5 endpoint-local client controls | PASS (attempt 4) | stop/gain/mute isolation reached client |
-| R6 continuous RAW | PASS (attempt 4) | producer-fed continuation fix runtime-confirmed |
-| R7 loop-boundary recovery/sync | PASS (attempt 4) | authoritative loop recovery + sync passed |
-| R8 range leave/rejoin | PASS (attempt 4) | real leave/rejoin recovery passed |
-| R9 F3+T recovery | PENDING RERUN | attempt 4 exposed harness timing ambiguity + expected reload cancellation misclassified as decoder failure; both fixed |
-| C1 dimension leave/rejoin | PENDING | run only with source chunk kept loaded |
+| A1-A19 deterministic | PASS (attempts 2-6) | complete deterministic core repeatedly passed on exactly 2 speakers |
+| R1 native client channels | PASS (attempt 6) | real native static + DFPWM client channels observed |
+| R2 MP3 pause/resume renderer | PASS (attempt 6) | real OpenAL pause/resume + PCM continuity |
+| R3 WAV renderer continuity | PASS (attempt 6) | real WAV renderer stayed healthy |
+| R4 finite multispeaker sync | PASS (attempt 6) | 2 real client sources synchronized within limits |
+| R5 endpoint-local client controls | PASS (attempt 6) | stop/gain/mute isolation reached client |
+| R6 continuous RAW | PASS (attempt 6) | producer-fed continuation fix runtime-confirmed |
+| R7 loop-boundary recovery/sync | PASS (attempt 6) | authoritative loop recovery + sync passed |
+| R8 range leave/rejoin | PASS (attempt 6) | real leave/rejoin recovery passed; attempt 5 had one transient 65.34 ms baseline drift failure before the clean rerun |
+| R9 F3+T recovery | PASS (attempt 6) | clean baseline, real sound-engine reload, authoritative rejoin, decoderFailures=0 |
+| C1 dimension leave/rejoin | INCOMPLETE / NO VERDICT | current Sable sub-level/computer did not stay stable across dimension transition; runner stopped before it could judge recovery |
 | C2 Sable/Aeronautics tracking | PENDING | target check |
 | C3 Sound Physics Remastered | PENDING | target check |
 | C4 grouped MP3/ICY radio | PENDING | requires direct radio URL |
@@ -110,6 +112,24 @@ The operator performs requested actions but does not assign PASS/FAIL; built-in 
 - the brief OS-level "Not Responding" observation is consistent with the heavy F3+T resource/shader/sound rebuild in this modpack; the logs show the render thread resumed and the sound engine reinitialized, with no HQSpeaker crash or deadlock;
 - NeoForge 21.1.247 CI passed with the complete R9 harness/diagnostic fixes;
 - R9 still requires one clean rerun on the corrected artifact; C1-C6 remain pending because the run stopped at R9.
+
+## Attempt 5 — 2026-09-26
+
+- same runtime candidate and exactly 2 attached speakers;
+- A1-A19 and R1-R7 passed again;
+- R8 failed before the physical range action because its initial 2-speaker baseline recorded a transient maximum canonical/logical drift of 65.34 ms against the 50 ms limit;
+- both sources otherwise had real playing OpenAL channels, zero decoder failures and identical PCM-read totals; a fresh full rerun was used instead of weakening the limit;
+- no source/product change was made from this one-off R8 result.
+
+## Attempt 6 — 2026-09-26
+
+- same runtime-tested JAR; A1-A19 and R1-R8 passed;
+- R9 F3+T passed cleanly after the corrected two-stage prompt and renderer-close diagnostic classification: the recovered snapshot had one real sound-engine reload, both sources playing, recovery rejoins present and decoderFailures=0;
+- C1 then started a healthy looping 2-speaker playback and the player changed to the Nether;
+- the master log ended during the dimension transition with an idle finite-state event and never recorded C1 PASS/FAIL/SKIP, so C1 has **no diagnostic verdict**;
+- Minecraft logs show the dimension transition, finite renderer teardown/rejoin attempts, Sable reporting unknown sub-level tracking removals, and both HQ speaker peripherals attaching to computer 1 again after return. That means the Sable-hosted test computer/sub-level did not satisfy C1's keep-loaded prerequisite in this setup;
+- the operator stopped after repeated prior reruns rather than restarting the entire suite again;
+- the master runner now supports opt-in `--resume`: it reads prior PASS lines from the existing master log, reuses those results, and reruns only unfinished/failed/skipped checks. This avoids repeating A1-A19/R1-R9 after an environment check interrupts the computer.
 
 ## Failures
 
