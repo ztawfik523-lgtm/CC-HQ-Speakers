@@ -1,5 +1,7 @@
 # Ready-to-paste prompt — CC:HQ Speakers frozen-v10 runtime phase
 
+> **Historical:** Superseded by `HANDOFF-2026-09-26-DIAGNOSTIC-RUNTIME.md` and `HANDOFF-PROMPT-2026-09-26.md`. Keep this file only as checkpoint history.
+
 Continue the **CC:HQ Speakers** project in GitHub repository `ztawfik523-lgtm/CC-HQ-Speakers`, active branch `codex/m1j-multispeaker`.
 
 This chat follows a completed cleanup/API-freeze pass. **Do not restart broad cleanup, rethink, or source-audit loops.** First fetch the current branch head and latest CI once. Then read the current authority and begin runtime acceptance unless you find a concrete inconsistency.
