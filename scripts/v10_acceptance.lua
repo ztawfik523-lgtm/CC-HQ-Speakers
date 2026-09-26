@@ -1,6 +1,6 @@
 -- CC:HQ Speakers v10 diagnostic master runtime acceptance.
 -- Usage:
---   v10_acceptance <mp3> <wav> [radio-url]
+--   v10_acceptance <mp3> <wav> [radio-url] [--resume]
 --
 -- One file, one command, one monitor dashboard, one log.
 -- The mod's built-in diagnostics judge the real client/OpenAL playback automatically.
@@ -12,11 +12,21 @@
 --   S     = skip an environment check which is not available
 
 local args = {...}
-assert(args[1] and args[2], "usage: v10_acceptance <mp3> <wav> [radio-url]")
+assert(args[1] and args[2], "usage: v10_acceptance <mp3> <wav> [radio-url] [--resume]")
 
 local MP3_PATH = args[1]
 local WAV_PATH = args[2]
 local RADIO_URL = args[3]
+local RESUME = false
+if RADIO_URL == "--resume" then
+  RADIO_URL = nil
+  RESUME = true
+elseif args[4] == "--resume" then
+  RESUME = true
+elseif args[4] ~= nil then
+  error("usage: v10_acceptance <mp3> <wav> [radio-url] [--resume]", 0)
+end
+assert(args[5] == nil, "usage: v10_acceptance <mp3> <wav> [radio-url] [--resume]")
 
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach a ComputerCraft speaker")
@@ -26,6 +36,25 @@ local monitor = peripheral.find("monitor")
 local LOG = "/v10-acceptance.log"
 local startedMs = os.epoch("utc")
 local speakerCount = speaker.getSpeakerCount()
+
+-- --resume reuses only PASS evidence already present in the existing master log.
+-- It is deliberately opt-in: use it only when continuing with the same candidate JAR.
+local resumePassed = {}
+if RESUME and fs.exists(LOG) then
+  local h = fs.open(LOG, "r")
+  if h then
+    while true do
+      local line = h.readLine()
+      if line == nil then break end
+      local name = line:match("%]%s+PASS%s+(.+)$")
+      if name then
+        name = name:gsub("%s+= automatic diagnostic PASS$", "")
+        resumePassed[name] = true
+      end
+    end
+    h.close()
+  end
+end
 assert(speakerCount == 2, "master acceptance must start with exactly 2 attached speakers; connect extras only when prompted")
 
 local state = {
@@ -316,6 +345,14 @@ local function fail(test, err)
 end
 
 local function auto(name, fn)
+  if RESUME and resumePassed[name] then
+    state.autoPassed = state.autoPassed + 1
+    display("RESUME", name, "reusing prior PASS from existing master log", {})
+    log("RESUME", name .. " = prior PASS")
+    render()
+    return
+  end
+
   display("AUTO", name, "running mechanical check", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
@@ -335,6 +372,15 @@ local function waitEnter()
 end
 
 local function actionGate(name, instructions, action, optional)
+  if RESUME and resumePassed[name] then
+    if optional then state.optionalPassed = state.optionalPassed + 1
+    else state.runtimePassed = state.runtimePassed + 1 end
+    display("RESUME", name, "reusing prior PASS from existing master log", {})
+    log("RESUME", name .. " = prior PASS")
+    render()
+    return "pass"
+  end
+
   safeStop()
   display(optional and "OPTION" or "ACTION", name, "press ENTER when ready", instructions)
   print("")
@@ -628,25 +674,44 @@ local function waitUntil(predicate, timeout, detail)
 end
 
 
--- Fresh diagnostics.
+-- Fresh diagnostics, or append a continuation marker in resume mode.
 do
-  local h = fs.open(LOG, "w")
+  local mode = (RESUME and fs.exists(LOG)) and "a" or "w"
+  local h = fs.open(LOG, mode)
   if h then
-    h.writeLine("CC:HQ Speakers v10 diagnostic master acceptance")
-    h.writeLine("Started UTC ms: " .. tostring(startedMs))
-    h.writeLine("Computer ID: " .. tostring(os.getComputerID()))
-    h.writeLine("Computer label: " .. tostring(os.getComputerLabel() or "<none>"))
-    h.writeLine("OS: " .. tostring(os.version()))
-    h.writeLine("Speaker peripheral: " .. speakerName)
-    h.writeLine("Speaker count: " .. tostring(speakerCount))
-    h.writeLine("Speakers: " .. serialize(speaker.getSpeakers()))
-    h.writeLine("Radio URL: " .. tostring(RADIO_URL or "<not supplied>"))
+    if mode == "a" then
+      h.writeLine("")
+      h.writeLine("=== RESUME UTC ms: " .. tostring(startedMs) .. " ===")
+      h.writeLine("Resume policy: prior PASS lines reused; unfinished/failed/skipped checks run again")
+    else
+      h.writeLine("CC:HQ Speakers v10 diagnostic master acceptance")
+      h.writeLine("Started UTC ms: " .. tostring(startedMs))
+      h.writeLine("Computer ID: " .. tostring(os.getComputerID()))
+      h.writeLine("Computer label: " .. tostring(os.getComputerLabel() or "<none>"))
+      h.writeLine("OS: " .. tostring(os.version()))
+      h.writeLine("Speaker peripheral: " .. speakerName)
+      h.writeLine("Speaker count: " .. tostring(speakerCount))
+      h.writeLine("Speakers: " .. serialize(speaker.getSpeakers()))
+      h.writeLine("Radio URL: " .. tostring(RADIO_URL or "<not supplied>"))
+    end
     h.close()
   end
 end
 
 local mp3 = readBinary(MP3_PATH)
 local wav = readBinary(WAV_PATH)
+
+if RESUME then
+  pcall(function() speaker.audioStopAll() end)
+  pcall(function() speaker.speakStop() end)
+  pcall(function() speaker.stop() end)
+  pcall(function() speaker.hqDiagEnable(false) end)
+  log("RESUME", "loaded " .. tostring((function()
+    local n = 0
+    for _ in pairs(resumePassed) do n = n + 1 end
+    return n
+  end)()) .. " prior PASS records")
+end
 
 local methods = {}
 for _, name in ipairs(peripheral.getMethods(speakerName) or {}) do methods[name] = true end
