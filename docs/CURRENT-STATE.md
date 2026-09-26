@@ -4,18 +4,18 @@ Updated: 2026-09-26
 
 Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
-Current diagnostic/runtime-test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
-Current CI: `36205257110` — PASS  
+Current diagnostic/runtime-test checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
+Current CI: `36238699768` — PASS  
 Build baseline: NeoForge **21.1.247 only**  
-Artifact: `10892998704`  
-JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`  
+Artifact: `10905071824`  
+JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
 Protocol: **v10**, 9 payloads.
 
 ## Build/release policy
 
 The project now builds/tests/packages one artifact against NeoForge 21.1.247. Its metadata accepts `[21.1,21.2)`, so that one artifact is the supported 21.1.x release candidate. Historical CI exercised 21.1.248, but there is no current second build or second runtime pass.
 
-The most recent CI failure was only the newly added Cobalt Lua-syntax test missing its explicit test dependency/import. Commits `66a80e2f49fac8ebb9f067ac48a8255db46da055` and `37755ccdb34ac72a27797dc2e6581463e85cbcd7` fixed that. CI `36205257110` is green.
+The current runtime candidate includes the concrete fixes found during live acceptance: native CC:T Sable-world positioning, OpenAL-safe Sound Physics diagnostics, correct native R1 attribution, and F3+T recovery diagnostics which no longer classify renderer-close cancellation as a decoder fault. CI `36238699768` is green.
 
 ## Product state
 
@@ -82,17 +82,24 @@ Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance s
 
 ## Remaining work
 
-Implementation is not waiting on another planned redesign. The next step is **runtime testing** of the current JAR with the master runner.
+Implementation is not waiting on another planned redesign. Live acceptance has now passed **A1-A19 and R1-R8** on the selected NeoForge 21.1.247 candidate.
 
-Important evidence still not claimed until that run passes:
+Runtime-confirmed evidence now includes:
 
-- the producer-fed RAW continuation fix is CI/build-verified but still needs current in-game diagnostic confirmation;
-- actual finite/RAW multispeaker timing in the user's environment;
-- real range/rejoin and F3+T recovery;
-- actual Sable tracking;
-- actual Sound Physics processing;
-- grouped radio behavior if a direct MP3/ICY URL is supplied;
-- 8+ speaker stress;
-- optional dimension leave/rejoin if the source can remain loaded.
+- native CC:T real client channels on Sable;
+- MP3/WAV real renderer continuity;
+- 2-speaker finite synchronization and endpoint-local client controls;
+- the producer-fed continuous RAW fix;
+- loop-boundary recovery/sync;
+- real >32-block range leave/rejoin.
+
+Remaining acceptance work:
+
+- rerun R9 F3+T on the corrected harness/diagnostic classification;
+- C1 dimension leave/rejoin if the source can remain loaded;
+- C2 actual Sable translation/rotation tracking;
+- C3 actual Sound Physics open-air/wall processing;
+- C4/C5 grouped radio + strict membership;
+- C6 8+ speaker finite/RAW stress.
 
 Only a concrete runtime failure should send work back into source changes.
