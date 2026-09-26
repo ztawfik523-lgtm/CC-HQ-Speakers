@@ -1,7 +1,7 @@
 package com.tom.hqspeaker;
 
 import org.junit.jupiter.api.Test;
-import org.squiddev.cobalt.LoadState;
+import org.squiddev.cobalt.compiler.LoadState;
 import org.squiddev.cobalt.LuaState;
 
 import java.io.InputStream;
