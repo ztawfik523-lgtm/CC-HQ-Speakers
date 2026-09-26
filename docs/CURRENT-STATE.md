@@ -4,11 +4,13 @@ Updated: 2026-09-26
 
 Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
-Current diagnostic/runtime-test checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
-Current CI: `36238699768` — PASS  
+Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
+Runtime-tested candidate CI: `36238699768` — PASS  
+Runtime-tested artifact: `10905071824`  
+Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
+Current master-runner checkpoint: `1360eb2f04d0e22420175040ce2e3735c4e9b294`  
+Current master-runner CI: `36240136369` — PASS on retry after a transient NeoForge Maven HTTP 502  
 Build baseline: NeoForge **21.1.247 only**  
-Artifact: `10905071824`  
-JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
 Protocol: **v10**, 9 payloads.
 
 ## Build/release policy
@@ -59,7 +61,7 @@ The diagnostic surface is `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDi
 
 ## Master acceptance
 
-There is now one user-facing test: `scripts/v10_acceptance.lua`.
+There is now one user-facing test: `scripts/v10_acceptance.lua`. It also supports opt-in `--resume`, which reuses prior PASS results from the existing master log and reruns only unfinished/failed/skipped checks on the same candidate JAR.
 
 It contains:
 
@@ -82,7 +84,7 @@ Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance s
 
 ## Remaining work
 
-Implementation is not waiting on another planned redesign. Live acceptance has now passed **A1-A19 and R1-R8** on the selected NeoForge 21.1.247 candidate.
+Implementation is not waiting on another planned redesign. Live acceptance has now passed **A1-A19 and R1-R9** on the selected NeoForge 21.1.247 runtime candidate.
 
 Runtime-confirmed evidence now includes:
 
@@ -91,15 +93,18 @@ Runtime-confirmed evidence now includes:
 - 2-speaker finite synchronization and endpoint-local client controls;
 - the producer-fed continuous RAW fix;
 - loop-boundary recovery/sync;
-- real >32-block range leave/rejoin.
+- real >32-block range leave/rejoin;
+- real F3+T sound-engine teardown/rebuild with authoritative playback rejoin and no decoder fault.
+
+C1 dimension leave/rejoin has no product PASS/FAIL verdict in the current Sable setup: changing dimension caused the Sable-hosted computer/sub-level to be torn down/re-attached, so the acceptance process itself did not survive to judge the return. The runner now has `--resume` specifically so this kind of interruption does not force A1-A19/R1-R9 to be repeated.
 
 Remaining acceptance work:
 
-- rerun R9 F3+T on the corrected harness/diagnostic classification;
-- C1 dimension leave/rejoin if the source can remain loaded;
+- decide whether C1 should be skipped for this setup or rerun only with a setup that actually keeps the Sable computer/sub-level alive across dimensions;
 - C2 actual Sable translation/rotation tracking;
 - C3 actual Sound Physics open-air/wall processing;
 - C4/C5 grouped radio + strict membership;
-- C6 8+ speaker finite/RAW stress.
+- C6 8+ speaker finite/RAW stress;
+- resolve the observed audible-range mismatch separately from R8 recovery: at test volume 0.55, the operator reported no audible sound at 32 blocks and only faint sound around 22 blocks.
 
 Only a concrete runtime failure should send work back into source changes.
