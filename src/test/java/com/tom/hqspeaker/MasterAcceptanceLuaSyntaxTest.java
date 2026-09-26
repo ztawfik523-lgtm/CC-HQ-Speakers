@@ -21,6 +21,8 @@ class MasterAcceptanceLuaSyntaxTest {
         String source = Files.readString(script);
         assertFalse(source.matches("(?s).*\\bcollectgarbage\\s*\\(.*"),
             "CraftOS does not expose collectgarbage; the master runner must not call it");
+        assertTrue(source.contains("--resume"), "master runner should support continuation without rerunning prior passes");
+        assertTrue(source.contains("resumePassed[name]"), "resume mode must reuse only named prior PASS results");
 
         int reloadBaseline = source.indexOf("local id, baseline = startRecoveryPlayback(\"resource reload\")");
         int reloadActionPrompt = source.indexOf("BASELINE READY -- NOW exit GUI.", reloadBaseline);
