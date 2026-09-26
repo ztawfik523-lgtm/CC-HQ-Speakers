@@ -1,51 +1,61 @@
 # Known issues and risk register
 
-Updated: 2026-09-21
+Updated: 2026-09-26
 
-Only current unresolved/deferred items are listed here. Retired HLS/TS and expected-count live issues are closed by removal/redesign.
+Only unresolved release-target evidence and concrete deferred risks are listed here.
 
 ## Runtime evidence still required
 
-### KI-RUNTIME-001 — finite listener lifecycle
+### KI-RUNTIME-001 — finite listener/recovery lifecycle
 
-Verify outside-at-start, enter, leave, re-enter at current time, dimension/disconnect cleanup and terminal/replacement cleanup in Minecraft.
+The code and diagnostics exist, but the current candidate still needs in-game proof for leave/re-enter at current playback time, F3+T sound-engine rebuild recovery and the selected dimension leave/rejoin scenario.
 
-### KI-RUNTIME-002 — renderer/reload/starvation recovery
+### KI-RUNTIME-003 — Sable movement
 
-Verify resource reload, renderer/SoundEngine loss and sustained starvation in Minecraft.
-
-### KI-RUNTIME-003 — moving speakers
-
-All HQ positional paths now use Sable -> VS2 -> static source resolution. Verify actual Sable/Aeronautics and VS2 movement in-game.
+All HQ positional paths use Sable -> VS2 -> static resolution. The selected release target requires actual Sable/Aeronautics translation/rotation to be observed by the built-in diagnostics. VS2 runtime validation is intentionally outside this release target.
 
 ### KI-RUNTIME-005 — finite multispeaker
 
-Verify real 2/4/8+ speaker synchronization, shared controls, endpoint-local gain/mute, `audioStopAt`, endpoint removal/replacement and concurrent controls.
+Current diagnostics can measure real channel starts, canonical playback drift, PCM feed spread, endpoint-local gain/mute/stop and recovery. The current JAR still needs the in-game 2-speaker core and 8+ speaker stress pass.
 
 ### KI-RUNTIME-006 — MP3/ICY radio
 
-Verify direct and grouped radio audibility, strict snapshot behavior, long-run drift, late-member rejection/rerun, metadata, bad URL/EOF/network failure and stop/replacement behavior.
+If radio is included in final target acceptance, verify grouped radio, metadata, strict snapshot late membership/rerun and sustained client playback with a direct MP3/ICY URL.
 
-### KI-RUNTIME-007 — RAW
+### KI-RUNTIME-007 — RAW continuation
 
-Verify signed-16 audibility, repeated feed behavior, backpressure/retry event, All preflight/common start, drain ownership and moving-source behavior.
+The producer-fed RAW continuation bug was fixed by waking the existing Minecraft/OpenAL streaming channel when later PCM arrives. CI is green and diagnostics now detect mid-stream stop/starvation, but the fix still needs current in-game confirmation in R6 and scale stress.
+
+### KI-RUNTIME-008 — Sound Physics Remastered
+
+The diagnostics can observe Sound Physics direct-filter processing and measurable filter changes. The current candidate still needs the prepared open-air/behind-wall in-game check.
 
 ### KI-PERF-006 — finite per-endpoint decode cost
 
-Finite playback intentionally keeps independent endpoint decoders/renderers. Profile realistic 2/4/8+ loads before considering shared finite decode fan-out.
+Finite playback intentionally keeps independent endpoint decoders/renderers. The 8+ speaker master test is the release-target evidence. Shared finite decode fan-out remains deferred unless real profiling demonstrates a problem.
 
 ### KI-RELEASE-010 — integrated acceptance
 
-Before release, run malformed/extreme media, storage/range/worker bounds, repeated replacement/control stress, Sound Physics Remastered, and the final target-scope checks using the single NeoForge 21.1.247-built artifact.
+The final target-scope master run has not yet been recorded as PASS. CI alone is insufficient.
 
 ### KI-REPO-011 — release branch hygiene
 
 The product branch is `codex/m1j-multispeaker`; GitHub default `main` remains historical until explicitly promoted/merged for release.
 
+## Non-blocking maintenance note
+
+NeoForge currently emits deprecation warnings for the `EventBusSubscriber.Bus.MOD` annotation form used by the diagnostic sound-engine reload hook. It compiles and CI passes on the 21.1.247 baseline. This is maintenance debt, not a demonstrated runtime defect.
+
+## Explicitly not release blockers for the selected target
+
+- dedicated-server/multiplayer runtime behavior;
+- VS2 runtime behavior;
+- a separate NeoForge 21.1.248 build/runtime pass.
+
 ## Frozen semantics, not issues
 
-- `audioStopAt` is endpoint-local.
-- grouped radio has no automatic membership.
-- `isStreaming` means server-side stream ownership/request state, not confirmed client audibility.
-- HLS/TS are removed.
+- `audioStopAt` is endpoint-local;
+- grouped radio has no automatic membership;
+- `isStreaming` means server-side stream ownership/request state, not guaranteed audibility;
+- HLS/TS are removed;
 - shared finite decode fan-out is not selected.
