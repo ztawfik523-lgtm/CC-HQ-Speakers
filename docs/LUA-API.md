@@ -1,6 +1,6 @@
 # Lua API — frozen v10
 
-Updated: 2026-09-21
+Updated: 2026-09-26
 
 Peripheral type remains `speaker`. See `API-FREEZE-V10.md` for the release contract.
 
@@ -61,6 +61,21 @@ Only MP3/ICY HTTP(S) radio is supported. HLS and TS are removed.
 ## Discovery
 
 `getPeripheralType`, `getPos`, `getSpeakerCount`, `getSpeakers`, `getSpeakerPos`.
+
+## Runtime diagnostic methods
+
+The release JAR also exposes dormant test instrumentation:
+
+```lua
+speaker.hqDiagEnable(true)     -- enable/disable collection
+speaker.hqDiagReset()          -- begin a fresh measurement epoch
+local snapshot = speaker.hqDiagSnapshot()
+local caps = speaker.hqDiagCapabilities()
+```
+
+These methods exist for the release acceptance runner. They do not start audio, do not change playback ownership and do not add a network payload.
+
+Normal scripts generally do not need them.
 
 ## Removed names
 
