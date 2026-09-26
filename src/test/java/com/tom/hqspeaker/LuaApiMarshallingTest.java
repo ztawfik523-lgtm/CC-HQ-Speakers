@@ -1,20 +1,23 @@
 package com.tom.hqspeaker;
 
-import com.tom.hqspeaker.peripheral.HQSpeakerPeripheral;
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LuaApiMarshallingTest {
     @Test
     void streamUrlUsesLuaMarshalableReturnType() throws Exception {
-        var method = HQSpeakerPeripheral.class.getMethod("getStreamUrl");
-        assertFalse(Optional.class.isAssignableFrom(method.getReturnType()),
-            "Lua-facing methods must not return java.util.Optional");
-        assertEquals(Object[].class, method.getReturnType(),
+        Path sourcePath = Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "peripheral", "HQSpeakerPeripheral.java");
+        String source = Files.readString(sourcePath);
+
+        assertFalse(source.matches("(?s).*@LuaFunction\\s+public\\s+final\\s+Optional<String>\\s+getStreamUrl\\s*\\(\\).*"),
+            "getStreamUrl must not expose java.util.Optional to ComputerCraft Lua");
+        assertTrue(source.matches("(?s).*@LuaFunction\\s+public\\s+final\\s+Object\\[\\]\\s+getStreamUrl\\s*\\(\\).*"),
             "getStreamUrl should marshal nil/string as zero/one Lua return values");
     }
 }
