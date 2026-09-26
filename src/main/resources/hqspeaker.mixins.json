@@ -10,7 +10,8 @@
   "client": [
     "client.SoundManagerAccessor",
     "client.SoundEngineAccessor",
-    "client.ChannelAccessor"
+    "client.ChannelAccessor",
+    "client.SoundPhysicsEnvironmentMixin"
   ],
   "injectors": {
     "defaultRequire": 1
