@@ -26,16 +26,20 @@ class HQDiagnosticsTest {
 
         HQDiagnostics.registerSource(id1);
         HQDiagnostics.registerSource(id2);
-        HQDiagnostics.channelStarted(id1, 7, 1.0f, 1.0f);
-        HQDiagnostics.channelStarted(id2, 8, 1.0f, 1.0f);
+        HQDiagnostics.channelStarted(id1, 0, 1.0f, 1.0f);
+        HQDiagnostics.channelStarted(id2, 0, 1.0f, 1.0f);
+        HQDiagnostics.soundPhysicsApplied(one, 1.0f, 1.0f);
+        HQDiagnostics.soundPhysicsApplied(two, 1.0f, 1.0f);
 
         HQDiagnostics.recordBatch(List.of(
             sample(id1, "playing", 1.000, 0, 64, 0, 0, 64, 0, 7, 1.0f, 1.0f),
             sample(id2, "playing", 1.004, 2, 64, 0, 2, 64, 0, 8, 1.0f, 1.0f)
         ));
+        HQDiagnostics.soundPhysicsApplied(one, 0.85f, 0.40f);
+        HQDiagnostics.soundPhysicsApplied(two, 0.90f, 0.50f);
         HQDiagnostics.recordBatch(List.of(
-            sample(id1, "playing", 1.100, 5, 64, 0, 5, 64, 0, 7, 0.85f, 0.40f),
-            sample(id2, "playing", 1.105, 7, 64, 0, 7, 64, 0, 8, 0.90f, 0.50f)
+            sample(id1, "playing", 1.100, 5, 64, 0, 5, 64, 0, 0, 1.0f, 1.0f),
+            sample(id2, "playing", 1.105, 7, 64, 0, 7, 64, 0, 0, 1.0f, 1.0f)
         ));
         HQDiagnostics.recordBatch(List.of(
             sample(id1, "stopped", 1.100, 5, 64, 0, 5, 64, 0, 7, 0.85f, 0.40f),
