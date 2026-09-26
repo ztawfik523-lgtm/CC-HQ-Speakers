@@ -1,5 +1,7 @@
 # CC:HQ Speakers — new-chat runtime handoff
 
+> **Historical:** Superseded by `HANDOFF-2026-09-26-DIAGNOSTIC-RUNTIME.md` and `HANDOFF-PROMPT-2026-09-26.md`. Keep this file only as checkpoint history.
+
 Updated: 2026-09-22
 
 Repository: `ztawfik523-lgtm/CC-HQ-Speakers`  
