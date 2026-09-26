@@ -26,7 +26,7 @@ local monitor = peripheral.find("monitor")
 local LOG = "/v10-acceptance.log"
 local startedMs = os.epoch("utc")
 local speakerCount = speaker.getSpeakerCount()
-assert(speakerCount >= 2, "master acceptance requires at least 2 attached speakers")
+assert(speakerCount == 2, "master acceptance must start with exactly 2 attached speakers; connect extras only when prompted")
 
 local state = {
   mode = "START",
@@ -884,7 +884,6 @@ auto("A9/19 Argument and RAW bounds", function()
   for i = 1, speaker.speakMaxSamples() + 1 do oversized[i] = 0 end
   expectError("RAW maxSamples+1", function() speaker.speakPCM(oversized, 0.0) end)
   oversized = nil
-  collectgarbage()
 
   assert(speaker.speakMp3(mp3, 0.0), "MP3 rejected for finite-argument checks")
   waitStatus(function() return speaker.audioStatus() end, "playing", 15, "finite argument check")
@@ -1041,6 +1040,7 @@ end)
 
 auto("A18/19 Stream security + metadata surface", function()
   assert(not speaker.isStreaming(), "stream unexpectedly active before radio test")
+  assert(speaker.getStreamUrl() == nil, "stream URL should be nil while inactive")
   expectError("file:// stream URL", function() speaker.speakStream("file:///tmp/nope.mp3", 0.0) end)
   expectError("loopback stream URL", function() speaker.speakStream("http://127.0.0.1:8000/nope.mp3", 0.0) end)
   local meta = speaker.getStreamMeta()
@@ -1465,6 +1465,7 @@ if RADIO_URL then
     assert(speaker.speakStreamAll(RADIO_URL, 0.45), "group radio rejected URL")
     for i = 1, expected do waitAt(i, "playing", 25, "radio endpoint " .. i) end
     assert(speaker.isStreaming(), "radio ownership did not remain active")
+    assert(speaker.getStreamUrl() == RADIO_URL, "active radio URL getter mismatch")
     waitTimer(30.0, "measuring radio continuity/sync")
     local snap = diagSnapshot("group radio")
     assertClientBridge(snap)
