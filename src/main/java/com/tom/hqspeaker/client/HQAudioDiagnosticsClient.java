@@ -14,7 +14,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.fml.ModList;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
-import org.lwjgl.openal.EXTEfx;
 import org.lwjgl.openal.SOFTSourceLatency;
 
 import java.util.ArrayList;
@@ -32,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @OnlyIn(Dist.CLIENT)
 public final class HQAudioDiagnosticsClient {
     private static final ConcurrentHashMap<UUID, Binding> BINDINGS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, SprObservation> SOUND_PHYSICS = new ConcurrentHashMap<>();
     private static final AtomicBoolean SAMPLE_SCHEDULED = new AtomicBoolean();
 
     private HQAudioDiagnosticsClient() {}
@@ -71,9 +71,6 @@ public final class HQAudioDiagnosticsClient {
         boolean sourceLatency = false;
         String vendor = "";
         String renderer = "";
-        int directFilter = 0;
-        float directGain = 1.0f;
-        float directGainHF = 1.0f;
 
         try {
             sourceLatency = AL10.alIsExtensionPresent("AL_SOFT_source_latency");
@@ -81,16 +78,8 @@ public final class HQAudioDiagnosticsClient {
             String two = AL10.alGetString(AL10.AL_RENDERER);
             vendor = one == null ? "" : one;
             renderer = two == null ? "" : two;
-
-            if (ModList.get().isLoaded("sound_physics_remastered")) {
-                directFilter = AL10.alGetSourcei(sourceId, EXTEfx.AL_DIRECT_FILTER);
-                if (directFilter != 0 && EXTEfx.alIsFilter(directFilter)) {
-                    directGain = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAIN);
-                    directGainHF = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAINHF);
-                }
-            }
         } catch (RuntimeException ignored) {
-            // Diagnostics must never interfere with playback. Missing optional AL/EFX queries simply remain unknown.
+            // Diagnostics must never interfere with playback. Missing optional AL queries simply remain unknown.
         }
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -101,18 +90,45 @@ public final class HQAudioDiagnosticsClient {
             vendor,
             renderer
         );
-        HQDiagnostics.channelStarted(identity, directFilter, directGain, directGainHF);
-        BINDINGS.put(identity.source(),
-            new Binding(identity, sound, sourceId, executor, HQDiagnostics.epoch()));
+        long epoch = HQDiagnostics.epoch();
+        HQDiagnostics.channelStarted(identity, 0, 1.0f, 1.0f);
+        BINDINGS.put(identity.source(), new Binding(identity, sound, sourceId, executor, epoch));
+
+        SprObservation spr = SOUND_PHYSICS.get(sourceId);
+        if (spr != null && spr.epoch() == epoch) {
+            HQDiagnostics.soundPhysicsApplied(identity.source(), spr.directGain(), spr.directGainHF());
+        }
     }
 
     public static void detach(UUID source) {
         if (source == null) return;
-        if (BINDINGS.remove(source) != null) HQDiagnostics.channelDetached(source);
+        Binding removed = BINDINGS.remove(source);
+        if (removed != null) {
+            SOUND_PHYSICS.remove(removed.sourceId());
+            HQDiagnostics.channelDetached(source);
+        }
+    }
+
+    /**
+     * Called by the optional Sound Physics mixin exactly when SPR applies its environment to an OpenAL source.
+     * This avoids querying AL_DIRECT_FILTER, which OpenAL Soft deliberately rejects as a source query property.
+     */
+    public static void soundPhysicsApplied(int sourceId, float directGain, float directGainHF) {
+        if (!HQDiagnostics.enabled() || sourceId <= 0) return;
+        long epoch = HQDiagnostics.epoch();
+        SOUND_PHYSICS.put(sourceId, new SprObservation(epoch, directGain, directGainHF));
+
+        for (Binding binding : BINDINGS.values()) {
+            if (binding.sourceId() == sourceId && binding.epoch() == epoch) {
+                HQDiagnostics.soundPhysicsApplied(binding.identity().source(), directGain, directGainHF);
+                break;
+            }
+        }
     }
 
     public static void soundEngineReloaded() {
         BINDINGS.clear();
+        SOUND_PHYSICS.clear();
         SAMPLE_SCHEDULED.set(false);
         HQDiagnostics.soundEngineReloaded();
     }
@@ -187,22 +203,9 @@ public final class HQAudioDiagnosticsClient {
                     AL10.alGetSourcefv(source, AL10.AL_POSITION, actual);
                     float sourceGain = AL10.alGetSourcef(source, AL10.AL_GAIN);
 
-                    int directFilter = 0;
-                    float directGain = 1.0f;
-                    float directGainHF = 1.0f;
-                    if (ModList.get().isLoaded("sound_physics_remastered")) {
-                        try {
-                            directFilter = AL10.alGetSourcei(source, EXTEfx.AL_DIRECT_FILTER);
-                            if (directFilter != 0 && EXTEfx.alIsFilter(directFilter)) {
-                                directGain = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAIN);
-                                directGainHF = EXTEfx.alGetFilterf(directFilter, EXTEfx.AL_LOWPASS_GAINHF);
-                            }
-                        } catch (RuntimeException ignored) {
-                            directFilter = 0;
-                            directGain = 1.0f;
-                            directGainHF = 1.0f;
-                        }
-                    }
+                    // Sound Physics gain/cutoff evidence is captured by SoundPhysicsEnvironmentMixin when
+                    // SPR applies its environment. Do not query AL_DIRECT_FILTER here: OpenAL Soft reports
+                    // AL_INVALID_ENUM for that getter and the stale error leaks into Minecraft's sound diagnostics.
 
                     // Query state last. A streaming source can underrun between the offset query and state query;
                     // checking last makes that race visible instead of reporting an older PLAYING state.
@@ -222,9 +225,9 @@ public final class HQAudioDiagnosticsClient {
                         actual[1],
                         actual[2],
                         sourceGain,
-                        directFilter,
-                        directGain,
-                        directGainHF
+                        0,
+                        1.0f,
+                        1.0f
                     ));
                 }
                 HQDiagnostics.recordBatch(epoch, samples);
@@ -251,6 +254,8 @@ public final class HQAudioDiagnosticsClient {
         SoundEngineExecutor executor,
         long epoch
     ) {}
+
+    private record SprObservation(long epoch, float directGain, float directGainHF) {}
 
     private record Request(Binding binding, float x, float y, float z) {}
 }
