@@ -1,20 +1,40 @@
 # Runtime scripts
 
-Current frozen-v10 release-candidate scripts:
+Updated: 2026-09-26
 
-- `v10_phase0_acceptance.lua <mp3> <wav>` — preferred complete Phase 0 runner. Runs a fast mostly-silent mechanical preflight, then pauses for five human audible gates. ENTER starts each gate; P=pass, R=replay, F=fail. Uses the first attached monitor when available and writes `/v10-phase0.log`.
-- `p0_cc_speaker_contract.lua` — native CC:T contract/backpressure isolation.
-- `p0_finite_regression.lua <mp3>` — finite loop/end-state regression isolation.
-- `v10_core_acceptance.lua <mp3> [wav]` — frozen API + finite/RAW/core multispeaker isolation.
-- `v10_raw_acceptance.lua` — RAW bounded backpressure/retry and group-admission isolation.
-- `v10_multispeaker_stress.lua <mp3> [cycles]` — repeated 2+ endpoint control/replacement stress.
-- `v10_radio_acceptance.lua [mp3-radio-url]` — direct/At/strict-All MP3/ICY checks.
-- `v10_runtime_observer.lua [seconds]` — timer-driven event/status observer with monitor dashboard and `/v10-runtime-observer.log`.
+## User-facing release acceptance
 
-For Phase 0, run `v10_phase0_acceptance <mp3> <wav>`. Use the smaller P0/core/RAW scripts only to isolate a failure.
+Use exactly one normal acceptance runner:
 
-Phase 0 PASS now includes the script-recorded audible checks. Later listener/recovery, movement, radio synchronization, Sound Physics Remastered, and performance gates still require their own runtime phases.
+```
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+```
 
-Run the later phases in the order defined by `docs/RUNTIME-ACCEPTANCE-V10.md`.
+`v10_acceptance.lua` combines deterministic checks with the mod's built-in client/OpenAL diagnostics. It writes `/v10-acceptance.log`.
 
-Historical milestone scripts (`m0-*`, `m1_*`, `m1a_*`, `m1c_*`, `m1d_*`, `m1e_*`) are not current release acceptance unless that document explicitly says otherwise.
+The operator no longer presses PASS/FAIL for audio quality. The script may ask the operator to perform physical actions such as walking out of range, pressing F3+T, moving the Sable contraption, moving behind an obstacle, changing dimension or connecting speakers. The diagnostics decide the result.
+
+The current master contains:
+
+- A1-A19 deterministic/API/admission/control/bounds/security checks;
+- R1-R9 real-client diagnostics;
+- C1-C6 environment/scale checks.
+
+Selected release scope is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are outside scope.
+
+## Isolation/debug scripts
+
+These remain useful only if the master runner identifies a concrete failure:
+
+- `p0_cc_speaker_contract.lua` — native CC:T contract isolation;
+- `p0_finite_regression.lua` — finite regression isolation;
+- `v10_core_acceptance.lua` — older core API/finite/RAW isolation;
+- `v10_raw_acceptance.lua` — RAW admission/backpressure isolation;
+- `v10_raw_audio_probe.lua` — focused RAW audible/continuation probe;
+- `v10_multispeaker_stress.lua` — older focused multispeaker stress;
+- `v10_radio_acceptance.lua` — focused radio isolation;
+- `v10_runtime_observer.lua` — event/status observation.
+
+`v10_phase0_acceptance.lua` and the old phased workflow are superseded. Do not make the user run phases unless isolating a master-test failure.
+
+Historical milestone scripts (`m0-*`, `m1_*`, `m1a_*`, `m1c_*`, `m1d_*`, `m1e_*`) are not current release acceptance.
