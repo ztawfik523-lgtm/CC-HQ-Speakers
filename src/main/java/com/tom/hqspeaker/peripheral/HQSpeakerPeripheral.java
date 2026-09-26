@@ -236,7 +236,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
 
     @LuaFunction public final boolean isStreaming() { return streamActive.get(); }
-    @LuaFunction public final Optional<String> getStreamUrl() { return Optional.ofNullable(streamUrl); }
+    @LuaFunction
+    public final Object[] getStreamUrl() {
+        String url = streamUrl;
+        return url == null ? new Object[0] : new Object[]{ url };
+    }
 
     @LuaFunction
     public final Map<String, Object> getStreamFormats() {
