@@ -2,17 +2,23 @@
 
 CC:HQ Speakers upgrades the normal CC:Tweaked `computercraft:speaker` with higher-quality programmable audio while preserving CC:T's native speaker behavior.
 
-Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The release is built once against 21.1.247; the mod metadata accepts the 21.1.x line (`[21.1,21.2)`).
+Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The release is built once against **NeoForge 21.1.247** and declares `[21.1,21.2)`.
 
-## Frozen v10 release surface
+## Current release-candidate status
 
-Source freeze checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-Source-freeze CI: `35655973164` — both NeoForge targets passed build, deterministic tests, package verification and artifact upload.  
-API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`.  
-Runtime-prep head: `a234ba02b80532daf32f6849061b76f23c0eb4d3` / CI `35657182389` — PASS on both targets.  
-Network protocol: **v10**, 9 payloads.
+Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
+API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
+Current diagnostic/runtime-test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
+Current CI: `36205257110` — PASS on the single NeoForge 21.1.247 build  
+Current artifact: `10892998704`  
+Current JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`  
+Network protocol: **v10**, exactly 9 payloads.
 
-The normal CC:T speaker is the only block product. The inherited standalone `hqspeaker:hq_speaker` block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License: MPL-2.0.
+Historical pre-freeze CI also built 21.1.248. That remains historical compatibility evidence; current CI intentionally produces only the 21.1.247-built artifact.
+
+## Frozen v10 product
+
+The normal CC:T speaker is the only block product. The standalone `hqspeaker:hq_speaker` block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License: MPL-2.0.
 
 Supported playback:
 
@@ -29,11 +35,11 @@ Retired: OGG/generic whole-file aliases, HLS, MPEG-TS, the duplicate finite engi
 
 Finite multispeaker membership is a start-time speaker snapshot. Pause/resume/seek/loop and ordinary/All stop operate on shared playback. Volume and mute are endpoint-local. `audioStopAt(index)` stops/detaches only that physical endpoint.
 
-Grouped MP3 radio is also strict-snapshot: the command defines the participating server endpoints, each client collects only the speakers it actually receives before the seal deadline, one shared decoder/prebuffer is used for that local group, and late/new speakers do not auto-join. Rerun the command to create a new group.
+Grouped MP3 radio is also strict-snapshot. Late/new speakers do not auto-join; rerun the stream command to create a new group which includes the new membership.
 
-RAW `speakPCMAll` preflights the whole target snapshot and uses a common future start tick without an expected-member barrier.
+RAW `speakPCMAll` preflights the target snapshot and uses a common future start tick.
 
-All HQ positional paths now use the same movement resolver: Sable Companion first, VS2 second, static block center otherwise.
+All HQ positional paths use the same resolver: Sable Companion first, VS2 second, static block center otherwise.
 
 ## Recommended finite API
 
@@ -47,14 +53,31 @@ Prepared media is stored server-side as immutable encoded assets. Defaults are 5
 
 ## Built-in runtime diagnostics
 
-The normal release JAR now carries a dormant diagnostic subsystem used by the v10 acceptance runner. It is off during ordinary use and is enabled explicitly by the test through `hqDiagEnable(true)`.
+The normal release JAR includes dormant diagnostics used by the final v10 acceptance runner. They are off during ordinary play and explicitly enabled by `hqDiagEnable(true)`.
 
-While enabled it observes the actual client audio channels and records OpenAL play/pause/stop state, queued/processed buffers, source position, playback offset/latency when supported, decoded/RAW PCM delivery, renderer restarts/recovery, multispeaker start skew, sound-engine reloads, Sable source movement and Sound Physics direct-filter application. In singleplayer the integrated server and client share this diagnostic state in-process, so protocol v10 remains at exactly 9 payloads.
+The diagnostic layer observes the actual Minecraft/OpenAL playback path rather than trusting only server/Lua state. It records real client channels, play/pause/stop state, PCM delivery, buffer health, source position, playback clocks/latency where supported, decoder/recovery activity, sound-engine reloads, multispeaker timing, Sable movement and Sound Physics processing.
 
-Diagnostic Lua surface: `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDiagCapabilities`. These methods are test instrumentation and do not change normal playback ownership or command ordering.
+Diagnostic Lua methods:
 
-## Evidence boundary
+- `hqDiagEnable(boolean)`
+- `hqDiagReset()`
+- `hqDiagSnapshot()`
+- `hqDiagCapabilities()`
 
-Current CI builds/tests/packages only against NeoForge 21.1.247. That single artifact is the release artifact for the supported NeoForge 21.1.x metadata range; older dual-build CI remains historical evidence, not a continuing build requirement. The built-in diagnostic runner adds real-client/OpenAL evidence, but runtime acceptance still requires launching Minecraft and performing physical actions which cannot be simulated in CI, such as moving a Sable contraption, leaving listener range and pressing F3+T.
+These do not add a protocol payload or alter normal playback semantics.
 
-See `docs/API-FREEZE-V10.md`, `docs/RUNTIME-ACCEPTANCE-V10.md`, then `docs/HANDOFF-2026-09-22-RUNTIME.md`.
+## Runtime acceptance
+
+Use one user-facing runner:
+
+```
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+```
+
+The current target scope is **singleplayer + Sable/Aeronautics + Sound Physics Remastered**. Dedicated-server/multiplayer and VS2 are intentionally outside this runtime acceptance target.
+
+The operator performs physical actions when prompted—walk out of range, press F3+T, move the Sable contraption, move behind an obstacle, connect speakers—but the diagnostics determine PASS/FAIL.
+
+Runtime acceptance has **not yet been declared complete**. CI proves build/tests/package structure, not real in-game playback.
+
+See `docs/RUNTIME-ACCEPTANCE-V10.md` and `docs/HANDOFF-2026-09-26-DIAGNOSTIC-RUNTIME.md`.
