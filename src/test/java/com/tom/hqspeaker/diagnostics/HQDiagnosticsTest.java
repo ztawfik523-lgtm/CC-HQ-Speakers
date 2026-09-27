@@ -28,6 +28,12 @@ class HQDiagnosticsTest {
         HQDiagnostics.registerSource(id2);
         HQDiagnostics.channelStarted(id1, 0, 1.0f, 1.0f);
         HQDiagnostics.channelStarted(id2, 0, 1.0f, 1.0f);
+        HQDiagnostics.soundPhysicsProcessed(
+            one, 1L, 0.5, 64.5, 0.5, "block", "hqspeaker:hq_audio_source",
+            true, 1.5, 64.5, 0.5);
+        HQDiagnostics.soundPhysicsProcessed(
+            two, 1L, 2.5, 64.5, 0.5, "block", "hqspeaker:hq_audio_source",
+            false, 0.0, 0.0, 0.0);
         HQDiagnostics.soundPhysicsApplied(one, 1.0f, 1.0f);
         HQDiagnostics.soundPhysicsApplied(two, 1.0f, 1.0f);
 
@@ -61,6 +67,11 @@ class HQDiagnosticsTest {
         assertEquals(0.0, ((Number) first.get("lastPositionError")).doubleValue(), 1.0e-6);
         assertEquals(0.75, ((Number) first.get("sourceGain")).doubleValue(), 1.0e-6);
         assertTrue((Boolean) first.get("soundPhysicsProcessed"));
+        assertEquals(1L, ((Number) first.get("soundPhysicsProcessCalls")).longValue());
+        assertEquals("block", first.get("soundPhysicsProcessCategory"));
+        assertEquals("hqspeaker:hq_audio_source", first.get("soundPhysicsProcessSound"));
+        assertTrue((Boolean) first.get("soundPhysicsReflectedPosition"));
+        assertEquals(1.5, ((Number) first.get("soundPhysicsReflectedX")).doubleValue(), 1.0e-6);
         assertTrue((Boolean) first.get("soundPhysicsChanged"));
         assertTrue(((Number) first.get("directGainHFRange")).doubleValue() > 0.5);
 

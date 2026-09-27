@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class HQAudioDiagnosticsClient {
     private static final ConcurrentHashMap<UUID, Binding> BINDINGS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Integer, SprObservation> SOUND_PHYSICS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, SprProcessObservation> SOUND_PHYSICS_PROCESS = new ConcurrentHashMap<>();
     private static final AtomicBoolean SAMPLE_SCHEDULED = new AtomicBoolean();
 
     private HQAudioDiagnosticsClient() {}
@@ -98,6 +99,19 @@ public final class HQAudioDiagnosticsClient {
         if (spr != null && spr.epoch() == epoch) {
             HQDiagnostics.soundPhysicsApplied(identity.source(), spr.directGain(), spr.directGainHF());
         }
+
+        // SPR's Channel.play hook runs before NeoForge posts PlayStreamingSourceEvent, so the first real
+        // processSound call can legitimately arrive before this binding exists. Consume that one pending observation
+        // now instead of misclassifying startup as "SPR never processed this HQ source".
+        SprProcessObservation process = SOUND_PHYSICS_PROCESS.remove(sourceId);
+        if (process != null && process.epoch() == epoch) {
+            HQDiagnostics.soundPhysicsProcessed(
+                identity.source(), process.calls(),
+                process.x(), process.y(), process.z(),
+                process.category(), process.sound(),
+                process.reflected(),
+                process.reflectedX(), process.reflectedY(), process.reflectedZ());
+        }
     }
 
     public static void detach(UUID source) {
@@ -105,6 +119,7 @@ public final class HQAudioDiagnosticsClient {
         Binding removed = BINDINGS.remove(source);
         if (removed != null) {
             SOUND_PHYSICS.remove(removed.sourceId());
+            SOUND_PHYSICS_PROCESS.remove(removed.sourceId());
             HQDiagnostics.channelDetached(source);
         }
     }
@@ -126,9 +141,47 @@ public final class HQAudioDiagnosticsClient {
         }
     }
 
+    /**
+     * Called when SPR's real processSound method returns for an OpenAL source.
+     *
+     * <p>The initial call normally happens before PlayStreamingSourceEvent attaches the HQ identity, so unmatched
+     * observations are retained briefly by raw OpenAL source id and consumed when the channel event arrives.</p>
+     */
+    public static void soundPhysicsProcessed(
+        int sourceId,
+        double x, double y, double z,
+        String category,
+        String sound,
+        boolean reflected,
+        double reflectedX, double reflectedY, double reflectedZ
+    ) {
+        if (!HQDiagnostics.enabled() || sourceId <= 0) return;
+        long epoch = HQDiagnostics.epoch();
+
+        for (Binding binding : BINDINGS.values()) {
+            if (binding.sourceId() == sourceId && binding.epoch() == epoch) {
+                HQDiagnostics.soundPhysicsProcessed(
+                    binding.identity().source(), 1L,
+                    x, y, z, category, sound,
+                    reflected, reflectedX, reflectedY, reflectedZ);
+                return;
+            }
+        }
+
+        SOUND_PHYSICS_PROCESS.compute(sourceId, (ignored, current) -> {
+            long calls = current != null && current.epoch() == epoch ? current.calls() + 1L : 1L;
+            return new SprProcessObservation(
+                epoch, calls, x, y, z,
+                category == null ? "" : category,
+                sound == null ? "" : sound,
+                reflected, reflectedX, reflectedY, reflectedZ);
+        });
+    }
+
     public static void soundEngineReloaded() {
         BINDINGS.clear();
         SOUND_PHYSICS.clear();
+        SOUND_PHYSICS_PROCESS.clear();
         SAMPLE_SCHEDULED.set(false);
         HQDiagnostics.soundEngineReloaded();
     }
@@ -256,6 +309,16 @@ public final class HQAudioDiagnosticsClient {
     ) {}
 
     private record SprObservation(long epoch, float directGain, float directGainHF) {}
+
+    private record SprProcessObservation(
+        long epoch,
+        long calls,
+        double x, double y, double z,
+        String category,
+        String sound,
+        boolean reflected,
+        double reflectedX, double reflectedY, double reflectedZ
+    ) {}
 
     private record Request(Binding binding, float x, float y, float z) {}
 }

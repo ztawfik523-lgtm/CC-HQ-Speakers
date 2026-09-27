@@ -44,6 +44,16 @@ class MasterAcceptanceLuaSyntaxTest {
             "sync acceptance should require a short settled window, not one sample");
         assertFalse(source.contains("maxLogicalAudibleOffsetSpreadMs"),
             "historical worst-ever drift must not be a hard acceptance verdict");
+        assertTrue(source.contains("assertSourceHealthy(source, \"Sable source \" .. i, 5, false)"),
+            "C1 must judge Sable movement/final health without rejecting expected listener relevance cycling");
+        assertTrue(source.contains("source.soundPhysicsProcessCalls"),
+            "C2 must prove the real SPR processSound path, not only observe setEnvironment");
+        assertTrue(source.contains("Use ONLY ordinary Minecraft-world geometry"),
+            "C2 must keep Sable-wall acoustics outside the basic SPR integration check");
+        assertTrue(source.contains("independentSubcheck(\"C4 finite scale\""),
+            "C4 finite failure must not prevent RAW scale evidence");
+        assertTrue(source.contains("independentSubcheck(\"C4 RAW scale\""),
+            "C4 RAW must run independently from finite scale");
 
         int reloadBaseline = source.indexOf("local id, baseline = startRecoveryPlayback(\"resource reload\")");
         int reloadActionPrompt = source.indexOf("BASELINE READY -- NOW exit GUI.", reloadBaseline);

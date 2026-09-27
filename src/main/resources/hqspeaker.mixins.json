@@ -11,7 +11,8 @@
     "client.SoundManagerAccessor",
     "client.SoundEngineAccessor",
     "client.ChannelAccessor",
-    "client.SoundPhysicsEnvironmentMixin"
+    "client.SoundPhysicsEnvironmentMixin",
+    "client.SoundPhysicsProcessMixin"
   ],
   "injectors": {
     "defaultRequire": 1

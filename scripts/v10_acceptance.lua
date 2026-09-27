@@ -295,6 +295,25 @@ local function waitEnter()
   end
 end
 
+local function independentSubcheck(name, action)
+  log("SUBBEGIN", name)
+  local ok, err = pcall(action)
+  if not ok then
+    if tostring(err) == "terminated" then error("terminated", 0) end
+    log("SUBFAIL", name .. ": " .. tostring(err))
+    pcall(function()
+      if speaker.hqDiagSnapshot then
+        log("SUBDIAG", name .. " = " .. serialize(speaker.hqDiagSnapshot()))
+      end
+    end)
+    safeStop()
+    return tostring(err)
+  end
+  safeStop()
+  log("SUBPASS", name)
+  return nil
+end
+
 local function actionGate(name, instructions, action, optional)
   if RESUME and resumePassed[name] then
     if optional then state.optionalPassed = state.optionalPassed + 1
@@ -1397,7 +1416,11 @@ actionGate("C1 Sable/Aeronautics source tracking", {
   local sources = diagSources(snap, "finite")
   assert(#sources == expected, "Sable diagnostic source count mismatch")
   for i, source in ipairs(sources) do
-    assertSourceHealthy(source, "Sable source " .. i, 5, true)
+    -- This scenario intentionally allows listener relevance leave/rejoin while the operator walks around.
+    -- Judge current health + movement, not whether the source was uninterrupted for the entire history.
+    assertSourceHealthy(source, "Sable source " .. i, 5, false)
+    assert(source.lastState == "playing",
+      "Sable source " .. i .. ": source did not recover to PLAYING after movement/relevance changes")
     assert((source.requestedMovement or 0) >= DIAG_POSITION_MOVE,
       ("Sable source %d: HQ sound position moved only %.3f blocks"):format(i, source.requestedMovement or 0))
     assert((source.actualMovement or 0) >= DIAG_POSITION_MOVE,
@@ -1410,9 +1433,10 @@ actionGate("C1 Sable/Aeronautics source tracking", {
   end
 end, true)
 actionGate("C2 Sound Physics Remastered processing", {
+  "Use ONLY ordinary Minecraft-world geometry for this check (not a Sable wall).",
   "Start with yourself in OPEN AIR near the stationary speakers.",
-  "The test measures the Sound Physics filter there.",
-  "Then it asks you to move behind your prepared solid wall and press ENTER.",
+  "The test proves SPR really called processSound, then measures its filter.",
+  "Then it asks you to move behind a solid normal-world wall and press ENTER.",
   "It restarts audio behind the wall and compares the real filter automatically.",
 }, function()
   diagReset("SPR open air")
@@ -1427,8 +1451,14 @@ actionGate("C2 Sound Physics Remastered processing", {
   assert(#openSources == expected, "SPR open-air source count mismatch")
   local openByPos = {}
   for i, source in ipairs(openSources) do
-    assert(source.soundPhysicsProcessed == true, "SPR did not attach a direct filter to open-air HQ source " .. i)
-    assert((source.soundPhysicsSamples or 0) > 0, "SPR filter was not observable during open-air playback for source " .. i)
+    assert((source.soundPhysicsProcessCalls or 0) > 0,
+      "SPR processSound was never observed for open-air HQ source " .. i)
+    assert(source.soundPhysicsProcessCategory == "block",
+      "SPR processed open-air HQ source " .. i .. " under unexpected category " .. tostring(source.soundPhysicsProcessCategory))
+    assert(source.soundPhysicsProcessSound == "hqspeaker:hq_audio_source",
+      "SPR processed open-air HQ source " .. i .. " under unexpected sound id " .. tostring(source.soundPhysicsProcessSound))
+    assert((source.soundPhysicsSamples or 0) > 0,
+      "SPR processSound ran but no environment write was observed for open-air HQ source " .. i)
     openByPos[(source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)] = source
   end
 
@@ -1446,8 +1476,14 @@ actionGate("C2 Sound Physics Remastered processing", {
 
   local changed = 0
   for i, source in ipairs(wallSources) do
-    assert(source.soundPhysicsProcessed == true, "SPR did not process wall HQ source " .. i)
-    assert((source.soundPhysicsSamples or 0) > 0, "SPR filter was not observable during wall playback for source " .. i)
+    assert((source.soundPhysicsProcessCalls or 0) > 0,
+      "SPR processSound was never observed for wall HQ source " .. i)
+    assert(source.soundPhysicsProcessCategory == "block",
+      "SPR processed wall HQ source " .. i .. " under unexpected category " .. tostring(source.soundPhysicsProcessCategory))
+    assert(source.soundPhysicsProcessSound == "hqspeaker:hq_audio_source",
+      "SPR processed wall HQ source " .. i .. " under unexpected sound id " .. tostring(source.soundPhysicsProcessSound))
+    assert((source.soundPhysicsSamples or 0) > 0,
+      "SPR processSound ran but no environment write was observed for wall HQ source " .. i)
     local key = (source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)
     local before = assert(openByPos[key], "SPR could not match source position between open/wall runs")
     local gainDrop = (before.directGain or 1) - (source.directGain or 1)
@@ -1459,7 +1495,7 @@ actionGate("C2 Sound Physics Remastered processing", {
       source.directGainRange or 0, source.directGainHFRange or 0))
   end
   assert(changed > 0,
-    "Sound Physics processed HQ audio, but the prepared wall did not measurably increase occlusion; use a more solid/thicker wall")
+    "Sound Physics processed HQ audio, but the normal-world wall did not measurably increase occlusion")
 end, true)
 
 if RADIO_URL then
@@ -1561,29 +1597,40 @@ actionGate("C4 8+ speaker scale stress", {
   local current = speaker.getSpeakerCount()
   assert(current >= 8, "fewer than 8 speakers are attached")
 
-  diagReset("8+ finite")
-  assert(speaker.speakMp3All(mp3, 0.45), "8+ group MP3 rejected")
-  verifySharedPlaying()
-  waitTimer(10.0, "measuring 8+ finite synchronization")
-  assertFiniteGroupSync(current, "8+ finite", true)
+  local failures = {}
 
-  safeStop()
-  diagReset("8+ RAW")
-  local samplesPerChunk = 96000
-  local chunks = 3
-  local raw = makeRawChunk(samplesPerChunk, 440, 14000)
-  for i = 1, chunks do sendRawAll(raw, 0.35, 10) end
-  waitTimer(0.75, "checking 8+ RAW continuity before natural EOF")
-  local rawActive = diagSnapshot("8+ RAW active")
-  assertRawContinuityWhileActive(
-    rawActive, current, samplesPerChunk * 2 * chunks, "8+ RAW active")
-  assertSettledGroupSync(
-    "raw", "raw:", current, "8+ RAW sync", DIAG_LOGICAL_DRIFT_MS, true)
+  local finiteFailure = independentSubcheck("C4 finite scale", function()
+    diagReset("8+ finite")
+    assert(speaker.speakMp3All(mp3, 0.45), "8+ group MP3 rejected")
+    verifySharedPlaying()
+    waitTimer(10.0, "measuring 8+ finite synchronization")
+    assertFiniteGroupSync(current, "8+ finite", true)
+  end)
+  if finiteFailure then failures[#failures + 1] = "finite: " .. finiteFailure end
 
-  assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for 8+ RAW drain"),
-    "8+ RAW server lifetime did not drain")
-  local rawSnap = diagSnapshot("8+ RAW", 0.5)
-  assertRawGroup(rawSnap, current, samplesPerChunk * 2 * chunks, "8+ RAW")
+  local rawFailure = independentSubcheck("C4 RAW scale", function()
+    diagReset("8+ RAW")
+    local samplesPerChunk = 96000
+    local chunks = 3
+    local raw = makeRawChunk(samplesPerChunk, 440, 14000)
+    for i = 1, chunks do sendRawAll(raw, 0.35, 10) end
+    waitTimer(0.75, "checking 8+ RAW continuity before natural EOF")
+    local rawActive = diagSnapshot("8+ RAW active")
+    assertRawContinuityWhileActive(
+      rawActive, current, samplesPerChunk * 2 * chunks, "8+ RAW active")
+    assertSettledGroupSync(
+      "raw", "raw:", current, "8+ RAW sync", DIAG_LOGICAL_DRIFT_MS, true)
+
+    assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for 8+ RAW drain"),
+      "8+ RAW server lifetime did not drain")
+    local rawSnap = diagSnapshot("8+ RAW", 0.5)
+    assertRawGroup(rawSnap, current, samplesPerChunk * 2 * chunks, "8+ RAW")
+  end)
+  if rawFailure then failures[#failures + 1] = "RAW: " .. rawFailure end
+
+  if #failures > 0 then
+    error("C4 subcheck failure(s): " .. table.concat(failures, " | "), 0)
+  end
 end, true)
 
 safeStop()

@@ -19,6 +19,18 @@ class DiagnosticOpenALSafetyTest {
     }
 
     @Test
+    void soundPhysicsProcessEvidenceComesFromRealProcessSoundHook() throws Exception {
+        Path mixin = Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "mixin", "client",
+            "SoundPhysicsProcessMixin.java");
+        String source = Files.readString(mixin);
+
+        assertTrue(source.contains("processSound(IDDD"));
+        assertTrue(source.contains("HQAudioDiagnosticsClient.soundPhysicsProcessed"));
+        assertTrue(source.contains("require = 0"));
+    }
+
+    @Test
     void soundPhysicsEvidenceComesFromSprApplicationHook() throws Exception {
         Path mixin = Path.of(
             "src", "main", "java", "com", "tom", "hqspeaker", "mixin", "client",

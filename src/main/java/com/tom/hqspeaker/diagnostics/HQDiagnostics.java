@@ -203,6 +203,29 @@ public final class HQDiagnostics {
         if (metrics != null) metrics.soundPhysicsApplied(directGain, directGainHF);
     }
 
+    /**
+     * Record direct evidence that SPR's full processSound path returned for one tracked HQ source.
+     *
+     * <p>This is intentionally separate from {@link #soundPhysicsApplied(UUID, float, float)}: setEnvironment can
+     * prove that SPR wrote an environment, while this proves that SPR actually evaluated the source through
+     * processSound.</p>
+     */
+    public static void soundPhysicsProcessed(
+        UUID source,
+        long calls,
+        double x, double y, double z,
+        String category,
+        String sound,
+        boolean reflected,
+        double reflectedX, double reflectedY, double reflectedZ
+    ) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null && calls > 0L) {
+            metrics.soundPhysicsProcessed(
+                calls, x, y, z, category, sound, reflected, reflectedX, reflectedY, reflectedZ);
+        }
+    }
+
     public static void channelDetached(UUID source) {
         SourceMetrics metrics = active(source);
         if (metrics != null) metrics.channelDetached();
@@ -346,6 +369,16 @@ public final class HQDiagnostics {
 
         private long soundPhysicsChannelStarts;
         private long soundPhysicsSamples;
+        private long soundPhysicsProcessCalls;
+        private double lastSoundPhysicsProcessX;
+        private double lastSoundPhysicsProcessY;
+        private double lastSoundPhysicsProcessZ;
+        private String lastSoundPhysicsProcessCategory = "";
+        private String lastSoundPhysicsProcessSound = "";
+        private boolean lastSoundPhysicsReflected;
+        private double lastSoundPhysicsReflectedX;
+        private double lastSoundPhysicsReflectedY;
+        private double lastSoundPhysicsReflectedZ;
         private long playingToStoppedTransitions;
         private int lastDirectFilter;
         private float lastDirectGain = 1.0f;
@@ -392,6 +425,28 @@ public final class HQDiagnostics {
             if (Float.isFinite(directGainHF)) {
                 minDirectGainHF = Math.min(minDirectGainHF, directGainHF);
                 maxDirectGainHF = Math.max(maxDirectGainHF, directGainHF);
+            }
+        }
+
+        synchronized void soundPhysicsProcessed(
+            long calls,
+            double x, double y, double z,
+            String category,
+            String sound,
+            boolean reflected,
+            double reflectedX, double reflectedY, double reflectedZ
+        ) {
+            soundPhysicsProcessCalls += calls;
+            lastSoundPhysicsProcessX = x;
+            lastSoundPhysicsProcessY = y;
+            lastSoundPhysicsProcessZ = z;
+            lastSoundPhysicsProcessCategory = category == null ? "" : category;
+            lastSoundPhysicsProcessSound = sound == null ? "" : sound;
+            lastSoundPhysicsReflected = reflected;
+            if (reflected) {
+                lastSoundPhysicsReflectedX = reflectedX;
+                lastSoundPhysicsReflectedY = reflectedY;
+                lastSoundPhysicsReflectedZ = reflectedZ;
             }
         }
 
@@ -516,7 +571,18 @@ public final class HQDiagnostics {
             out.put("decoderFailures", decoderFailures);
             out.put("eofCount", eofCount);
 
-            out.put("soundPhysicsProcessed", soundPhysicsChannelStarts > 0L || soundPhysicsSamples > 0L);
+            out.put("soundPhysicsProcessed",
+                soundPhysicsProcessCalls > 0L || soundPhysicsChannelStarts > 0L || soundPhysicsSamples > 0L);
+            out.put("soundPhysicsProcessCalls", soundPhysicsProcessCalls);
+            out.put("soundPhysicsProcessX", lastSoundPhysicsProcessX);
+            out.put("soundPhysicsProcessY", lastSoundPhysicsProcessY);
+            out.put("soundPhysicsProcessZ", lastSoundPhysicsProcessZ);
+            out.put("soundPhysicsProcessCategory", lastSoundPhysicsProcessCategory);
+            out.put("soundPhysicsProcessSound", lastSoundPhysicsProcessSound);
+            out.put("soundPhysicsReflectedPosition", lastSoundPhysicsReflected);
+            out.put("soundPhysicsReflectedX", lastSoundPhysicsReflectedX);
+            out.put("soundPhysicsReflectedY", lastSoundPhysicsReflectedY);
+            out.put("soundPhysicsReflectedZ", lastSoundPhysicsReflectedZ);
             out.put("soundPhysicsChannelStarts", soundPhysicsChannelStarts);
             out.put("soundPhysicsSamples", soundPhysicsSamples);
             out.put("directFilter", lastDirectFilter);
