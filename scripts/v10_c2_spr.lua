@@ -1,4 +1,5 @@
--- Standalone C2: ordinary-world Sound Physics proof for one HQ finite speaker.
+-- Standalone C2: Sound Physics proof on completely normal Minecraft ground.
+-- Computer and speaker must NOT be on a Sable contraption.
 -- Usage: v10_c2_spr <mp3>
 
 local args = {...}
@@ -6,6 +7,8 @@ assert(args[1] and not args[2], "usage: v10_c2_spr <mp3>")
 
 local MP3_PATH = args[1]
 local LOG = "/v10-c2-spr.log"
+local MIN_LISTEN_SECONDS = 20
+
 if fs.exists(LOG) then fs.delete(LOG) end
 
 local speaker = assert(peripheral.find("speaker"), "attach a ComputerCraft speaker")
@@ -40,6 +43,11 @@ local function waitEnter()
     if e[1] == "terminate" then error("terminated", 0) end
     if e[1] == "key" and e[2] == keys.enter then return end
   end
+end
+
+local function prompt(lines)
+  print("")
+  for _, line in ipairs(lines) do print(line) end
 end
 
 local function waitPlaying(timeout)
@@ -83,54 +91,120 @@ local function assertSpr(source, label)
     label .. ": SPR processSound ran but no environment write was observed")
 end
 
+local function listenForAWhile(label)
+  print("")
+  print(label .. " is now playing and looping.")
+  print("Listen and walk around if you want.")
+  print("Minimum listening time: " .. MIN_LISTEN_SECONDS .. " seconds.")
+
+  local remaining = MIN_LISTEN_SECONDS
+  while remaining > 0 do
+    local step = math.min(5, remaining)
+    sleep(step)
+    remaining = remaining - step
+    if remaining > 0 then
+      print(remaining .. " seconds minimum remaining...")
+    end
+  end
+
+  print("Minimum complete.")
+  print("Keep listening as long as you want.")
+  print("Press ENTER only when you are finished with this phase.")
+  waitEnter()
+end
+
+local function startLoopedMp3(label, mp3)
+  resetDiag(label)
+  assert(speaker.speakMp3At(1, mp3, 0.55), label .. ": MP3 rejected")
+  waitPlaying(15)
+  assert(speaker.audioSetLoopingAt(1, true), label .. ": could not enable looping")
+end
+
 local mp3 = readBinary(MP3_PATH)
 
 local ok, err = pcall(function()
   speaker.hqDiagEnable(true)
 
-  print("")
-  print("C2 OPEN AIR")
-  print("Park the Sable contraption.")
-  print("Keep endpoint 1 visible to you with NO normal-world wall between you and it.")
-  print("The speaker/computer may stay on Sable.")
-  print("Press ENTER when ready.")
+  prompt({
+    "C2 NORMAL-GROUND SOUND PHYSICS TEST",
+    "",
+    "IMPORTANT:",
+    "- The COMPUTER must be placed normally in the Minecraft world.",
+    "- The SPEAKER must be placed normally in the Minecraft world.",
+    "- Do NOT use a Sable contraption for either block.",
+    "- Use ONE speaker for this test.",
+    "",
+    "Prepare an open area and a solid normal-block wall nearby.",
+    "For the two measurements, try to stand about the same distance from the speaker.",
+    "Press ENTER when the normal-ground setup is ready.",
+  })
   waitEnter()
 
-  resetDiag("open air")
-  assert(speaker.speakMp3At(1, mp3, 0.55), "open-air MP3 rejected")
-  waitPlaying(15)
-  sleep(3)
+  -- Open-air baseline.
+  prompt({
+    "PHASE 1: OPEN AIR",
+    "Stand where there is a clear line between you and speaker 1.",
+    "Do not put the wall between you and the speaker yet.",
+    "Press ENTER to start the open-air sound.",
+  })
+  waitEnter()
+
+  startLoopedMp3("open air", mp3)
+  listenForAWhile("OPEN AIR")
   local open = speaker.hqDiagSnapshot()
   assert((open.capabilities or {}).soundPhysicsLoaded == true, "Sound Physics Remastered was not detected")
   local before = sourceForEndpoint(open)
   assertSpr(before, "open air")
   log("OPEN", ("gain=%.4f HF=%.4f calls=%d"):format(
     before.directGain or -1, before.directGainHF or -1, before.soundPhysicsProcessCalls or 0))
-
   safeStop()
-  print("")
-  print("C2 WALL")
-  print("Create a SOLID NORMAL-WORLD wall between you and endpoint 1.")
-  print("Leave the ship parked. Stand behind the wall, then press ENTER.")
+
+  -- Behind-wall restart.
+  prompt({
+    "PHASE 2: BEHIND SOLID WALL",
+    "Move so the NORMAL Minecraft wall is directly between you and speaker 1.",
+    "Try to stay about the same distance from the speaker as in Phase 1.",
+    "The sound will be RESTARTED from behind the wall.",
+    "Press ENTER when you are in position.",
+  })
   waitEnter()
 
-  resetDiag("wall restart")
-  assert(speaker.speakMp3At(1, mp3, 0.55), "wall MP3 rejected")
-  waitPlaying(15)
-  sleep(3)
+  startLoopedMp3("wall restart", mp3)
+  listenForAWhile("BEHIND WALL")
   local wall = speaker.hqDiagSnapshot()
   local after = sourceForEndpoint(wall)
   assertSpr(after, "wall")
   log("WALL", ("gain=%.4f HF=%.4f calls=%d"):format(
     after.directGain or -1, after.directGainHF or -1, after.soundPhysicsProcessCalls or 0))
+  safeStop()
 
   local gainDrop = (before.directGain or 1) - (after.directGain or 1)
   local hfDrop = (before.directGainHF or 1) - (after.directGainHF or 1)
   log("DROP", ("gain=%.4f HF=%.4f"):format(gainDrop, hfDrop))
+
   assert(gainDrop > 0.01 or hfDrop > 0.01,
     "SPR processed HQ audio, but the normal-world wall did not measurably increase occlusion")
 
-  log("PASS", "C2 Sound Physics ordinary-world startup occlusion")
+  -- Optional long listening confirmation without changing the automatic verdict.
+  prompt({
+    "AUTOMATIC C2 CHECK PASSED.",
+    "",
+    "OPTIONAL LISTENING PHASE:",
+    "Move back to the open-air side of the wall.",
+    "Press ENTER to restart the sound in open air for one final comparison.",
+  })
+  waitEnter()
+
+  startLoopedMp3("final open air", mp3)
+  listenForAWhile("FINAL OPEN AIR")
+  local finalOpen = speaker.hqDiagSnapshot()
+  local finalSource = sourceForEndpoint(finalOpen)
+  assertSpr(finalSource, "final open air")
+  log("FINAL", ("gain=%.4f HF=%.4f calls=%d"):format(
+    finalSource.directGain or -1, finalSource.directGainHF or -1,
+    finalSource.soundPhysicsProcessCalls or 0))
+
+  log("PASS", "C2 Sound Physics normal-ground startup occlusion")
 end)
 
 safeStop()
