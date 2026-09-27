@@ -1,97 +1,76 @@
 # Verified facts
 
-Updated: 2026-09-26
-
-Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-Current diagnostic/runtime-test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
-Current CI: `36205257110` — PASS on NeoForge 21.1.247.
+Updated: 2026-09-27
 
 ## Product/package
 
 - only `computercraft:speaker` is the block product;
-- standalone `hqspeaker:hq_speaker` is removed;
-- internal sound resource is `hqspeaker:hq_audio_source`;
-- license is MPL-2.0;
-- protocol is v10 with exactly 9 payloads;
-- JLayer 1.0.1.4 and Sable Companion 1.6.0 are embedded;
-- mp3spi/Tritonus are removed;
+- protocol is v10 with 9 payloads;
 - build/test/package baseline is NeoForge 21.1.247 only;
-- mod metadata accepts `[21.1,21.2)`;
-- historical CI also exercised 21.1.248, but current release policy produces one artifact.
+- metadata accepts `[21.1,21.2)`;
+- standalone HQ block, HLS/TS and retired generic whole-file aliases remain removed.
 
-Current artifact `10892998704` contains required NeoForge metadata, mixin config, embedded JLayer, embedded Sable Companion and the CC:T ROM module. Extracted JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`.
+## Runtime-confirmed core
 
-## Native CC:T
+A1-A19 and R1-R9 have passed in real Minecraft on the current candidate.
 
-- singular native calls use the real CC:T `SpeakerPeripheral`;
-- native All/At helpers dispatch to real selected CC:T speakers;
-- native `speaker_audio_empty` remains CC:T-owned;
-- diagnostics can observe both native streaming `playAudio` and native static note/sound channels during acceptance.
+Verified core facts include:
 
-## Finite
+- native CC:T sound/DFPWM client channels work with Sable world-space positioning;
+- finite MP3/WAV render on real OpenAL channels;
+- 2-speaker finite synchronization and endpoint-local controls work;
+- continuous producer-fed RAW continuation works;
+- loop-boundary recovery works;
+- listener leave/rejoin works;
+- F3+T sound-engine teardown/rebuild recovers through authoritative finite rejoin without a decoder failure.
 
-- supported formats are MP3 + supported common WAV;
-- `speakMp3/speakWav` singular/All/At use the modern finite engine;
-- prepared media and byte compatibility frontends share that engine;
-- one shared finite authority represents multispeaker playback;
-- endpoints keep independent source/listener/transport/renderer/gain/mute state;
-- membership is a start-time endpoint snapshot;
-- pause/resume/seek/loop and ordinary/All stop are shared;
-- volume/mute are endpoint-local;
-- `audioStopAt` detaches only the selected endpoint;
-- core finite relevance radius is 32 blocks;
-- range transport remains bounded.
+## Sable target evidence
 
-## RAW
+Attempt 7 measured approximately:
 
-- signed-16 mono PCM at 48 kHz;
-- max 131072 samples/call;
-- bounded queue/backpressure;
-- observed rejection uses `hqspeaker_audio_empty`;
-- All preflights the target snapshot and uses one future start tick;
-- the producer-fed continuation fix re-pumps the existing Minecraft/OpenAL channel when later PCM arrives after local stream exhaustion;
-- current diagnostics count admitted/read PCM, wakeups and unexpected mid-stream PLAYING->STOPPED transitions.
+- source 1 requested movement 53.224 blocks, actual movement 53.224;
+- source 2 requested movement 52.267 blocks, actual movement 52.267.
 
-The continuation fix is not yet claimed as final runtime-proven until R6 passes in Minecraft.
+Both ended PLAYING with zero decoder failures.
 
-## MP3/ICY radio
+The runner's C1 FAIL is therefore not evidence that movement tracking failed; it is caused by a generic no-STOP-history assertion during a scenario which crossed listener relevance.
 
-- surviving methods are `speakStream`, `speakStreamAll`, `speakStreamAt`;
-- HLS/TS are removed;
-- grouped radio is strict snapshot/no-auto-membership;
-- a local grouped session uses one shared decoder/prebuffer;
-- radio gain is applied once at the Minecraft sound source;
-- URL policy allows HTTP/HTTPS only and rejects local/private/reserved targets and disallowed ports; redirects are disabled;
-- `isStreaming` is server-side stream ownership/request state, not proof of client audibility.
+## Radio target evidence
 
-## Movement
+C3 passed in attempt 7.
 
-- all HQ positional paths use `MovingSourcePosition`;
-- order is Sable Companion, then VS2, then static block center;
-- the selected runtime target tests Sable/Aeronautics;
-- VS2 runtime testing is explicitly outside this release acceptance target.
+Verified:
 
-## Built-in diagnostics
+- sustained 2-speaker grouped MP3/ICY radio;
+- ~1.91 ms channel-start skew and 0.00 ms settled drift in the captured baseline;
+- ICY metadata delivery;
+- late speaker excluded from an already sealed group;
+- rerun admits the new member;
+- singular and indexed radio start paths.
 
-The normal release JAR contains dormant diagnostics exposed through:
+## Finite scale finding
 
-- `hqDiagEnable`
-- `hqDiagReset`
-- `hqDiagSnapshot`
-- `hqDiagCapabilities`
+Attempt 7's eight finite endpoints all reached server PLAYING, but one real client source started roughly 2.219 seconds later than the others.
 
-The diagnostic system records real client channel state, OpenAL position/gain/timing, PCM delivery, decoder/recovery counters, reloads, group timing, Sable tracking and Sound Physics filter behavior. It uses an in-process bridge in singleplayer and does not add a v10 payload.
+Current source facts:
 
-## Master test
+- each client finite source can keep 2 requests in flight;
+- server range service allows 4 outstanding requests per player;
+- `OVER_LIMIT` admission is currently silent to the requesting client;
+- client request expiry is 2 seconds.
 
-`scripts/v10_acceptance.lua` is the sole user-facing release acceptance runner. It is syntax-compiled in CI with the same Cobalt Lua parser family CC:T uses.
+This is a concrete scale defect which must be fixed before 8-speaker finite can be marked accepted.
 
-The runner automatically judges A1-A19, R1-R9 and C1-C6. Human input is limited to physical actions.
+8+ RAW was not executed in that attempt.
 
-## Removed
+## Sound Physics evidence boundary
 
-OGG/generic whole-file aliases, HLS, TS, duplicate finite engine/payloads, expected-count live membership barriers, stale control aliases, fake standard/RAW legacy bodies and standalone HQ block remain removed.
+Attempt 7 confirms the current diagnostic observed SPR environment application on HQ sources.
+
+It does **not** yet confirm that SPR's full `SoundPhysics.processSound` ray/world evaluation ran, because the diagnostic hook is at the environment-write stage.
+
+Open-air and wall direct gain/HF both remained 1.0000 in that run. No final conclusion about SPR compatibility or Sable geometry should be drawn until actual process-call evidence is added.
 
 ## Evidence boundary
 
-CI/package evidence is green. Final runtime acceptance is still pending.
+Final release acceptance remains incomplete. Current blockers are the finite scale admission bug, direct SPR integration proof/behavior, C1 harness correction and missing 8+ RAW evidence.

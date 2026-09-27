@@ -1,5 +1,7 @@
 # M1F finalization — 2026-09-13
 
+> **2026-09-27 runtime correction:** the bounded range transport itself remains a valid milestone, but 8-endpoint runtime testing exposed a composition bug in current admission/retry behavior. Each client endpoint may hold 2 requests in flight while the server admits only 4 requests per player; `OVER_LIMIT` is currently silent, leaving the client waiting for its 2-second request expiry. This produced one ~2.2 s late finite source in C4. See `RUNTIME-INVESTIGATION-2026-09-27.md`. Do not read the historical per-player limits below as proof that multispeaker fairness/progress was runtime-proven.
+
 > **Historical M1F completion record.** The transport milestone remains complete at source/test/CI/package/component level, but later audits found shutdown hardening gaps outside the original happy-path/component proof. Current KI-054/KI-064 status lives in `KNOWN-ISSUES.md` / `VERIFIED-FACTS.md`.
 >
 > Also, M1G is no longer “next, not started”: progressive MP3/common-WAV decode + positional rendering are integrated in current source. Use `CURRENT-STATE.md` for current continuation.

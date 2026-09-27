@@ -44,10 +44,10 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 | R7 loop-boundary recovery/sync | PASS (attempt 6) | authoritative loop recovery + sync passed |
 | R8 range leave/rejoin | PASS (attempt 6) | real leave/rejoin recovery passed; attempt 5 had one transient 65.34 ms baseline drift failure before the clean rerun |
 | R9 F3+T recovery | PASS (attempt 6) | clean baseline, real sound-engine reload, authoritative rejoin, decoderFailures=0 |
-| C1 Sable/Aeronautics tracking | PENDING | target check |
-| C2 Sound Physics Remastered | PENDING | target check |
-| C3 MP3/ICY radio + strict membership | PENDING | requires direct radio URL + one late speaker |
-| C4 8+ speaker scale stress | PENDING | finite + RAW |
+| C1 Sable/Aeronautics tracking | HARNESS FAIL / PRODUCT EVIDENCE GOOD (attempt 7) | requested and actual OpenAL movement matched over ~52-53 blocks; failure came from historical STOPPED transition after listener leave/rejoin, which is not a Sable-tracking defect |
+| C2 Sound Physics Remastered | INVESTIGATION REQUIRED (attempt 7) | HQ sources were touched by SPR diagnostics, but open-air and wall direct gain/HF both stayed 1.0000; current hook does not prove an actual `processSound` ray evaluation |
+| C3 MP3/ICY radio + strict membership | PASS (attempt 7) | sustained grouped radio, metadata, sealed late membership, rerun membership, singular and indexed paths all passed |
+| C4 8+ speaker scale stress | FAIL — FINITE RANGE ADMISSION (attempt 7) | 8 finite endpoints reached server PLAYING, but one client source started ~2.219 s late; RAW half was not reached |
 
 A **TARGET FULL PASS** requires every required runtime diagnostic and every selected target-scope check to pass. A **CORE PASS / TARGET INCOMPLETE** means the automatic core passed but one or more target checks were skipped.
 
@@ -130,6 +130,22 @@ The operator performs requested actions but does not assign PASS/FAIL; built-in 
 - the operator stopped after repeated prior reruns rather than restarting the entire suite again;
 - the master runner now supports opt-in `--resume`: it reads prior PASS lines from the existing master log, reuses those results, and reruns only unfinished/failed/skipped checks. This avoids repeating A1-A19/R1-R9 after an environment check interrupts the computer.
 
+## Attempt 7 — 2026-09-27
+
+- the run resumed prior PASS results for A1-A19 and R1-R9 and executed all four current target checks;
+- final target summary was `auto=19/19`, `runtime=9/9`, `target=1/4`, with C3 passing and C1/C2/C4 recorded as failures;
+- C1's recorded failure is an acceptance-harness error, not evidence that Sable tracking failed. Both finite sources ended PLAYING with zero decoder failures; requested movement was about 53.224 / 52.267 blocks and actual OpenAL movement was about 53.224 / 52.267 blocks. The assertion tripped only because the long movement run included expected listener relevance leave/rejoin history and therefore one historical PLAYING->STOPPED sample. The same playback ID received repeated BEGINs while the player moved out of/into the 32-block relevance radius. C1 must stop inheriting the continuous-playback assertion and then be rerun for a clean recorded PASS;
+- C2 observed `soundPhysicsProcessed=true` / one environment sample per HQ source, but both open-air and wall measurements remained direct gain `1.0000` and HF `1.0000`. This proves only that the current diagnostic hook saw SPR's environment-write path; it does **not** prove that SPR actually executed its world/ray `processSound` path for the HQ source. The user's later visual-ray check happened after the radio sources had already started, and SPR 1.21.1 defaults `update_moving_sounds` to false, so absence of newly-rendered rays at that point is not conclusive. Next diagnostic work must record actual `SoundPhysics.processSound` calls and distinguish static-world geometry from Sable-sublevel geometry before changing playback architecture;
+- C3 passed completely. The 2-speaker grouped radio ran for 30 seconds with about 1.91 ms channel-start skew and 0.00 ms settled drift, metadata arrived, a late third speaker stayed out of the sealed running group, rerunning admitted it, and singular/indexed radio starts passed;
+- C4 finite exposed a real scale bug. Eight endpoints entered server PLAYING immediately, but seven real client channels started around 115-145 ms while one source started around 2334 ms, producing 2219.15 ms channel-start skew. The delayed source's decoded content began around 2.265 s while the others began around 0.047 s;
+- source-level reconstruction matches that delay: each finite client may hold 2 in-flight range requests, so 8 endpoints can attempt 16 requests, while `FiniteRangeReadService` permits only 4 outstanding requests per player. `OVER_LIMIT` is currently silently dropped by `HQFiniteMediaServer.acceptRangeRequest0()`, leaving the client request marked pending until `REQUEST_TIMEOUT_NANOS = 2_000_000_000` expires. The observed ~2.2 s late start is therefore strongly attributable to this admission/retry contract;
+- no `M1G` renderer-start/rejoin warning, finite starvation warning or HQ decoder failure accompanied the C4 delay, which argues against the eighth Minecraft channel simply failing to allocate in this run;
+- C4's RAW section never executed because the finite assertion threw first. 8+ RAW therefore remains untested;
+- there is a separate architecture risk for **more than eight** HQ sounds because Minecraft's streamed-source pool is small. This is not yet the demonstrated cause of attempt 7's eight-speaker failure and must be tested independently after the range-admission bug is fixed;
+- the old `cchq-soundphysics-compat` project is now an explicit architecture research input. It was built against the older fork and is not drop-in compatible with current finite/RAW/radio paths. Reuse or redesign must be decided after re-evaluating the current fork, with simplicity preferred where it achieves the same correctness.
+
+Detailed forensic notes are preserved in `docs/RUNTIME-INVESTIGATION-2026-09-27.md`.
+
 ## Acceptance-runner simplification — 2026-09-27
 
 The product/runtime-tested JAR is unchanged. The master runner was simplified after reviewing the six live attempts:
@@ -160,9 +176,9 @@ For each failure record:
 
 ## Release verdict
 
-Do not fill until the master runner has completed.
+The current master has completed, but target acceptance is **not** release-ready.
 
-- master result:
-- target-scope acceptance:
-- release blocker(s):
-- release-ready: yes / no
+- master result: A1-A19 PASS, R1-R9 PASS, C3 PASS; C1 harness correction required, C2 SPR architecture/diagnostic investigation required, C4 finite scale bug requires source fix, C4 RAW still untested;
+- target-scope acceptance: incomplete;
+- release blocker(s): finite range-admission/retry scale defect; unresolved current SPR integration behavior; missing post-fix 8+ RAW evidence;
+- release-ready: **no**

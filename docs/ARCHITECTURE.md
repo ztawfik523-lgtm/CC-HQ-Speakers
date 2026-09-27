@@ -1,98 +1,82 @@
 # Architecture
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 ## Product boundary
 
-The mixin replaces the exposed peripheral of the normal CC:T speaker with `HQSpeakerCompositePeripheral` while retaining CC:T's real `SpeakerPeripheral` for native behavior.
+The normal CC:T `computercraft:speaker` is upgraded through `HQSpeakerCompositePeripheral`, while the real CC:T `SpeakerPeripheral` remains the owner of native behavior.
 
 One physical speaker remains one mono positional source.
 
 ## Ownership
 
-One HQ continuous owner exists per physical endpoint:
+One HQ continuous owner exists per endpoint: NONE, RAW, STAGED_FINITE or STREAM.
 
-- NONE
-- RAW
-- STAGED_FINITE
-- STREAM
+Finite multispeaker playback shares canonical authority/asset, while endpoints own source/listener/transport/decoder/renderer/gain/mute state.
 
-Replacement paths validate/admit before ending a valid current HQ source where possible. World/network commits which require Minecraft-thread affinity are committed on the server thread.
+## Finite transport
 
-## Native CC:T
+Prepared encoded media is stored server-side as immutable assets and fetched progressively in bounded ranges.
 
-Standard note/sound/DFPWM calls are delegated to CC:T. Grouped/indexed helpers select endpoints but still call real CC:T speaker implementations.
+Current tuning:
 
-## Finite
+- 128 KiB max range;
+- 512 KiB client encoded window;
+- 2 finite client requests may be in flight per endpoint;
+- **4 outstanding requests / 512 KiB outstanding bytes per player server-side**;
+- 2 server range IO workers;
+- queue 64.
 
-`HQMediaStaging` imports encoded bytes into immutable server `MediaAsset` storage. MP3/common-WAV analysis is server-derived.
+### Attempt-7 scale finding
 
-`FinitePlaybackAuthority` owns canonical playback time/state. Multispeaker finite playback shares one authority/asset while each endpoint owns its physical source, listener membership, range transport, decoder/renderer/recovery, gain and mute.
+Those limits are not currently composed correctly for multispeaker scale.
 
-Finite client transport is bounded/progressive. Each endpoint currently keeps its own decoder/render path; shared finite decode fan-out is intentionally deferred until profiling proves value.
+Eight endpoints can attempt up to 16 requests, while only four are admitted for the player. `FiniteRangeReadService.Submission.OVER_LIMIT` is not projected back to the client, so rejected requests remain client-pending until the 2-second request timeout expires.
+
+That admission/retry mismatch, not decoder complexity, is the currently demonstrated cause of the eight-speaker late start.
+
+The fix should preserve bounded memory/IO while providing prompt fairness/progress; do not simply remove all limits.
+
+## Renderer ownership and scale
+
+Finite/RAW/radio currently use Minecraft `SoundManager` / `Channel` paths rather than raw OpenAL ownership.
+
+This keeps lifecycle/resource integration simple and is compatible with normal Minecraft sound processing, but Minecraft's streamed-source capacity may become relevant above eight simultaneous HQ sounds. That is a separate architecture question from the attempt-7 range bug and needs explicit measurement.
 
 ## RAW
 
-RAW is separate producer-fed signed-16 mono 48-kHz PCM. The composite owns admission/backpressure/group preflight; the legacy peripheral is the lower-level bounded queue/packet substrate.
+RAW is producer-fed signed-16 mono 48-kHz PCM with bounded backpressure. Later PCM re-pumps an exhausted existing Minecraft/OpenAL channel rather than inserting fake silence.
 
-When the client RAW stream exhausts its local queue, it returns no buffer rather than manufacturing silence. If later producer PCM arrives, the existing Minecraft channel is explicitly pumped again on the sound executor, mirroring the continuation strategy used by CC:T's own DFPWM stream.
+8+ RAW still needs runtime evidence because attempt 7 never reached that half of C4.
 
 ## MP3/ICY radio
 
-Direct radio creates one client decoder for one endpoint.
+Grouped radio uses strict start-time membership and one shared client-local decoder/prebuffer feeding endpoint taps. Late speakers do not auto-join; rerunning creates a new group.
 
-Grouped radio is strict-snapshot. Server membership is captured at command time. A client collects only packets received before the seal deadline. Sealing starts one shared decoder for that client-local group; accepted taps consume the same decoded PCM and ready endpoints are released together after prebuffering. Late packets are rejected for that group.
-
-There is no expected-member count and no automatic membership. Rerunning the Lua command creates a new group.
-
-HLS and MPEG-TS are removed.
+C3 runtime acceptance passed.
 
 ## Movement
 
-All HQ positional paths call `MovingSourcePosition`:
+All HQ positional paths call `MovingSourcePosition`: Sable Companion, then VS2, then static center.
 
-1. Sable Companion sublevel projection;
-2. VS2 transform;
-3. static block center.
+Attempt 7 demonstrated Sable requested and actual OpenAL movement matching over ~52-53 blocks. The runner's C1 failure was caused by unrelated listener relevance history.
 
-Legacy RAW/radio client sources also resolve movement locally every tick, so movement is not dependent on a continuous server position packet.
+## Sound Physics Remastered
+
+Current integration is intentionally light: HQ sounds travel through Minecraft channels, and diagnostics observe SPR environment application through a mixin.
+
+Attempt 7 showed this observation is insufficient for final proof. `setEnvironment` observation does not establish that SPR's full `processSound` world/ray evaluation ran for the HQ source.
+
+The next diagnostic must record actual SPR processing before architectural changes are chosen.
+
+The historical `cchq-soundphysics-compat` project directly owned OpenAL sources and explicitly invoked/captured SPR processing. It is now a design reference, not a frozen requirement. Because the current HQ fork is ours, the new integration may change either side if that yields a simpler and more correct design.
 
 ## Built-in diagnostics
 
-The production JAR contains a dormant `HQDiagnostics` subsystem plus client-side channel sampling.
+Diagnostics remain dormant in normal play and are enabled only by acceptance/debug workflows. They observe actual client channels, PCM/buffer state, source movement, recovery, sync and SPR hooks without adding a v10 network payload.
 
-When diagnostics are enabled:
+## Protocol/build
 
-- HQ/CC:T sound instances are associated with stable diagnostic source identities;
-- NeoForge sound events expose the actual Minecraft `Channel`;
-- a small accessor exposes the OpenAL source id needed for measurements;
-- client ticks sample source state, position, gain, queued/processed buffers and playback offset/latency where available;
-- finite/RAW/radio stream paths count PCM input/read, silence/starvation, wakeups and decoder/recovery events;
-- sound-engine reload events invalidate old bindings and are counted;
-- group metrics aggregate channel-start skew, logical playback drift and PCM feed spread;
-- Sound Physics direct-filter state is sampled when the mod is loaded;
-- Sable tracking compares requested movement with the live OpenAL source position.
+Protocol v10 remains exactly 9 payloads.
 
-Diagnostic state is shared directly with the integrated server in singleplayer. No diagnostic network payload was added; protocol v10 remains 9 payloads.
-
-The Lua surface is `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDiagCapabilities`.
-
-## Radio URL/lifecycle
-
-Blocking URL/DNS validation stays outside sensitive ownership locks. Starts are revision/lifecycle guarded and final world/network commit runs on the server thread. Client startup is cancellable; drained/failed client radio state is retired.
-
-The URL policy is a safety filter, not a substitute for normal server/client network security policy.
-
-## Storage/workers
-
-Default prepared-media limits: 512 MiB per asset, 2048 MiB total, configurable server-side.
-
-Finite range IO remains bounded: 2 workers, queue 64, max 128 KiB/response, 4 outstanding requests and 512 KiB outstanding bytes/player, 512 KiB client encoded window.
-
-## Protocol
-
-Protocol v10, exactly 9 payloads.
-
-## Build
-
-Current build/test/package baseline is NeoForge 21.1.247. The one artifact declares `[21.1,21.2)`; there is no second current 21.1.248 build.
+Build/test/package baseline remains NeoForge 21.1.247 with metadata `[21.1,21.2)`.

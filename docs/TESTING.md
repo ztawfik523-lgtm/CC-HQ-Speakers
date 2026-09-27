@@ -4,65 +4,66 @@ Updated: 2026-09-27
 
 ## Evidence rule
 
-CI proves compilation, deterministic tests and package structure. It does not by itself prove real Minecraft/OpenAL playback, physical movement, listener-range recovery, Sound Physics behavior or realistic multi-speaker load.
+CI proves compilation, deterministic tests and package structure. It does not prove real Minecraft/OpenAL behavior.
 
 Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
-Runtime-tested candidate CI: `36238699768` — PASS  
-Runtime-tested artifact: `10905071824`  
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
-Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
-Current master-runner CI: `36285305761` — PASS  
-Current build baseline: NeoForge 21.1.247 only
+Build baseline: NeoForge 21.1.247 only.
 
-The artifact declares NeoForge `[21.1,21.2)`. Historical dual-version CI is compatibility history, not a reason to build 21.1.248 separately.
+## Evidence already passed
 
-## Deterministic/CI coverage
+A1-A19 and R1-R9 are real-runtime PASS on the current candidate.
 
-The Java test suite covers finite analyzers/decoders/range transport/state machines/recovery/projection, storage/release limits, multi-lock behavior, RAW feed lifetime, radio group sealing, URL policy and diagnostic metric logic.
+C3 radio/membership is also PASS: sustained grouped radio, metadata, strict late membership, rerun membership, singular and indexed radio all completed.
 
-The shipped master Lua runner is compiled in CI using CC:T's Cobalt 0.9.9 parser. This caught an explicit dependency/import issue on 2026-09-23; it is fixed in the current green checkpoint.
+## Target failures and what they actually mean
 
-The packaging check verifies required mod metadata, mixin config, embedded JLayer, embedded Sable Companion and the ROM Lua module.
+### C1
 
-## Runtime diagnostics
+The movement itself worked. Attempt 7 measured roughly 52-53 blocks of both requested and actual OpenAL movement with sources healthy at the end.
 
-The normal JAR includes dormant built-in diagnostics. During acceptance they observe the actual client audio channels and feed measured state back to the integrated-server Lua test without adding a network payload.
+The runner's generic `playingToStoppedTransitions == 0` assertion is inappropriate for a long Sable movement scenario which can cross the listener relevance boundary and legitimately detach/rejoin.
 
-Measured evidence includes channel creation/state, source position, source gain, PCM delivery, buffer health, playback offsets/latency where available, decoder/recovery events, sound-engine reloads, multispeaker timing and Sound Physics filters.
+### C2
 
-## One master runtime test
+Current diagnostics record Sound Physics environment writes. Attempt 7 saw those writes but no open/wall gain or HF change.
 
-Run:
+This is insufficient to decide whether HQ audio fully entered SPR's `processSound`/ray path. Add direct process-call evidence before changing product code.
+
+### C4
+
+Eight finite endpoints exposed a transport-scale stall. One source started ~2.219 seconds after the other seven.
+
+The source contract currently permits each client source 2 pending range requests but admits only 4 requests per player server-side; over-limit requests are silently dropped and only retried after a 2-second client request expiry.
+
+C4 RAW did not run because the finite assertion stopped that scenario.
+
+## Required deterministic regression coverage before rerun
+
+Add tests for:
+
+- finite range admission under multiple simultaneous endpoint clients;
+- no silent `OVER_LIMIT` request that remains client-pending until timeout;
+- bounded fairness/progress for at least 8 endpoints sharing one player;
+- C1 allowing expected relevance detach/rejoin while still requiring healthy final tracking;
+- C4 finite and RAW subchecks completing/reporting independently;
+- SPR diagnostics distinguishing `setEnvironment` observation from actual `processSound` execution.
+
+## Next runtime evidence
+
+After fixes:
+
+1. C1 focused rerun for a clean harness PASS;
+2. C2 static-world SPR proof with direct `processSound` evidence;
+3. C2 Sable-geometry comparison if Sable-world obstruction matters to the target;
+4. C4 exactly-8 finite rerun;
+5. C4 8+ RAW;
+6. explicit >8 source-capacity test only if >8 simultaneous playback is a required product target.
+
+The master command remains:
 
 ```
 v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
-The master runner is the only normal user-facing acceptance workflow. Smaller scripts are developer isolation tools only after the master test identifies a specific failure.
-
-Current master matrix:
-
-- A1-A19: API surface, declared limits, staged media, native CC:T paths, MP3/WAV lifecycle, malformed media, argument/RAW bounds, RAW backpressure, finite shared authority, endpoint-local controls, gain/mute/clamp, shared controls, stress/restarts, stream security and final cleanup;
-- R1-R9: real native channels, MP3/WAV renderer continuity, finite synchronization, endpoint-local client effects, continuous RAW, loop recovery/sync, listener rejoin and F3+T recovery;
-- C1-C4: Sable tracking, Sound Physics processing, grouped MP3/ICY radio + strict membership, and 8+ speaker stress.
-
-Each runtime scenario judges only the property it exists to test. Synchronization verdicts use settled current playback measurements rather than a historical worst-ever sample. Independent failures are recorded and the runner continues.
-
-## Human involvement
-
-The operator only performs actions Minecraft cannot automate:
-
-- walk out of listener range and return;
-- press F3+T;
-- translate/rotate the Sable contraption;
-- move behind the prepared wall/obstacle;
-- connect a late radio speaker;
-- connect enough speakers to reach 8+.
-
-The operator does **not** assign PASS/FAIL. The diagnostics do.
-
-## Selected release scope
-
-Required target is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are intentionally not part of this release acceptance.
-
-Use `RUNTIME-ACCEPTANCE-V10.md` for the exact procedure and `RUNTIME-RESULTS-V10.md` for results.
+Use `RUNTIME-INVESTIGATION-2026-09-27.md` for the forensic evidence behind these changes.

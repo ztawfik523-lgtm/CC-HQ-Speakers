@@ -6,80 +6,54 @@ Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The rele
 
 ## Current release-candidate status
 
-Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
-API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
 Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
 Runtime-tested candidate CI: `36238699768` — PASS  
 Runtime-tested artifact: `10905071824`  
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
-Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
-Current master-runner CI: `36285305761` — PASS on the single NeoForge 21.1.247 build  
-Network protocol: **v10**, exactly 9 payloads.
+Network protocol: **v10**, 9 payloads.
 
-Historical pre-freeze CI also built 21.1.248. That remains historical compatibility evidence; current CI intentionally produces only the 21.1.247-built artifact.
+A1-A19 and R1-R9 have passed in real Minecraft. C3 MP3/ICY radio + strict membership also passed.
+
+Release acceptance is still blocked by:
+
+- a C1 harness assertion which incorrectly treats expected listener leave/rejoin history as a Sable tracking failure;
+- unresolved Sound Physics integration evidence: the current hook sees environment writes but does not prove full SPR `processSound` ray evaluation;
+- a real 8-speaker finite range-admission/retry defect which delayed one source by ~2.2 seconds;
+- 8+ RAW scale evidence, which was not reached after the finite failure.
+
+See `docs/RUNTIME-INVESTIGATION-2026-09-27.md` for the forensic reconstruction.
 
 ## Frozen v10 product
 
-The normal CC:T speaker is the only block product. The standalone `hqspeaker:hq_speaker` block is removed. Internal custom audio uses `hqspeaker:hq_audio_source`. License: MPL-2.0.
-
-Supported playback:
+The normal CC:T speaker is the only block product. Supported playback:
 
 - native CC:T `playNote`, `playSound`, `playAudio`, `stop`;
 - modern finite MP3 + supported common WAV;
-- MP3/WAV compatibility byte methods on the same modern finite engine;
+- prepared finite media on the same modern engine;
 - signed-16 mono RAW PCM at 48 kHz;
 - MP3/ICY internet radio: singular, All and At;
-- multispeaker finite playback with one shared authority and independent physical endpoints.
+- multispeaker finite playback with one shared authority and independent endpoints.
 
-Retired: OGG/generic whole-file aliases, HLS, MPEG-TS, the duplicate finite engine, stale compatibility-control aliases, and the standalone HQ block.
+Finite multispeaker membership is a start-time snapshot. Shared playback controls stay shared; volume/mute are endpoint-local; `audioStopAt(index)` detaches only that endpoint.
 
-## Core semantics
+Grouped radio is also strict-snapshot: late speakers join only after rerunning the stream command.
 
-Finite multispeaker membership is a start-time speaker snapshot. Pause/resume/seek/loop and ordinary/All stop operate on shared playback. Volume and mute are endpoint-local. `audioStopAt(index)` stops/detaches only that physical endpoint.
+All HQ positional paths resolve Sable Companion -> VS2 -> static block center.
 
-Grouped MP3 radio is also strict-snapshot. Late/new speakers do not auto-join; rerun the stream command to create a new group which includes the new membership.
+## Runtime diagnostics
 
-RAW `speakPCMAll` preflights the target snapshot and uses a common future start tick.
+The release JAR contains dormant diagnostics for real Minecraft/OpenAL channels, PCM, recovery, sync, movement and SPR integration.
 
-All HQ positional paths use the same resolver: Sable Companion first, VS2 second, static block center otherwise.
-
-## Recommended finite API
-
-```lua
-local speaker = peripheral.find("speaker")
-local hq = require("hqspeaker")
-hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
-```
-
-Prepared media is stored server-side as immutable encoded assets. Defaults are 512 MiB per asset and 2048 MiB total; server config can change those limits.
-
-## Built-in runtime diagnostics
-
-The normal release JAR includes dormant diagnostics used by the final v10 acceptance runner. They are off during ordinary play and explicitly enabled by `hqDiagEnable(true)`.
-
-The diagnostic layer observes the actual Minecraft/OpenAL playback path rather than trusting only server/Lua state. It records real client channels, play/pause/stop state, PCM delivery, buffer health, source position, playback clocks/latency where supported, decoder/recovery activity, sound-engine reloads, multispeaker timing, Sable movement and Sound Physics processing.
-
-Diagnostic Lua methods:
-
-- `hqDiagEnable(boolean)`
-- `hqDiagReset()`
-- `hqDiagSnapshot()`
-- `hqDiagCapabilities()`
-
-These do not add a protocol payload or alter normal playback semantics.
+The current SPR diagnostics are being strengthened so acceptance records actual `SoundPhysics.processSound` execution rather than only environment writes.
 
 ## Runtime acceptance
 
-Use one user-facing runner:
+Use:
 
 ```
 v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
-The current target scope is **singleplayer + Sable/Aeronautics + Sound Physics Remastered**. Dedicated-server/multiplayer and VS2 are intentionally outside this runtime acceptance target.
+The selected target is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are outside this release acceptance target.
 
-The operator performs physical actions when prompted—walk out of listener range, press F3+T, move the Sable contraption, move behind an obstacle, connect speakers—but the diagnostics determine PASS/FAIL. Independent failures are recorded and later checks continue.
-
-Runtime acceptance has **not yet been declared complete**. CI proves build/tests/package structure, not real in-game playback.
-
-See `docs/RUNTIME-ACCEPTANCE-V10.md` and `docs/HANDOFF-2026-09-26-DIAGNOSTIC-RUNTIME.md`.
+Do not declare release-ready until the current target blockers are fixed and rerun.
