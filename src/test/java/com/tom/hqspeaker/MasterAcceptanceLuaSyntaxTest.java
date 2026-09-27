@@ -47,7 +47,11 @@ class MasterAcceptanceLuaSyntaxTest {
         assertTrue(source.contains("assertSourceHealthy(source, \"Sable source \" .. i, 5, false)"),
             "C1 must judge Sable movement/final health without rejecting expected listener relevance cycling");
         assertTrue(source.contains("source.soundPhysicsProcessCalls"),
-            "C2 must prove the real SPR processSound path, not only observe setEnvironment");
+            "target checks must prove the real SPR processSound path, not only observe setEnvironment");
+        assertTrue(source.contains("assertSprProcessEvidence(source, \"radio source \" .. i)"),
+            "C3 must prove radio sources enter SPR");
+        assertTrue(source.contains("assertSprProcessEvidence(source, \"8+ RAW source \" .. i)"),
+            "C4 must prove RAW sources enter SPR");
         assertTrue(source.contains("Use ONLY ordinary Minecraft-world geometry"),
             "C2 must keep Sable-wall acoustics outside the basic SPR integration check");
         assertTrue(source.contains("SPR live wall"),

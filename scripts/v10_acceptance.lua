@@ -493,6 +493,17 @@ local function assertSourceHealthy(source, label, minimumPlayingSamples, require
   end
 end
 
+local function assertSprProcessEvidence(source, label)
+  assert((source.soundPhysicsProcessCalls or 0) > 0,
+    label .. ": SPR processSound was never observed")
+  assert(source.soundPhysicsProcessCategory == "block",
+    label .. ": SPR used unexpected category " .. tostring(source.soundPhysicsProcessCategory))
+  assert(source.soundPhysicsProcessSound == "hqspeaker:hq_audio_source",
+    label .. ": SPR used unexpected sound id " .. tostring(source.soundPhysicsProcessSound))
+  assert((source.soundPhysicsSamples or 0) > 0,
+    label .. ": SPR processSound ran but no environment write was observed")
+end
+
 local function assertActiveGroup(
   snapshot, kind, prefix, expected, label, requireContinuous, checkStartSkew, startSkewLimitMs
 )
@@ -1451,14 +1462,7 @@ actionGate("C2 Sound Physics Remastered processing", {
   assert(#openSources == expected, "SPR open-air source count mismatch")
   local openByPos = {}
   for i, source in ipairs(openSources) do
-    assert((source.soundPhysicsProcessCalls or 0) > 0,
-      "SPR processSound was never observed for open-air HQ source " .. i)
-    assert(source.soundPhysicsProcessCategory == "block",
-      "SPR processed open-air HQ source " .. i .. " under unexpected category " .. tostring(source.soundPhysicsProcessCategory))
-    assert(source.soundPhysicsProcessSound == "hqspeaker:hq_audio_source",
-      "SPR processed open-air HQ source " .. i .. " under unexpected sound id " .. tostring(source.soundPhysicsProcessSound))
-    assert((source.soundPhysicsSamples or 0) > 0,
-      "SPR processSound ran but no environment write was observed for open-air HQ source " .. i)
+    assertSprProcessEvidence(source, "SPR open-air source " .. i)
     openByPos[(source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)] = source
   end
 
@@ -1502,14 +1506,7 @@ actionGate("C2 Sound Physics Remastered processing", {
 
   local changed = 0
   for i, source in ipairs(wallSources) do
-    assert((source.soundPhysicsProcessCalls or 0) > 0,
-      "SPR processSound was never observed for wall HQ source " .. i)
-    assert(source.soundPhysicsProcessCategory == "block",
-      "SPR processed wall HQ source " .. i .. " under unexpected category " .. tostring(source.soundPhysicsProcessCategory))
-    assert(source.soundPhysicsProcessSound == "hqspeaker:hq_audio_source",
-      "SPR processed wall HQ source " .. i .. " under unexpected sound id " .. tostring(source.soundPhysicsProcessSound))
-    assert((source.soundPhysicsSamples or 0) > 0,
-      "SPR processSound ran but no environment write was observed for wall HQ source " .. i)
+    assertSprProcessEvidence(source, "SPR wall source " .. i)
     local key = (source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)
     local before = assert(openByPos[key], "SPR could not match source position between open/wall runs")
     local gainDrop = (before.directGain or 1) - (source.directGain or 1)
@@ -1553,6 +1550,7 @@ if RADIO_URL then
     for i, source in ipairs(sources) do
       assert((source.pcmReadBytes or 0) > 100000,
         "radio source " .. i .. " did not deliver meaningful decoded PCM")
+      assertSprProcessEvidence(source, "radio source " .. i)
     end
     log("META", serialize(speaker.getStreamMeta()))
     showPrompt({"RADIO BASELINE COMPLETE.", "Connect ONE new speaker now.", "Do NOT rerun the radio command.", "Press ENTER after it is attached."})
@@ -1649,6 +1647,9 @@ actionGate("C4 8+ speaker scale stress", {
     local rawActive = diagSnapshot("8+ RAW active")
     assertRawContinuityWhileActive(
       rawActive, current, samplesPerChunk * 2 * chunks, "8+ RAW active")
+    for i, source in ipairs(diagSources(rawActive, "raw")) do
+      assertSprProcessEvidence(source, "8+ RAW source " .. i)
+    end
     assertSettledGroupSync(
       "raw", "raw:", current, "8+ RAW sync", DIAG_LOGICAL_DRIFT_MS, true)
 
