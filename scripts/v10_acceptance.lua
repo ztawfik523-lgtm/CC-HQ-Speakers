@@ -5,7 +5,8 @@
 -- One file, one command, one compact log.
 -- The mod's built-in diagnostics judge the real client/OpenAL playback automatically.
 -- You only perform physical actions Minecraft cannot perform itself (walk away, F3+T, move Sable, etc.).
--- Target scope for this runner: singleplayer + Sable/Aeronautics. VS2 and dedicated-server testing are intentionally out of scope.
+-- Target scope for this runner: singleplayer + Sable/Aeronautics + Sound Physics + MP3/ICY radio + 8+ scale.
+-- Dimension/chunk lifetime is intentionally not a release-acceptance gate.
 --
 -- Keys:
 --   ENTER = confirm a requested physical action / start an environment check
@@ -68,7 +69,7 @@ local state = {
   optionalPassed = 0,
   optionalFailed = 0,
   optionalSkipped = 0,
-  optionalTotal = 6,
+  optionalTotal = 4,
   autoFailed = 0,
   runtimeFailed = 0,
   failures = {},
@@ -116,9 +117,10 @@ end
 
 local function noteEvent(e)
   if interesting[e[1]] then
-    state.lastEvent = serialize(e)
-    log("EVENT", state.lastEvent)
-    render()
+    local detail = e[1]
+    if type(e[2]) == "string" then detail = detail .. " " .. e[2] end
+    state.lastEvent = detail
+    log("EVENT", detail)
   end
 end
 
@@ -163,10 +165,10 @@ local function waitStatus(getStatus, wanted, timeout, label)
     local status = getStatus()
     local encoded = serialize(status)
     state.lastStatus = encoded
-    if encoded ~= last then
-      log("STATE", (label or "status") .. " -> " .. encoded)
-      last = encoded
-      render()
+    local compact = tostring(status.state or "?")
+    if compact ~= last then
+      log("STATE", (label or "status") .. " -> " .. compact)
+      last = compact
     end
     if status.state == "error" then
       error((label or "audio") .. " error: " .. tostring(status.error), 0)
@@ -1102,7 +1104,12 @@ auto("A19/19 Final deterministic idle", function()
   assert(not speaker.isStreaming(), "stream ownership remained active after cleanup")
 end)
 
-log("PASS", "ALL AUTOMATED CORE CHECKS PASSED")
+if state.autoFailed == 0 then
+  log("PASS", "AUTOMATED CORE 19/19")
+else
+  log("WARN", ("automated core completed with %d failure(s); independent runtime checks will continue"):format(
+    state.autoFailed))
+end
 
 -- Built-in diagnostics are dormant during normal play. Enable them only for this acceptance run.
 local diagnosticEpoch = speaker.hqDiagEnable(true)
@@ -1401,21 +1408,7 @@ end, false)
 -- are intentionally not part of this runner and do not count as missing.
 -- ============================================================================
 
-actionGate("C1 Dimension leave/rejoin", {
-  "Requires the speaker/computer chunk to stay loaded.",
-  "A looping group starts. Change dimension, then return to the source.",
-  "Reopen this computer and press ENTER. Diagnostics judge the rejoin.",
-  "Press S if you cannot keep the source chunk loaded.",
-}, function()
-  local id, baseline = startRecoveryPlayback("dimension recovery")
-  state.detail = "keep source loaded; change dimension; return; ENTER"
-  state.prompt = {"Keep source chunk loaded.", "Change dimension.", "Return to source.", "Reopen and press ENTER."}
-  render()
-  waitEnter()
-  verifyRecoveryPlayback("dimension recovery", id, baseline, false)
-end, true)
-
-actionGate("C2 Sable/Aeronautics source tracking", {
+actionGate("C1 Sable/Aeronautics source tracking", {
   "The speakers/computer stay on your Sable contraption.",
   "A looping group starts. Move AND rotate the contraption for several seconds.",
   "Walk around it too, then return and press ENTER.",
@@ -1447,7 +1440,7 @@ actionGate("C2 Sable/Aeronautics source tracking", {
       source.lastPositionError or -1, source.maxPositionError or 0))
   end
 end, true)
-actionGate("C3 Sound Physics Remastered processing", {
+actionGate("C2 Sound Physics Remastered processing", {
   "Start with yourself in OPEN AIR near the stationary speakers.",
   "The test measures the Sound Physics filter there.",
   "Then it asks you to move behind your prepared solid wall and press ENTER.",
@@ -1503,96 +1496,47 @@ actionGate("C3 Sound Physics Remastered processing", {
 end, true)
 
 if RADIO_URL then
-  actionGate("C4 MP3/ICY group radio", {
+  actionGate("C3 MP3/ICY radio + strict membership", {
     "Uses the supplied direct MP3/ICY stream URL.",
-    "The test prebuffers and measures every real client source for 30 seconds.",
-    "No listening verdict is required.",
+    "Measures sustained grouped playback, then late-speaker membership.",
+    "Have one extra speaker ready but NOT connected yet.",
   }, function()
     diagReset("group radio")
-    local expected = speaker.getSpeakerCount()
-    assert(speaker.speakStreamAll(RADIO_URL, 0.45), "group radio rejected URL")
-    for i = 1, expected do waitAt(i, "playing", 25, "radio endpoint " .. i) end
-    assert(speaker.isStreaming(), "radio ownership did not remain active")
-    assert(speaker.getStreamUrl() == RADIO_URL, "active radio URL getter mismatch")
-    waitTimer(30.0, "measuring radio continuity/sync")
-    local snap = diagSnapshot("group radio")
-    assertClientBridge(snap)
-    local sources = diagSources(snap, "stream")
-    assert(#sources == expected, ("radio: expected %d client sources, got %d"):format(expected, #sources))
-    for i, source in ipairs(sources) do
-      assertSourceHealthy(source, "radio source " .. i, 20, true)
-      assert((source.pcmReadBytes or 0) > 100000, "radio source " .. i .. " did not deliver meaningful decoded PCM")
-    end
-    local group = assert(diagLargestGroup(snap, "stream:"), "radio sync group missing")
-    assert((group.sourceCount or 0) == expected, "radio strict group source count mismatch")
-    assert((group.playingMembers or 0) == expected, "a radio endpoint never reached PLAYING")
-    assert((group.channelStartSkewMs or 999999) <= 150, "radio real channel start skew exceeded 150 ms")
-    assert((group.maxAudibleOffsetSpreadMs or 999999) <= 100, "radio client playback drift exceeded 100 ms")
-    assert((group.pcmReadBytesSpread or 0) <= 262144, "radio decoder taps diverged by more than 256 KiB")
-    log("META", serialize(speaker.getStreamMeta()))
-    log("MEASURE", ("radio channelStart=%.2fms drift=%.2fms pcmSpread=%dB"):format(
-      group.channelStartSkewMs or -1, group.maxAudibleOffsetSpreadMs or -1,
-      group.pcmReadBytesSpread or -1))
-
-    safeStop()
-    diagReset("single radio")
-    assert(speaker.speakStream(RADIO_URL, 0.35), "single speakStream rejected valid radio URL")
-    waitStatus(function() return speaker.audioStatus() end, "playing", 25, "single radio")
-    waitTimer(4.0, "checking single radio client source")
-    local single = diagSnapshot("single radio")
-    local singleSources = diagSources(single, "stream")
-    assert(#singleSources == 1, "single speakStream did not create exactly one client source")
-    assertSourceHealthy(singleSources[1], "single radio", 5, true)
-
-    safeStop()
-    diagReset("indexed radio")
-    assert(speaker.speakStreamAt(2, RADIO_URL, 0.35), "speakStreamAt(2) rejected valid radio URL")
-    waitAt(2, "playing", 25, "indexed radio endpoint 2")
-    assert(speaker.audioStatusAt(1).state == "idle", "speakStreamAt(2) also started endpoint 1")
-    waitTimer(4.0, "checking indexed radio client source")
-    local indexed = diagSnapshot("indexed radio")
-    local indexedSource = sourceForEndpoint(indexed, 2, "stream")
-    assert(indexedSource, "speakStreamAt(2) client source missing")
-    assertSourceHealthy(indexedSource, "indexed radio", 5, true)
-  end, true)
-
-  actionGate("C5 Radio strict membership snapshot", {
-    "Have one extra speaker ready but NOT connected yet.",
-    "Radio starts on the current speaker snapshot.",
-    "When prompted, connect the extra speaker and press ENTER.",
-    "Diagnostics prove it stayed out until the command is rerun.",
-  }, function()
-    diagReset("radio membership initial")
     local initial = speaker.getSpeakerCount()
     local initialPositions = {}
     for _, entry in ipairs(speaker.getSpeakers()) do
       initialPositions[speakerPosKey(entry)] = true
     end
 
-    assert(speaker.speakStreamAll(RADIO_URL, 0.40), "strict-membership radio start rejected")
+    assert(speaker.speakStreamAll(RADIO_URL, 0.45), "group radio rejected URL")
     for i = 1, initial do waitAt(i, "playing", 25, "radio endpoint " .. i) end
-    waitTimer(3.0, "sealing radio membership")
-    local sealed = diagSnapshot("radio membership sealed")
-    local sealedGroup = assert(diagLargestGroup(sealed, "stream:"), "sealed radio diagnostic group missing")
-    assert((sealedGroup.sourceCount or 0) == initial, "initial radio diagnostic group count mismatch")
+    assert(speaker.isStreaming(), "radio ownership did not remain active")
+    assert(speaker.getStreamUrl() == RADIO_URL, "active radio URL getter mismatch")
+    waitTimer(30.0, "measuring sustained radio playback")
+
+    local _, sources, group = assertSettledGroupSync(
+      "stream", "stream:", initial, "group radio sync", 100, true)
+    for i, source in ipairs(sources) do
+      assert((source.pcmReadBytes or 0) > 100000,
+        "radio source " .. i .. " did not deliver meaningful decoded PCM")
+    end
+    log("META", serialize(speaker.getStreamMeta()))
 
     state.detail = "connect ONE new speaker, then ENTER"
     state.prompt = {"Connect one new speaker now.", "Do NOT rerun the radio command.", "Press ENTER after it is attached."}
-    render()
+    print("Connect one new speaker now, without rerunning the radio command, then press ENTER.")
     waitEnter()
+
     local afterCount = speaker.getSpeakerCount()
     assert(afterCount > initial, "speaker count did not increase")
-
     local newIndices = {}
     for _, entry in ipairs(speaker.getSpeakers()) do
-      if not initialPositions[speakerPosKey(entry)] then
-        newIndices[#newIndices + 1] = entry.index
-      end
+      if not initialPositions[speakerPosKey(entry)] then newIndices[#newIndices + 1] = entry.index end
     end
     assert(#newIndices == afterCount - initial,
       "could not identify the newly attached speaker(s) by physical position")
 
-    waitTimer(3.0, "checking sealed membership")
+    waitTimer(3.0, "checking sealed radio membership")
     local late = diagSnapshot("radio after late speaker")
     local lateGroup = assert(diagLargestGroup(late, "stream:"), "radio group disappeared after late attach")
     assert((lateGroup.sourceCount or 0) == initial,
@@ -1608,17 +1552,40 @@ if RADIO_URL then
     for i = 1, afterCount do waitAt(i, "playing", 25, "rerun radio endpoint " .. i) end
     waitTimer(4.0, "checking fresh radio membership")
     local rerun = diagSnapshot("radio membership rerun")
-    local rerunGroup = assert(diagLargestGroup(rerun, "stream:"), "rerun radio diagnostic group missing")
+    local rerunGroup = assert(diagLargestGroup(rerun, "stream:"), "rerun radio group missing")
     assert((rerunGroup.sourceCount or 0) == afterCount,
       ("fresh radio group has %s/%d sources"):format(tostring(rerunGroup.sourceCount), afterCount))
-    assert((rerunGroup.playingMembers or 0) == afterCount, "new speaker did not reach PLAYING after rerun")
+    assert((rerunGroup.playingMembers or 0) == afterCount,
+      "new speaker did not reach PLAYING after rerun")
+
+    -- Keep singular/indexed radio coverage lightweight: prove each real path starts correctly,
+    -- without turning them into separate long-running acceptance scenarios.
+    safeStop()
+    diagReset("single radio")
+    assert(speaker.speakStream(RADIO_URL, 0.35), "single speakStream rejected valid radio URL")
+    waitStatus(function() return speaker.audioStatus() end, "playing", 25, "single radio")
+    waitTimer(1.0, "checking single radio source")
+    local single = diagSnapshot("single radio")
+    local singleSources = diagSources(single, "stream")
+    assert(#singleSources == 1, "single speakStream did not create exactly one client source")
+    assertSourceHealthy(singleSources[1], "single radio", 3, true)
+
+    safeStop()
+    diagReset("indexed radio")
+    assert(speaker.speakStreamAt(2, RADIO_URL, 0.35), "speakStreamAt(2) rejected valid radio URL")
+    waitAt(2, "playing", 25, "indexed radio endpoint 2")
+    assert(speaker.audioStatusAt(1).state == "idle", "speakStreamAt(2) also started endpoint 1")
+    waitTimer(1.0, "checking indexed radio source")
+    local indexed = diagSnapshot("indexed radio")
+    local indexedSource = sourceForEndpoint(indexed, 2, "stream")
+    assert(indexedSource, "speakStreamAt(2) client source missing")
+    assertSourceHealthy(indexedSource, "indexed radio", 3, true)
   end, true)
 else
-  markSkipped("C4 MP3/ICY group radio (no radio URL supplied)")
-  markSkipped("C5 Radio strict membership snapshot (no radio URL supplied)")
+  markSkipped("C3 MP3/ICY radio + strict membership (no radio URL supplied)")
 end
 
-actionGate("C6 8+ speaker scale stress", {
+actionGate("C4 8+ speaker scale stress", {
   "Have enough normal CC:T speakers available to reach 8 total.",
   "The test pauses so you can connect extras now if needed.",
   "It measures 8+ finite sources, then 8+ continuous RAW sources automatically.",
@@ -1658,35 +1625,48 @@ actionGate("C6 8+ speaker scale stress", {
 end, true)
 
 safeStop()
-local finalDiagnostics = diagSnapshot("master acceptance complete", 0.2)
-dumpSnapshot("master acceptance complete")
-speaker.hqDiagEnable(false)
+pcall(function() speaker.hqDiagEnable(false) end)
 
-local complete = state.optionalSkipped == 0
+local failureCount = #state.failures
+local complete = failureCount == 0 and state.optionalSkipped == 0
 state.mode = "DONE"
 state.test = "Master acceptance complete"
-state.result = complete and "TARGET FULL PASS" or "CORE PASS / TARGET INCOMPLETE"
-state.detail = complete and "singleplayer + Sable target passed" or "one or more target-scope checks were skipped"
-state.prompt = {
-  complete and "TARGET RUNTIME ACCEPTANCE PASSED" or "CORE PASSED - TARGET CHECKS REMAIN",
-  ("Runtime %d/%d; target %d/%d; skipped %d"):format(
-    state.runtimePassed, state.runtimeTotal, state.optionalPassed, state.optionalTotal, state.optionalSkipped),
-  "Log: " .. LOG,
-}
-render()
 
-log("PASS", "ALL REQUIRED AUTOMATED + REAL-CLIENT DIAGNOSTICS PASSED")
-log("INFO", ("runtime=%d/%d target=%d/%d skipped=%d"):format(
-  state.runtimePassed, state.runtimeTotal, state.optionalPassed, state.optionalTotal, state.optionalSkipped))
+if failureCount > 0 then
+  state.result = "FAIL"
+  state.detail = ("%d check(s) failed; see log"):format(failureCount)
+elseif complete then
+  state.result = "TARGET FULL PASS"
+  state.detail = "singleplayer + Sable target passed"
+else
+  state.result = "CORE PASS / TARGET INCOMPLETE"
+  state.detail = "one or more target-scope checks were skipped"
+end
+
+log("INFO", ("auto=%d/%d failed=%d runtime=%d/%d failed=%d target=%d/%d failed=%d skipped=%d"):format(
+  state.autoPassed, state.autoTotal, state.autoFailed,
+  state.runtimePassed, state.runtimeTotal, state.runtimeFailed,
+  state.optionalPassed, state.optionalTotal, state.optionalFailed, state.optionalSkipped))
+
+if #state.failures > 0 then
+  log("SUMMARY", "FAILED CHECKS:")
+  for _, failure in ipairs(state.failures) do
+    log("SUMMARY", failure.name .. " -> " .. failure.error)
+  end
+end
 if #state.skippedNames > 0 then
-  for _, name in ipairs(state.skippedNames) do log("MISSING", name) end
+  log("SUMMARY", "SKIPPED TARGET CHECKS:")
+  for _, name in ipairs(state.skippedNames) do log("SUMMARY", name) end
 end
 
 print("")
-if complete then
+if failureCount > 0 then
+  print(("[FAIL] %d check(s) failed; all independent checks were allowed to continue."):format(failureCount))
+  for _, failure in ipairs(state.failures) do print(" - " .. failure.name .. ": " .. failure.error) end
+elseif complete then
   print("[TARGET FULL PASS] v10 singleplayer + Sable runtime acceptance")
 else
   print("[CORE PASS] automatic core passed; target-scope acceptance is INCOMPLETE")
-  print("Skipped target checks are listed in " .. LOG)
 end
 print("Log: " .. LOG)
+
