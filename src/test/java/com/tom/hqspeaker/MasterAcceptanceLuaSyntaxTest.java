@@ -52,12 +52,16 @@ class MasterAcceptanceLuaSyntaxTest {
             "C3 must prove radio sources enter SPR");
         assertTrue(source.contains("assertSprProcessEvidence(source, \"8+ RAW source \" .. i)"),
             "C4 must prove RAW sources enter SPR");
-        assertTrue(source.contains("Use ONLY ordinary Minecraft-world geometry"),
+        assertTrue(source.contains("wall itself must be ordinary Minecraft-world blocks"),
             "C2 must keep Sable-wall acoustics outside the basic SPR integration check");
-        assertTrue(source.contains("SPR live wall"),
-            "C2 must distinguish long-running SPR refresh from a fresh behind-wall startup");
-        assertTrue(source.contains("liveRefreshed == expected"),
-            "C2 must automatically detect stale long-running HQ acoustics");
+        assertTrue(source.contains("speaker.speakMp3At(index, mp3"),
+            "C2 should isolate one endpoint instead of requiring a multispeaker wall setup");
+        assertTrue(source.contains("SPR wall restart"),
+            "C2 must prove fresh behind-wall startup occlusion");
+        assertFalse(source.contains("liveRefreshed"),
+            "C2 must not require HQ-only live refresh when upstream SPR moving-sound updates are optional");
+        assertTrue(source.contains("finiteCatchUpAlignmentSpreadMs"),
+            "finite sync must judge catch-up media alignment instead of queue-relative OpenAL offsets");
         assertTrue(source.contains("independentSubcheck(\"C4 finite scale\""),
             "C4 finite failure must not prevent RAW scale evidence");
         assertTrue(source.contains("independentSubcheck(\"C4 RAW scale\""),
@@ -74,4 +78,19 @@ class MasterAcceptanceLuaSyntaxTest {
                 state, input, "@scripts/v10_acceptance.lua", state.globals()));
         }
     }
+    @Test
+    void standaloneTargetRechecksCompileWithComputerCraftLua() throws Exception {
+        assertLuaCompiles("v10_c2_spr.lua");
+        assertLuaCompiles("v10_c4_finite.lua");
+    }
+
+    private static void assertLuaCompiles(String filename) throws Exception {
+        Path script = Path.of("scripts", filename);
+        assertTrue(Files.isRegularFile(script), filename + " is missing");
+        LuaState state = LuaState.builder().build();
+        try (InputStream input = Files.newInputStream(script)) {
+            assertDoesNotThrow(() -> LoadState.load(state, input, "@scripts/" + filename, state.globals()));
+        }
+    }
+
 }
