@@ -247,6 +247,12 @@ end
 
 local function recordFailure(test, err, bucket)
   local message = tostring(err)
+  if message == "terminated" then
+    safeStop()
+    pcall(function() if speaker.hqDiagEnable then speaker.hqDiagEnable(false) end end)
+    error("terminated", 0)
+  end
+
   state.failures[#state.failures + 1] = {name = test, error = message}
   if bucket == "auto" then state.autoFailed = state.autoFailed + 1
   elseif bucket == "runtime" then state.runtimeFailed = state.runtimeFailed + 1
