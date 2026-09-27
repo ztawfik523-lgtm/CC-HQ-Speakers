@@ -20,7 +20,7 @@ The protocol and server bounds stay unchanged. The old 2-second request timeout 
 
 Attempt 7 only proved that an SPR environment-write hook fired; the Sable wall used in that run was not valid evidence for ordinary SPR world geometry.
 
-**Source status:** direct `SoundPhysics.processSound` diagnostics are implemented and scoped only to HQ custom sounds. Radio and 8-speaker RAW already passed with direct SPR evidence. C2 is now a one-speaker open-air vs normal-world-wall restart check; the speaker may remain on a parked Sable contraption.
+**Source status:** direct `SoundPhysics.processSound` diagnostics are implemented and scoped only to HQ custom sounds. Radio and 8-speaker RAW already passed with direct SPR evidence. C2 is now a one-speaker normal-ground open/wall/open restart check. Both the computer and speaker must be ordinary Minecraft-world blocks, outside Sable.
 
 **Remaining work:** run the standalone C2 and prove that a fresh HQ source behind ordinary-world geometry receives measurable SPR occlusion. HQ-only live refresh is not a release requirement when SPR's own moving-sound reevaluation is disabled.
 
