@@ -1,24 +1,24 @@
 # Runtime scripts
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 ## User-facing release acceptance
 
 Use exactly one normal acceptance runner:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
 `v10_acceptance.lua` combines deterministic checks with the mod's built-in client/OpenAL diagnostics. It writes `/v10-acceptance.log`.
 
-The operator no longer presses PASS/FAIL for audio quality. The script may ask the operator to perform physical actions such as walking out of range, pressing F3+T, moving the Sable contraption, moving behind an obstacle, changing dimension or connecting speakers. The diagnostics decide the result.
+The operator no longer presses PASS/FAIL for audio quality. The script may ask for physical actions such as walking out of listener range, pressing F3+T, moving the Sable contraption, moving behind an obstacle or connecting speakers. The diagnostics decide the result. Independent failures are recorded and later checks continue.
 
 The current master contains:
 
 - A1-A19 deterministic/API/admission/control/bounds/security checks;
 - R1-R9 real-client diagnostics;
-- C1-C6 environment/scale checks.
+- C1-C4 target checks: Sable, Sound Physics, radio+membership and 8+ scale.
 
 Selected release scope is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are outside scope.
 
