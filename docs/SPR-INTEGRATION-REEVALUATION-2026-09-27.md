@@ -15,7 +15,7 @@ For the current phase:
 - Sable-wall geometry is deliberately out of scope until ordinary SPR behavior is proven;
 - no smoothing, diffraction, custom OpenAL ownership or scheduler is added without a demonstrated runtime need.
 
-The current branch now records exact `processSound` calls and C2 checks a continuously-playing HQ source against a fresh restart behind the same **normal-world** wall.
+The current branch records exact `processSound` calls. C2 now checks the smallest compatibility requirement: one HQ source in open air versus a fresh restart behind a **normal-world** wall.
 
 ## Why this is being revisited
 
@@ -38,7 +38,7 @@ SPR's own `Channel.play()` mixin normally invokes `SoundPhysics.onPlaySound`, so
 ## What is actually missing / uncertain
 
 1. **Direct proof of full SPR processing.** Add diagnostics at `SoundPhysics.processSound`, not only `setEnvironment`.
-2. **Reliable reevaluation for long-lived HQ sources.** SPR 1.21.1 defaults `update_moving_sounds=false`. HQ speakers can move with Sable and the listener can move while the same source remains alive, so one startup evaluation can become stale.
+2. **Long-lived reevaluation follows SPR policy.** SPR's moving-sound reevaluation is optional. HQ should match that upstream behavior rather than add an HQ-only refresh loop by default.
 3. **Sable geometry.** Projecting a speaker's position into world space does not make SPR's normal client-world raycaster see blocks stored in a moving Sable sub-level. Static-world walls and Sable walls must be tested separately.
 4. **Reflected source-position persistence.** SPR may reposition an OpenAL source to a reflected direction; HQ/Minecraft position updates can later write the physical source position again. This matters only if full SPR directional-reflection fidelity is required.
 5. **Scale above vanilla streaming-pool capacity.** Minecraft 1.21.1 partitions OpenAL channels into static and streaming pools. The streaming pool is `clamp(sqrt(totalChannels), 2, 8)`, so Minecraft-owned streaming sounds cannot exceed eight simultaneous streaming channels without changing that pool. This is separate from attempt 7's proven finite range-admission bug.
@@ -83,12 +83,12 @@ Private EFX can still be useful for smoothing, retained state, failure isolation
 
 Keep all current Minecraft channels.
 
-Add a small optional client bridge which:
+Keep the existing Minecraft channel path and the small optional diagnostic bridge which:
 
 - receives the actual HQ channel/OpenAL source ID from the existing streaming-source event;
-- explicitly invokes SPR `processSound` for HQ at channel start;
-- reevaluates only HQ sources when source/listener movement or a modest periodic refresh requires it;
-- records direct process-call diagnostics.
+- lets SPR perform its normal channel-start processing;
+- observes the real `processSound` call and environment result;
+- adds no HQ-only refresh loop unless a later requirement proves one is necessary.
 
 SPR remains responsible for its own environment calculation, filters, reverb and reflected-position write.
 
@@ -132,14 +132,11 @@ Do not implement this until a static-world vs Sable-wall diagnostic proves it is
 
 ## Suggested investigation sequence before selecting an architecture
 
-1. Run the new C2 on a normal-world wall and prove direct `processSound` + environment application.
-2. Observe the same sound after moving behind the wall without restarting.
-3. Restart behind the wall.
-4. If restart works but the live sound stays stale, add only a client-side HQ refresh path and rerun.
-5. Verify radio and RAW also enter SPR through their existing Minecraft channels.
-6. Do not add reflected-position stabilization unless a direct runtime test proves Minecraft is audibly undoing a useful SPR effect.
-7. Do not import V7.1 smoothing/diffraction/caching until ordinary upstream behavior exposes a specific quality/performance problem.
-8. Keep Sable geometry and >8 channel ownership as separate later questions.
+1. Run standalone C2 with one speaker and a normal-world wall.
+2. Prove direct `processSound` + environment application in open air and after a fresh behind-wall start.
+3. If fresh behind-wall occlusion works, ordinary SPR integration is sufficient for the selected release target.
+4. Do not add HQ-only live refresh, reflected-position stabilization, smoothing, diffraction or caching without a separate demonstrated requirement.
+5. Keep Sable-wall geometry and >8 channel ownership as separate later questions.
 
 ## Current architectural leaning (not a frozen decision)
 
