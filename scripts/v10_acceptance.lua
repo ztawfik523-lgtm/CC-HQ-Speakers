@@ -298,7 +298,6 @@ local function auto(name, fn)
   log("BEGIN", name)
   local ok, err = pcall(fn)
   if not ok then return recordFailure(name, err, "auto") end
-  safeStop()
   state.autoPassed = state.autoPassed + 1
   log("PASS", name)
   return true
