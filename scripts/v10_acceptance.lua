@@ -1436,8 +1436,8 @@ actionGate("C2 Sound Physics Remastered processing", {
   "Use ONLY ordinary Minecraft-world geometry for this check (not a Sable wall).",
   "Start with yourself in OPEN AIR near the stationary speakers.",
   "The test proves SPR really called processSound, then measures its filter.",
-  "Then it asks you to move behind a solid normal-world wall and press ENTER.",
-  "It restarts audio behind the wall and compares the real filter automatically.",
+  "Then it asks you to move behind a solid normal-world wall WITHOUT stopping the sound.",
+  "It checks whether the same long-running HQ sound updates, then restarts it behind the wall.",
 }, function()
   diagReset("SPR open air")
   local expected = speaker.getSpeakerCount()
@@ -1462,11 +1462,37 @@ actionGate("C2 Sound Physics Remastered processing", {
     openByPos[(source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)] = source
   end
 
-  safeStop()
-  showPrompt({"OPEN-AIR MEASUREMENT COMPLETE.", "Move behind the prepared solid wall.", "Stay near the speakers.", "Press ENTER when positioned."})
+  showPrompt({
+    "OPEN-AIR MEASUREMENT COMPLETE -- KEEP THE AUDIO PLAYING.",
+    "Move behind the prepared NORMAL-WORLD solid wall.",
+    "Stay near the speakers and press ENTER when positioned.",
+  })
   waitEnter()
+  waitTimer(3.0, "checking long-running Sound Physics refresh behind wall")
+  local liveWall = diagSnapshot("SPR live wall")
+  local liveSources = diagSources(liveWall, "finite")
+  assert(#liveSources == expected, "SPR live-wall source count mismatch")
 
-  diagReset("SPR wall")
+  local liveRefreshed = 0
+  local liveChanged = 0
+  for i, source in ipairs(liveSources) do
+    local key = (source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)
+    local before = assert(openByPos[key], "SPR could not match source position for live-wall refresh")
+    local processAdvanced = (source.soundPhysicsProcessCalls or 0) > (before.soundPhysicsProcessCalls or 0)
+    if processAdvanced then liveRefreshed = liveRefreshed + 1 end
+    local gainDrop = (before.directGain or 1) - (source.directGain or 1)
+    local hfDrop = (before.directGainHF or 1) - (source.directGainHF or 1)
+    if gainDrop > 0.01 or hfDrop > 0.01 then liveChanged = liveChanged + 1 end
+    log("MEASURE", ("SPR live source %d calls %d->%d gain %.4f->%.4f HF %.4f->%.4f"):format(
+      i, before.soundPhysicsProcessCalls or 0, source.soundPhysicsProcessCalls or 0,
+      before.directGain or -1, source.directGain or -1,
+      before.directGainHF or -1, source.directGainHF or -1))
+  end
+
+  -- Restart behind the same wall so we can distinguish "SPR cannot see this wall" from
+  -- "SPR startup works, but a long-running HQ source was never refreshed".
+  safeStop()
+  diagReset("SPR wall restart")
   assert(speaker.speakMp3All(mp3, 0.55), "SPR wall group rejected")
   verifySharedPlaying()
   waitTimer(3.0, "measuring Sound Physics wall filter")
@@ -1495,7 +1521,12 @@ actionGate("C2 Sound Physics Remastered processing", {
       source.directGainRange or 0, source.directGainHFRange or 0))
   end
   assert(changed > 0,
-    "Sound Physics processed HQ audio, but the normal-world wall did not measurably increase occlusion")
+    "Sound Physics processed HQ audio, but the normal-world wall did not measurably increase occlusion even after restart")
+  assert(liveRefreshed == expected,
+    ("Sound Physics startup processing works, but only %d/%d long-running HQ sources were reprocessed after listener/environment movement")
+      :format(liveRefreshed, expected))
+  assert(liveChanged > 0,
+    "Sound Physics reprocessed the long-running HQ sources, but their live filter never reacted to the wall")
 end, true)
 
 if RADIO_URL then

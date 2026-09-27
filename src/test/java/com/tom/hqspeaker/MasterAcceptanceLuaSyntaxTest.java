@@ -50,6 +50,10 @@ class MasterAcceptanceLuaSyntaxTest {
             "C2 must prove the real SPR processSound path, not only observe setEnvironment");
         assertTrue(source.contains("Use ONLY ordinary Minecraft-world geometry"),
             "C2 must keep Sable-wall acoustics outside the basic SPR integration check");
+        assertTrue(source.contains("SPR live wall"),
+            "C2 must distinguish long-running SPR refresh from a fresh behind-wall startup");
+        assertTrue(source.contains("liveRefreshed == expected"),
+            "C2 must automatically detect stale long-running HQ acoustics");
         assertTrue(source.contains("independentSubcheck(\"C4 finite scale\""),
             "C4 finite failure must not prevent RAW scale evidence");
         assertTrue(source.contains("independentSubcheck(\"C4 RAW scale\""),
