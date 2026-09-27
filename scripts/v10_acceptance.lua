@@ -298,8 +298,8 @@ local function auto(name, fn)
   display("AUTO", name, "running mechanical check", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
-  safeStop()
   if not ok then return recordFailure(name, err, "auto") end
+  safeStop()
   state.autoPassed = state.autoPassed + 1
   log("PASS", name)
   return true
@@ -353,12 +353,12 @@ local function actionGate(name, instructions, action, optional)
   log("ACTION", name .. " started")
 
   local ok, err = pcall(action)
-  safeStop()
   if not ok then
     state.prompt = {}
     recordFailure(name, err, optional and "target" or "runtime")
     return "fail"
   end
+  safeStop()
 
   if optional then state.optionalPassed = state.optionalPassed + 1
   else state.runtimePassed = state.runtimePassed + 1 end
@@ -637,8 +637,8 @@ local function runtimeDiag(name, fn)
   display("RUNTIME", name, "automatic client/audio diagnostic", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
-  safeStop()
   if not ok then return recordFailure(name, err, "runtime") end
+  safeStop()
   state.runtimePassed = state.runtimePassed + 1
   log("PASS", name)
   return true
