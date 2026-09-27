@@ -8,8 +8,8 @@ Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`
 Runtime-tested candidate CI: `36238699768` — PASS  
 Runtime-tested artifact: `10905071824`  
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
-Current master-runner checkpoint: `1360eb2f04d0e22420175040ce2e3735c4e9b294`  
-Current master-runner CI: `36240136369` — PASS on retry after a transient NeoForge Maven HTTP 502  
+Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
+Current master-runner CI: `36285305761` — PASS  
 Build baseline: NeoForge **21.1.247 only**  
 Protocol: **v10**, 9 payloads.
 
@@ -61,7 +61,7 @@ The diagnostic surface is `hqDiagEnable`, `hqDiagReset`, `hqDiagSnapshot`, `hqDi
 
 ## Master acceptance
 
-There is now one user-facing test: `scripts/v10_acceptance.lua`. It also supports opt-in `--resume`, which reuses prior PASS results from the existing master log and reruns only unfinished/failed/skipped checks on the same candidate JAR.
+There is one user-facing test: `scripts/v10_acceptance.lua`. Independent failures are recorded and later checks continue; `--resume` is only needed after a real interruption and reuses prior PASS results from the same candidate run.
 
 It contains:
 
