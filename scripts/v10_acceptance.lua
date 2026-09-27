@@ -114,6 +114,12 @@ local function display(mode, test, detail, prompt)
   state.prompt = prompt or {}
 end
 
+local function showPrompt(lines)
+  state.prompt = lines or {}
+  print("")
+  for _, line in ipairs(state.prompt) do print(line) end
+end
+
 local function noteEvent(e)
   if interesting[e[1]] then
     local detail = e[1]
@@ -1379,9 +1385,8 @@ actionGate("R8/9 Range leave/rejoin", {
   "Do not judge the sound yourself; diagnostics decide.",
 }, function()
   local id, baseline = startRecoveryPlayback("range recovery")
-  state.detail = "walk >32 blocks away, return, reopen, ENTER"
-  state.prompt = {"Walk >32 blocks away.", "Return to the speakers.", "Reopen this computer.", "Press ENTER."}
-  render()
+  state.detail = "walk out of listener range, return, reopen, ENTER"
+  showPrompt({"BASELINE READY.", "Walk out of listener range.", "Return to the speakers.", "Reopen this computer.", "Press ENTER."})
   waitEnter()
   verifyRecoveryPlayback("range recovery", id, baseline, false)
 end, false)
@@ -1394,8 +1399,7 @@ actionGate("R9/9 F3+T resource reload recovery", {
 }, function()
   local id, baseline = startRecoveryPlayback("resource reload")
   state.detail = "baseline ready: NOW perform F3+T, return, reopen, ENTER"
-  state.prompt = {"BASELINE READY -- NOW exit GUI.", "Press F3+T.", "Wait for reload.", "Return and press ENTER."}
-  render()
+  showPrompt({"BASELINE READY -- NOW exit GUI.", "Press F3+T.", "Wait for reload.", "Return and press ENTER."})
   waitEnter()
   local after = verifyRecoveryPlayback("resource reload", id, baseline, true)
   local recovered = 0
@@ -1422,8 +1426,7 @@ actionGate("C1 Sable/Aeronautics source tracking", {
   assert(speaker.audioSetLoopingAll(true), "Sable loop enable failed")
   waitTimer(1.5, "Sable baseline")
   state.detail = "move and rotate Sable contraption; then ENTER"
-  state.prompt = {"Move + rotate the contraption.", "Keep it moving several seconds.", "Return and press ENTER."}
-  render()
+  showPrompt({"BASELINE READY.", "Move + rotate the contraption.", "Keep it moving several seconds.", "Return and press ENTER."})
   waitEnter()
   local snap = diagSnapshot("Sable tracking", 0.5)
   local sources = diagSources(snap, "finite")
@@ -1466,8 +1469,7 @@ actionGate("C2 Sound Physics Remastered processing", {
 
   safeStop()
   state.detail = "move behind the solid wall, then ENTER"
-  state.prompt = {"Move behind prepared solid wall.", "Stay within speaker processing distance.", "Press ENTER when positioned."}
-  render()
+  showPrompt({"OPEN-AIR MEASUREMENT COMPLETE.", "Move behind the prepared solid wall.", "Stay near the speakers.", "Press ENTER when positioned."})
   waitEnter()
 
   diagReset("SPR wall")
@@ -1524,8 +1526,7 @@ if RADIO_URL then
     log("META", serialize(speaker.getStreamMeta()))
 
     state.detail = "connect ONE new speaker, then ENTER"
-    state.prompt = {"Connect one new speaker now.", "Do NOT rerun the radio command.", "Press ENTER after it is attached."}
-    print("Connect one new speaker now, without rerunning the radio command, then press ENTER.")
+    showPrompt({"RADIO BASELINE COMPLETE.", "Connect ONE new speaker now.", "Do NOT rerun the radio command.", "Press ENTER after it is attached."})
     waitEnter()
 
     local afterCount = speaker.getSpeakerCount()
@@ -1593,8 +1594,7 @@ actionGate("C4 8+ speaker scale stress", {
 }, function()
   if speaker.getSpeakerCount() < 8 then
     state.detail = "connect speakers until count is at least 8, then ENTER"
-    state.prompt = {"Connect extra speakers now.", "Reach at least 8 total.", "Press ENTER."}
-    render()
+    showPrompt({"Connect extra speakers now.", "Reach at least 8 total.", "Press ENTER."})
     waitEnter()
   end
   local current = speaker.getSpeakerCount()
