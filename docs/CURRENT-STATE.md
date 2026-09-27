@@ -45,13 +45,15 @@ A1-A19 and R1-R9 have all passed in real Minecraft on the selected 21.1.247 cand
 
 That confirms native CC:T client channels on Sable, finite MP3/WAV rendering, 2-speaker synchronization, endpoint-local controls, continuous RAW continuation, loop recovery, listener leave/rejoin and F3+T recovery.
 
-Attempt 7 then ran all current target checks:
+The latest target rerun used the same candidate JAR and narrowed the remaining work substantially:
 
-- **C1 Sable:** the runner marked FAIL, but the actual tracking evidence is good. Requested and actual OpenAL movement matched over roughly 52-53 blocks and both sources ended PLAYING with zero decoder failures. The failure came from an unrelated historical STOPPED transition produced during listener relevance leave/rejoin. This is a harness assertion bug;
-- **C2 SPR:** unresolved. The diagnostic saw SPR environment activity, but open-air and wall direct gain/HF remained 1.0000. The current hook does not prove that `SoundPhysics.processSound` actually ran, so the cause is not established;
-- **C3 radio:** PASS, including sustained grouped playback, metadata, strict late membership, rerun membership, singular and indexed paths;
-- **C4 8+ finite:** real failure. One of eight client sources started about 2.219 seconds late;
-- **C4 8+ RAW:** not reached and remains untested.
+- **A core:** A1-A7, A10-A17 and A19 passed. A8, A9 and A18 were interrupted only because the runner's error logger called a missing `shorten()` helper; a focused standalone rejection recheck now covers those three checks;
+- **R1-R9:** all nine real-client/OpenAL checks passed again;
+- **C1 Sable:** PASS. Both sources tracked roughly 65 blocks of requested/actual movement and ended healthy;
+- **C2 SPR:** skipped because a usable ordinary-world wall was not available during that run. A one-speaker standalone C2 now allows the speaker/computer to remain on a parked Sable contraption while the wall itself is normal-world geometry;
+- **C3 radio:** PASS with the updated direct SPR requirement, including strict membership rerun to eight speakers;
+- **C4 8+ finite:** the old ~2.2-second admission-stall fingerprint is gone. The eight real channel starts were within about 58.7 ms. The runner's later 81.29 ms failure came from treating OpenAL's streamed-buffer-relative offset as an absolute song clock; reconstructing the shared media-zero time from channel start plus finite catch-up gives about 3.9 ms alignment;
+- **C4 8+ RAW:** PASS, with about 11 ms channel-start spread and 0 ms settled drift.
 
 ## Concrete C4 finite defect
 
@@ -65,7 +67,7 @@ A source fix is now implemented on the branch:
 - protocol v10 and the 9-payload shape are unchanged;
 - the 2-second timeout remains only as loss/recovery protection, not the normal admission mechanism.
 
-This is the smallest fix for the demonstrated bug. It is **CI-built but not yet runtime-proven**; C4 must confirm the ~2.2-second outlier is gone.
+This is the smallest fix for the demonstrated bug, and the latest runtime rerun confirms the ~2.2-second outlier is gone. The corrected acceptance logic now judges finite **catch-up alignment** instead of queue-relative OpenAL offset. Small millisecond-scale start differences are acceptable when the later endpoint joins the correct media position; a separate 1-second guard still catches obvious startup stalls.
 
 ## SPR state
 
@@ -78,23 +80,20 @@ Implemented diagnostics:
 - diagnostics record process-call count, source position, category, sound id, optional reflected position and the resulting environment writes;
 - finite, radio and RAW target checks now require direct SPR process evidence.
 
-C2 has also been changed to use **ordinary Minecraft-world geometry only**. It first measures open air, then keeps the same HQ sound running while the listener moves behind a normal-world wall, and finally restarts behind that wall. This distinguishes startup processing from stale long-running acoustics.
+C2 uses **ordinary Minecraft-world geometry only** and now tests the smallest useful compatibility contract: one HQ finite source is measured in open air, then restarted behind the same normal-world wall. The speaker/computer may remain on a parked Sable contraption.
 
-No acoustic refresh system has been added yet. If the live-wall phase proves stale while the restarted wall works, the next product change will be a small **client-only HQ refresh path**. The server and network protocol remain completely SPR-independent.
+No HQ-only acoustic refresh system is planned from this test. SPR's own moving-sound setting controls whether long-running sounds are periodically reevaluated; HQ should match normal SPR behavior instead of adding special refresh policy by default. The server and network protocol remain completely SPR-independent.
 
 Sable-wall acoustics are explicitly deferred from this phase.
 
 ## Next work, in order
 
-The cumulative NeoForge 21.1.247 source/recheck build is green. The next step is runtime evidence, not more source changes.
+No further product/JAR change is currently indicated. The remaining work is focused runtime evidence:
 
-1. install artifact `10922887347` from CI run `36293523518` and rerun the target checks using the existing master log with `--resume`;
-2. C1 must record a clean PASS with the corrected final-health/movement assertion;
-3. C2 must prove direct SPR processing behind a **normal-world** wall and report whether the same long-running source refreshes before restart;
-4. C3 is intentionally renamed so `--resume` reruns radio and proves the radio path also enters SPR;
-5. C4 must run both finite and RAW independently; finite validates the new shared range scheduler and RAW finally gets its missing 8+ evidence;
-6. only if C2 proves long-running HQ acoustics stale, add the smallest client-only HQ refresh behavior and rerun C2;
-7. only after exactly-8 scale is clean should >8 Minecraft streaming-channel capacity be tested separately;
-8. Sable-wall acoustics remain deferred until ordinary SPR integration is complete.
+1. run `v10_rejection_recheck` to record clean A8/A9/A18 PASS results with the fixed logger;
+2. run standalone `v10_c2_spr` with one speaker and a normal-world wall;
+3. run standalone `v10_c4_finite` with the existing 8+ speaker setup to record the corrected catch-up-alignment verdict;
+4. if those pass, close the selected release-target acceptance;
+5. keep >8 streamed-source capacity and Sable-wall acoustics as separate later questions, not blockers for the selected target.
 
 Do not declare release acceptance complete until those items are resolved.
