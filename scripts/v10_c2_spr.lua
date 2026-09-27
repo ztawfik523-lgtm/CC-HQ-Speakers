@@ -12,8 +12,6 @@ local MIN_LISTEN_SECONDS = 20
 if fs.exists(LOG) then fs.delete(LOG) end
 
 local speaker = assert(peripheral.find("speaker"), "attach one ComputerCraft speaker")
-assert(speaker.getSpeakerCount() == 1,
-  "C2 normal-ground test requires exactly one attached speaker")
 assert(type(speaker.hqDiagEnable) == "function" and type(speaker.hqDiagSnapshot) == "function",
   "this JAR does not expose the required HQ diagnostics")
 
@@ -33,7 +31,7 @@ local function readBinary(path)
 end
 
 local function safeStop()
-  pcall(function() speaker.audioStopAt(1) end)
+  pcall(function() speaker.audioStop() end)
   pcall(function() speaker.audioStopAll() end)
   pcall(function() speaker.audioStop() end)
 end
@@ -54,7 +52,7 @@ end
 local function waitPlaying(timeout)
   local deadline = os.epoch("utc") + timeout * 1000
   while os.epoch("utc") < deadline do
-    local status = speaker.audioStatusAt(1)
+    local status = speaker.audioStatus()
     if status.state == "error" then error("speaker error: " .. tostring(status.error), 0) end
     if status.state == "playing" then return end
     sleep(0.05)
@@ -69,16 +67,18 @@ local function resetDiag(label)
   log("DIAG", label .. " epoch=" .. tostring(epoch))
 end
 
-local function sourceForEndpoint(snapshot)
-  local p = speaker.getSpeakerPos(1)
+local function sourceForLocalSpeaker(snapshot)
+  local found = nil
+  local count = 0
   for _, source in ipairs(snapshot.sources or {}) do
-    if source.kind == "finite"
-      and math.abs((source.blockX or 0) - p.x) < 0.01
-      and math.abs((source.blockY or 0) - p.y) < 0.01
-      and math.abs((source.blockZ or 0) - p.z) < 0.01 then
-      return source
+    if source.kind == "finite" then
+      found = source
+      count = count + 1
     end
   end
+  assert(count == 1,
+    "expected exactly one active finite diagnostic source, got " .. tostring(count))
+  return found
 end
 
 local function assertSpr(source, label)
@@ -116,9 +116,9 @@ end
 
 local function startLoopedMp3(label, mp3)
   resetDiag(label)
-  assert(speaker.speakMp3At(1, mp3, 0.55), label .. ": MP3 rejected")
+  assert(speaker.speakMp3(mp3, 0.55), label .. ": MP3 rejected")
   waitPlaying(15)
-  assert(speaker.audioSetLoopingAt(1, true), label .. ": could not enable looping")
+  assert(speaker.audioSetLooping(true), label .. ": could not enable looping")
 end
 
 local mp3 = readBinary(MP3_PATH)
@@ -144,7 +144,7 @@ local ok, err = pcall(function()
   -- Open-air baseline.
   prompt({
     "PHASE 1: OPEN AIR",
-    "Stand where there is a clear line between you and speaker 1.",
+    "Stand where there is a clear line between you and the speaker.",
     "Do not put the wall between you and the speaker yet.",
     "Press ENTER to start the open-air sound.",
   })
@@ -154,7 +154,7 @@ local ok, err = pcall(function()
   listenForAWhile("OPEN AIR")
   local open = speaker.hqDiagSnapshot()
   assert((open.capabilities or {}).soundPhysicsLoaded == true, "Sound Physics Remastered was not detected")
-  local before = sourceForEndpoint(open)
+  local before = sourceForLocalSpeaker(open)
   assertSpr(before, "open air")
   log("OPEN", ("gain=%.4f HF=%.4f calls=%d"):format(
     before.directGain or -1, before.directGainHF or -1, before.soundPhysicsProcessCalls or 0))
@@ -163,7 +163,7 @@ local ok, err = pcall(function()
   -- Behind-wall restart.
   prompt({
     "PHASE 2: BEHIND SOLID WALL",
-    "Move so the NORMAL Minecraft wall is directly between you and speaker 1.",
+    "Move so the NORMAL Minecraft wall is directly between you and the speaker.",
     "Try to stay about the same distance from the speaker as in Phase 1.",
     "The sound will be RESTARTED from behind the wall.",
     "Press ENTER when you are in position.",
@@ -173,7 +173,7 @@ local ok, err = pcall(function()
   startLoopedMp3("wall restart", mp3)
   listenForAWhile("BEHIND WALL")
   local wall = speaker.hqDiagSnapshot()
-  local after = sourceForEndpoint(wall)
+  local after = sourceForLocalSpeaker(wall)
   assertSpr(after, "wall")
   log("WALL", ("gain=%.4f HF=%.4f calls=%d"):format(
     after.directGain or -1, after.directGainHF or -1, after.soundPhysicsProcessCalls or 0))
@@ -189,7 +189,7 @@ local ok, err = pcall(function()
   prompt({
     "PHASE 3: OPEN AIR AGAIN",
     "Move back to the OPEN side of the same wall.",
-    "Keep roughly the same distance from speaker 1.",
+    "Keep roughly the same distance from the speaker.",
     "Press ENTER to restart the sound for the final comparison.",
   })
   waitEnter()
@@ -197,7 +197,7 @@ local ok, err = pcall(function()
   startLoopedMp3("final open air", mp3)
   listenForAWhile("FINAL OPEN AIR")
   local finalOpen = speaker.hqDiagSnapshot()
-  local finalSource = sourceForEndpoint(finalOpen)
+  local finalSource = sourceForLocalSpeaker(finalOpen)
   assertSpr(finalSource, "final open air")
   log("FINAL", ("gain=%.4f HF=%.4f calls=%d"):format(
     finalSource.directGain or -1, finalSource.directGainHF or -1,
