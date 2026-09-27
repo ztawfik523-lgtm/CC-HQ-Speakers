@@ -10,11 +10,13 @@ Chosen release-test scope: **singleplayer + Sable/Aeronautics + Sound Physics Re
 
 ## Current candidate
 
-Code/test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
-CI: `36205257110` — PASS  
+Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
+Runtime-tested candidate CI: `36238699768` — PASS  
+Runtime-tested artifact: `10905071824`  
+Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
+Master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
+Master-runner CI: `36285305761` — PASS  
 Build baseline: NeoForge **21.1.247 only**  
-Artifact: `10892998704`  
-JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`  
 Minecraft: 1.21.1  
 Java: 21  
 CC:Tweaked: 1.120.0  
