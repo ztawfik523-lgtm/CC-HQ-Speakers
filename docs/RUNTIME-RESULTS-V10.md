@@ -34,7 +34,7 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 
 | Result | Status | Notes |
 | --- | --- | --- |
-| A1-A19 deterministic | PASS (attempts 2-6) | complete deterministic core repeatedly passed on exactly 2 speakers |
+| A1-A19 deterministic | PASS historically; A8/A9/A18 focused rerun pending after attempt-8 logger bug | attempt 8 interrupted only those three checks because `shorten()` was missing from the runner logger |
 | R1 native client channels | PASS (attempt 6) | real native static + DFPWM client channels observed |
 | R2 MP3 pause/resume renderer | PASS (attempt 6) | real OpenAL pause/resume + PCM continuity |
 | R3 WAV renderer continuity | PASS (attempt 6) | real WAV renderer stayed healthy |
@@ -44,12 +44,27 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 | R7 loop-boundary recovery/sync | PASS (attempt 6) | authoritative loop recovery + sync passed |
 | R8 range leave/rejoin | PASS (attempt 6) | real leave/rejoin recovery passed; attempt 5 had one transient 65.34 ms baseline drift failure before the clean rerun |
 | R9 F3+T recovery | PASS (attempt 6) | clean baseline, real sound-engine reload, authoritative rejoin, decoderFailures=0 |
-| C1 Sable/Aeronautics tracking | HARNESS FAIL / PRODUCT EVIDENCE GOOD (attempt 7) | requested and actual OpenAL movement matched over ~52-53 blocks; failure came from historical STOPPED transition after listener leave/rejoin, which is not a Sable-tracking defect |
-| C2 Sound Physics Remastered | INVESTIGATION REQUIRED (attempt 7) | HQ sources were touched by SPR diagnostics, but open-air and wall direct gain/HF both stayed 1.0000; current hook does not prove an actual `processSound` ray evaluation |
-| C3 MP3/ICY radio + strict membership | PASS (attempt 7) | sustained grouped radio, metadata, sealed late membership, rerun membership, singular and indexed paths all passed |
-| C4 8+ speaker scale stress | FAIL — FINITE RANGE ADMISSION (attempt 7) | 8 finite endpoints reached server PLAYING, but one client source started ~2.219 s late; RAW half was not reached |
+| C1 Sable/Aeronautics tracking | PASS (attempt 8) | both sources tracked roughly 65 blocks of requested/actual movement and ended healthy |
+| C2 Sound Physics Remastered | PENDING focused rerun | attempt 8 was intentionally skipped because no usable ordinary-world wall was available; standalone one-speaker probe prepared |
+| C3 MP3/ICY radio + strict membership + SPR path | PASS (attempt 8) | direct SPR evidence, sustained radio, sealed late membership, 8-speaker rerun, singular/indexed paths |
+| C4 8+ finite | PRODUCT EVIDENCE GOOD / corrected verdict pending | old ~2.2 s stall is gone; channel-start spread ~58.7 ms and reconstructed catch-up alignment ~3.9 ms; old 81.29 ms failure used the wrong queue-relative metric |
+| C4 8+ RAW | PASS (attempt 8) | ~10.98 ms channel-start spread, 0.00 ms settled drift, direct SPR evidence |
 
 A **TARGET FULL PASS** requires every required runtime diagnostic and every selected target-scope check to pass. A **CORE PASS / TARGET INCOMPLETE** means the automatic core passed but one or more target checks were skipped.
+
+## Attempt 8 — 2026-09-27 focused target rerun
+
+- R1-R9 passed again;
+- C1 passed cleanly with roughly 65 blocks of Sable movement;
+- C2 was skipped because the setup did not have a usable normal-world wall;
+- C3 passed with the new direct SPR requirement and eight-speaker membership rerun;
+- C4 RAW passed at eight speakers;
+- the finite admission fix removed the old ~2.2-second late-source fingerprint;
+- finite channel starts were within about 58.7 ms, while later endpoints intentionally started further into the MP3 to catch up;
+- the runner incorrectly failed finite at 81.29 ms because it treated OpenAL's streamed-buffer-relative offset as an absolute media clock;
+- reconstructing shared media zero from `firstChannelMs - contentStartSeconds*1000` gives about 3.9 ms alignment in the captured failure snapshot;
+- A8/A9/A18 were interrupted by the acceptance script's missing `shorten()` logger helper, not by a demonstrated product rejection failure;
+- focused scripts now cover only those remaining checks without forcing the full physical setup through the master runner again.
 
 ## Evidence to keep
 
