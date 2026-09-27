@@ -174,6 +174,22 @@ For each failure record:
 - `latest.log` excerpt if relevant;
 - whether the failure repeats.
 
+## Post-attempt source checkpoint — 2026-09-27
+
+No newer Minecraft runtime verdict exists yet; the attempt-7 table above remains historical evidence.
+
+The branch has since implemented the exact follow-up work needed for the next run:
+
+- C1 no longer rejects expected listener relevance leave/rejoin history;
+- finite clients share the server's 4-request per-player admission budget fairly instead of independently attempting up to 16 requests at eight endpoints;
+- C4 finite and RAW are independent subchecks;
+- direct SPR `processSound` diagnostics are scoped to HQ custom sounds and correlated with their environment writes;
+- C2 uses a normal-world wall and distinguishes live long-running refresh from a fresh behind-wall restart;
+- C3 radio and C4 RAW now require direct SPR process evidence;
+- C3 was renamed intentionally so `--resume` cannot reuse the old C3 PASS without the new SPR-path evidence.
+
+These are source/CI changes only. C1/C2/C3/C4 must be rerun before any target status is upgraded.
+
 ## Release verdict
 
 The current master has completed, but target acceptance is **not** release-ready.

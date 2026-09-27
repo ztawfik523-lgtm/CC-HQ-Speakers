@@ -1,6 +1,21 @@
 # Sound Physics integration re-evaluation — 2026-09-27
 
-Status: architecture research only; no product source change is selected by this document.
+Status: ordinary SPR integration phase selected; Sable-wall acoustics are deferred. Diagnostic source changes are implemented, but no acoustic behavior override is selected yet.
+
+## Current scope decision
+
+Do not treat this as a compatibility-mod rewrite.
+
+For the current phase:
+
+- HQ keeps its existing Minecraft/SoundManager playback architecture;
+- SPR remains optional and client-side only;
+- ordinary Minecraft/CC:T sound handling is left to SPR and is not an HQ problem;
+- custom HQ finite/RAW/radio paths are measured directly through SPR;
+- Sable-wall geometry is deliberately out of scope until ordinary SPR behavior is proven;
+- no smoothing, diffraction, custom OpenAL ownership or scheduler is added without a demonstrated runtime need.
+
+The current branch now records exact `processSound` calls and C2 checks a continuously-playing HQ source against a fresh restart behind the same **normal-world** wall.
 
 ## Why this is being revisited
 
@@ -117,14 +132,14 @@ Do not implement this until a static-world vs Sable-wall diagnostic proves it is
 
 ## Suggested investigation sequence before selecting an architecture
 
-1. Add `processSound` call/result diagnostics only.
-2. Re-run C2 against a known static-world wall.
-3. Re-run against a Sable-sublevel wall if that behavior is part of the target.
-4. If initial processing works but long-lived movement goes stale, prototype Option A's HQ-only refresh and measure cost at 1/2/8 sources.
-5. Add reflected-position retention only if a direct test shows the current Minecraft position updater breaks a desired SPR effect.
-6. Fix the independent finite range-admission bug before interpreting 8-source acoustic performance.
-7. If >8 simultaneous playback is required, compare a small Minecraft streaming-pool repartition against direct OpenAL ownership before choosing the more invasive model.
-8. Only then decide which V7.1 acoustic enhancements are worth porting.
+1. Run the new C2 on a normal-world wall and prove direct `processSound` + environment application.
+2. Observe the same sound after moving behind the wall without restarting.
+3. Restart behind the wall.
+4. If restart works but the live sound stays stale, add only a client-side HQ refresh path and rerun.
+5. Verify radio and RAW also enter SPR through their existing Minecraft channels.
+6. Do not add reflected-position stabilization unless a direct runtime test proves Minecraft is audibly undoing a useful SPR effect.
+7. Do not import V7.1 smoothing/diffraction/caching until ordinary upstream behavior exposes a specific quality/performance problem.
+8. Keep Sable geometry and >8 channel ownership as separate later questions.
 
 ## Current architectural leaning (not a frozen decision)
 

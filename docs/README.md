@@ -22,6 +22,6 @@ Read current authority in this order:
 14. `SERVER-CONFIG.md`
 15. `SOURCES.md`
 
-Current runtime state: A1-A19 PASS, R1-R9 PASS, C3 PASS; C1 needs a harness correction, C2 needs direct SPR processing evidence/architecture investigation, C4 finite has a real range-admission scale defect, and C4 RAW has not yet run.
+Current runtime state: A1-A19 PASS and R1-R9 PASS remain historical runtime evidence; attempt-7 C3 passed. The branch now contains the C1 harness correction, fair shared finite-range admission, independent C4 RAW execution, and direct HQ-only SPR process diagnostics. C1-C4 require a fresh target rerun before their runtime status is upgraded.
 
 Historical dated handoffs and M0/M1 milestone documents remain evidence for their old checkpoints and should not be rewritten as current authority.

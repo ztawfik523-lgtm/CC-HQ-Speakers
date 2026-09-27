@@ -27,15 +27,13 @@ Current tuning:
 - 2 server range IO workers;
 - queue 64.
 
-### Attempt-7 scale finding
+### Attempt-7 scale finding and current fix
 
-Those limits are not currently composed correctly for multispeaker scale.
+Attempt 7 exposed a composition bug: eight sources could independently submit up to 16 requests while the server admitted four requests / 512 KiB per player. Silent over-limit drops then waited for the 2-second client request timeout.
 
-Eight endpoints can attempt up to 16 requests, while only four are admitted for the player. `FiniteRangeReadService.Submission.OVER_LIMIT` is not projected back to the client, so rejected requests remain client-pending until the 2-second request timeout expires.
+The current client now treats those server limits as one shared player budget. It may still pipeline two requests for a source when capacity is free, but the total local pending count never intentionally exceeds the server request cap, and request opportunities are distributed toward endpoints which have issued fewer requests.
 
-That admission/retry mismatch, not decoder complexity, is the currently demonstrated cause of the eight-speaker late start.
-
-The fix should preserve bounded memory/IO while providing prompt fairness/progress; do not simply remove all limits.
+This preserves bounded IO/memory and protocol v10 while directly removing the demonstrated admission stampede. Runtime C4 remains the authority on whether the fix is sufficient.
 
 ## Renderer ownership and scale
 
@@ -63,13 +61,24 @@ Attempt 7 demonstrated Sable requested and actual OpenAL movement matching over 
 
 ## Sound Physics Remastered
 
-Current integration is intentionally light: HQ sounds travel through Minecraft channels, and diagnostics observe SPR environment application through a mixin.
+SPR remains an **optional client-side acoustic system**. The HQ server, protocol and playback authority do not depend on it.
 
-Attempt 7 showed this observation is insufficient for final proof. `setEnvironment` observation does not establish that SPR's full `processSound` world/ray evaluation ran for the HQ source.
+Current custom HQ finite/RAW/radio sounds already use normal Minecraft streaming channels under `SoundSource.BLOCKS`. We therefore keep Minecraft channel ownership and first measure what upstream SPR already does.
 
-The next diagnostic must record actual SPR processing before architectural changes are chosen.
+The branch now has client-only diagnostic integration which:
 
-The historical `cchq-soundphysics-compat` project directly owned OpenAL sources and explicitly invoked/captured SPR processing. It is now a design reference, not a frozen requirement. Because the current HQ fork is ours, the new integration may change either side if that yields a simpler and more correct design.
+- observes the exact SPR 1.21.1-1.5.1 `processSound` call;
+- scopes observations only to `hqspeaker:hq_audio_source`;
+- records the processed position/category/sound id and reflected-position return;
+- correlates the environment write to the same active HQ process, preventing unrelated sounds or recycled OpenAL ids from being mistaken for HQ evidence.
+
+No acoustic behavior is currently overridden.
+
+C2 uses a normal-world wall and compares a continuously-playing source against a restarted source. If that proves long-running HQ acoustics are stale, the next architecture step is a small client-only refresh mechanism for active HQ sounds. If upstream SPR already refreshes correctly, nothing is added.
+
+Native Minecraft/CC:T sounds remain SPR's responsibility. We do not special-case SPR policy choices such as its treatment of RECORDS sounds.
+
+Sable-wall geometry is a separate future compatibility problem and is not part of the present SPR integration phase.
 
 ## Built-in diagnostics
 

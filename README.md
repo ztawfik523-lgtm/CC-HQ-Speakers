@@ -14,12 +14,14 @@ Network protocol: **v10**, 9 payloads.
 
 A1-A19 and R1-R9 have passed in real Minecraft. C3 MP3/ICY radio + strict membership also passed.
 
-Release acceptance is still blocked by:
+Release acceptance is still blocked by **runtime recheck evidence**, not by an unresolved architecture redesign:
 
-- a C1 harness assertion which incorrectly treats expected listener leave/rejoin history as a Sable tracking failure;
-- unresolved Sound Physics integration evidence: the current hook sees environment writes but does not prove full SPR `processSound` ray evaluation;
-- a real 8-speaker finite range-admission/retry defect which delayed one source by ~2.2 seconds;
-- 8+ RAW scale evidence, which was not reached after the finite failure.
+- C1's false-negative assertion is fixed but needs a clean rerun;
+- direct SPR `processSound` diagnostics are implemented, and C2 now tests a normal-world wall plus long-running refresh vs restart;
+- the 8-speaker finite admission stampede has a source fix which shares the server's per-player request budget fairly, but C4 must prove it in Minecraft;
+- C4 now runs RAW independently, so the missing 8+ RAW evidence can finally be collected.
+
+SPR remains optional/client-side. The server and protocol behave the same whether clients use SPR or not.
 
 See `docs/RUNTIME-INVESTIGATION-2026-09-27.md` for the forensic reconstruction.
 
