@@ -103,10 +103,7 @@ local function log(kind, message)
   if h then h.writeLine(line) h.close() end
 end
 
--- State is retained for prompts and the final summary, but the master runner intentionally
--- has no monitor/dashboard UI. Successful checks stay compact; failure diagnostics go to the log.
-local function render() end
-
+-- State is retained only for prompts, timeouts and the final summary.
 local function display(mode, test, detail, prompt)
   state.mode = mode or state.mode
   state.test = test or state.test
@@ -132,7 +129,6 @@ end
 local function waitTimer(seconds, detail)
   if detail then
     state.detail = detail
-    render()
   end
   local timer = os.startTimer(seconds)
   while true do
@@ -145,7 +141,6 @@ end
 
 local function waitEvent(name, timeout, detail)
   state.detail = detail or ("waiting for " .. name)
-  render()
   local deadline = os.startTimer(timeout)
   while true do
     local e = {os.pullEventRaw()}
@@ -324,7 +319,6 @@ local function actionGate(name, instructions, action, optional)
     else state.runtimePassed = state.runtimePassed + 1 end
     display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
-    render()
     return "pass"
   end
 
@@ -342,7 +336,6 @@ local function actionGate(name, instructions, action, optional)
       if e[1] == "char" and string.lower(e[2]) == "s" then
         markSkipped(name)
         state.prompt = {}
-        render()
         return "skip"
       end
       if e[1] == "key" and e[2] == keys.enter then break end
@@ -353,7 +346,6 @@ local function actionGate(name, instructions, action, optional)
   end
 
   state.detail = "perform the requested action; diagnostics decide PASS/FAIL"
-  render()
   log("ACTION", name .. " started")
 
   local ok, err = pcall(action)
