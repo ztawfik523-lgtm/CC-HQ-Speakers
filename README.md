@@ -8,10 +8,12 @@ Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The rele
 
 Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
-Current diagnostic/runtime-test checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
-Current CI: `36205257110` — PASS on the single NeoForge 21.1.247 build  
-Current artifact: `10892998704`  
-Current JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`  
+Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
+Runtime-tested candidate CI: `36238699768` — PASS  
+Runtime-tested artifact: `10905071824`  
+Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
+Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
+Current master-runner CI: `36285305761` — PASS on the single NeoForge 21.1.247 build  
 Network protocol: **v10**, exactly 9 payloads.
 
 Historical pre-freeze CI also built 21.1.248. That remains historical compatibility evidence; current CI intentionally produces only the 21.1.247-built artifact.
@@ -71,12 +73,12 @@ These do not add a protocol payload or alter normal playback semantics.
 Use one user-facing runner:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
 The current target scope is **singleplayer + Sable/Aeronautics + Sound Physics Remastered**. Dedicated-server/multiplayer and VS2 are intentionally outside this runtime acceptance target.
 
-The operator performs physical actions when prompted—walk out of range, press F3+T, move the Sable contraption, move behind an obstacle, connect speakers—but the diagnostics determine PASS/FAIL.
+The operator performs physical actions when prompted—walk out of listener range, press F3+T, move the Sable contraption, move behind an obstacle, connect speakers—but the diagnostics determine PASS/FAIL. Independent failures are recorded and later checks continue.
 
 Runtime acceptance has **not yet been declared complete**. CI proves build/tests/package structure, not real in-game playback.
 
