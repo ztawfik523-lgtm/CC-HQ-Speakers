@@ -32,8 +32,14 @@ class MasterAcceptanceLuaSyntaxTest {
             "target matrix should remain Sable + SPR + radio/membership + 8+ scale");
         assertTrue(source.contains("recordFailure(name, err"),
             "independent test failures should be recorded instead of aborting the suite");
+        assertFalse(source.contains("MASTER ACCEPTANCE FAILED"),
+            "an independent failure must not terminate the whole master run");
+        assertFalse(source.contains("log(\"DIAG\", label .. \" = \" .. serialize(snap))"),
+            "successful checks should not dump full diagnostic snapshots");
         assertTrue(source.contains("currentAudibleSpreadMs"),
             "sync verdicts should use current settled playback measurements");
+        assertTrue(source.contains("consecutive >= 3"),
+            "sync acceptance should require a short settled window, not one sample");
         assertFalse(source.contains("maxLogicalAudibleOffsetSpreadMs"),
             "historical worst-ever drift must not be a hard acceptance verdict");
 
