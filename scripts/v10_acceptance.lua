@@ -57,10 +57,6 @@ end
 assert(speakerCount == 2, "master acceptance must start with exactly 2 attached speakers; connect extras only when prompted")
 
 local state = {
-  mode = "START",
-  test = "initializing",
-  detail = "",
-  result = "RUNNING",
   autoPassed = 0,
   autoTotal = 19,
   runtimePassed = 0,
@@ -74,7 +70,6 @@ local state = {
   failures = {},
   skippedNames = {},
   lastStatus = "-",
-  prompt = {},
 }
 
 local interesting = {
@@ -103,17 +98,9 @@ local function log(kind, message)
 end
 
 -- State is retained only for prompts, timeouts and the final summary.
-local function display(mode, test, detail, prompt)
-  state.mode = mode or state.mode
-  state.test = test or state.test
-  state.detail = detail or ""
-  state.prompt = prompt or {}
-end
-
 local function showPrompt(lines)
-  state.prompt = lines or {}
   print("")
-  for _, line in ipairs(state.prompt) do print(line) end
+  for _, line in ipairs(lines or {}) do print(line) end
 end
 
 local function noteEvent(e)
@@ -125,9 +112,6 @@ local function noteEvent(e)
 end
 
 local function waitTimer(seconds, detail)
-  if detail then
-    state.detail = detail
-  end
   local timer = os.startTimer(seconds)
   while true do
     local e = {os.pullEventRaw()}
@@ -138,7 +122,6 @@ local function waitTimer(seconds, detail)
 end
 
 local function waitEvent(name, timeout, detail)
-  state.detail = detail or ("waiting for " .. name)
   local deadline = os.startTimer(timeout)
   while true do
     local e = {os.pullEventRaw()}
@@ -264,8 +247,6 @@ end
 
 local function recordFailure(test, err, bucket)
   local message = tostring(err)
-  state.result = "FAIL"
-  state.detail = message
   state.failures[#state.failures + 1] = {name = test, error = message}
   if bucket == "auto" then state.autoFailed = state.autoFailed + 1
   elseif bucket == "runtime" then state.runtimeFailed = state.runtimeFailed + 1
@@ -288,12 +269,9 @@ end
 local function auto(name, fn)
   if RESUME and resumePassed[name] then
     state.autoPassed = state.autoPassed + 1
-    display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
     return true
   end
-
-  display("AUTO", name, "running mechanical check", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
   if not ok then return recordFailure(name, err, "auto") end
@@ -315,13 +293,11 @@ local function actionGate(name, instructions, action, optional)
   if RESUME and resumePassed[name] then
     if optional then state.optionalPassed = state.optionalPassed + 1
     else state.runtimePassed = state.runtimePassed + 1 end
-    display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
     return "pass"
   end
 
   safeStop()
-  display(optional and "OPTION" or "ACTION", name, "press ENTER when ready", instructions)
   print("")
   print("=== " .. name .. " ===")
   for _, line in ipairs(instructions) do print(line) end
@@ -333,7 +309,6 @@ local function actionGate(name, instructions, action, optional)
       if e[1] == "terminate" then error("terminated", 0) end
       if e[1] == "char" and string.lower(e[2]) == "s" then
         markSkipped(name)
-        state.prompt = {}
         return "skip"
       end
       if e[1] == "key" and e[2] == keys.enter then break end
@@ -342,13 +317,10 @@ local function actionGate(name, instructions, action, optional)
   else
     waitEnter()
   end
-
-  state.detail = "perform the requested action; diagnostics decide PASS/FAIL"
   log("ACTION", name .. " started")
 
   local ok, err = pcall(action)
   if not ok then
-    state.prompt = {}
     recordFailure(name, err, optional and "target" or "runtime")
     return "fail"
   end
@@ -357,7 +329,6 @@ local function actionGate(name, instructions, action, optional)
   if optional then state.optionalPassed = state.optionalPassed + 1
   else state.runtimePassed = state.runtimePassed + 1 end
   log("PASS", name)
-  state.prompt = {}
   return "pass"
 end
 
@@ -630,12 +601,9 @@ end
 local function runtimeDiag(name, fn)
   if RESUME and resumePassed[name] then
     state.runtimePassed = state.runtimePassed + 1
-    display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
     return true
   end
-
-  display("RUNTIME", name, "automatic client/audio diagnostic", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
   if not ok then return recordFailure(name, err, "runtime") end
@@ -1379,7 +1347,6 @@ actionGate("R8/9 Range leave/rejoin", {
   "Do not judge the sound yourself; diagnostics decide.",
 }, function()
   local id, baseline = startRecoveryPlayback("range recovery")
-  state.detail = "walk out of listener range, return, reopen, ENTER"
   showPrompt({"BASELINE READY.", "Walk out of listener range.", "Return to the speakers.", "Reopen this computer.", "Press ENTER."})
   waitEnter()
   verifyRecoveryPlayback("range recovery", id, baseline, false)
@@ -1392,7 +1359,6 @@ actionGate("R9/9 F3+T resource reload recovery", {
   "Diagnostics verify the real sound engine was rebuilt and playback rejoined.",
 }, function()
   local id, baseline = startRecoveryPlayback("resource reload")
-  state.detail = "baseline ready: NOW perform F3+T, return, reopen, ENTER"
   showPrompt({"BASELINE READY -- NOW exit GUI.", "Press F3+T.", "Wait for reload.", "Return and press ENTER."})
   waitEnter()
   local after = verifyRecoveryPlayback("resource reload", id, baseline, true)
@@ -1419,7 +1385,6 @@ actionGate("C1 Sable/Aeronautics source tracking", {
   verifySharedPlaying()
   assert(speaker.audioSetLoopingAll(true), "Sable loop enable failed")
   waitTimer(1.5, "Sable baseline")
-  state.detail = "move and rotate Sable contraption; then ENTER"
   showPrompt({"BASELINE READY.", "Move + rotate the contraption.", "Keep it moving several seconds.", "Return and press ENTER."})
   waitEnter()
   local snap = diagSnapshot("Sable tracking", 0.5)
@@ -1462,7 +1427,6 @@ actionGate("C2 Sound Physics Remastered processing", {
   end
 
   safeStop()
-  state.detail = "move behind the solid wall, then ENTER"
   showPrompt({"OPEN-AIR MEASUREMENT COMPLETE.", "Move behind the prepared solid wall.", "Stay near the speakers.", "Press ENTER when positioned."})
   waitEnter()
 
@@ -1518,8 +1482,6 @@ if RADIO_URL then
         "radio source " .. i .. " did not deliver meaningful decoded PCM")
     end
     log("META", serialize(speaker.getStreamMeta()))
-
-    state.detail = "connect ONE new speaker, then ENTER"
     showPrompt({"RADIO BASELINE COMPLETE.", "Connect ONE new speaker now.", "Do NOT rerun the radio command.", "Press ENTER after it is attached."})
     waitEnter()
 
@@ -1587,7 +1549,6 @@ actionGate("C4 8+ speaker scale stress", {
   "It measures 8+ finite sources, then 8+ continuous RAW sources automatically.",
 }, function()
   if speaker.getSpeakerCount() < 8 then
-    state.detail = "connect speakers until count is at least 8, then ENTER"
     showPrompt({"Connect extra speakers now.", "Reach at least 8 total.", "Press ENTER."})
     waitEnter()
   end
@@ -1624,19 +1585,6 @@ pcall(function() speaker.hqDiagEnable(false) end)
 
 local failureCount = #state.failures
 local complete = failureCount == 0 and state.optionalSkipped == 0
-state.mode = "DONE"
-state.test = "Master acceptance complete"
-
-if failureCount > 0 then
-  state.result = "FAIL"
-  state.detail = ("%d check(s) failed; see log"):format(failureCount)
-elseif complete then
-  state.result = "TARGET FULL PASS"
-  state.detail = "singleplayer + Sable target passed"
-else
-  state.result = "CORE PASS / TARGET INCOMPLETE"
-  state.detail = "one or more target-scope checks were skipped"
-end
 
 log("INFO", ("auto=%d/%d failed=%d runtime=%d/%d failed=%d target=%d/%d failed=%d skipped=%d"):format(
   state.autoPassed, state.autoTotal, state.autoFailed,
