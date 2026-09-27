@@ -188,7 +188,7 @@ The branch has since implemented the exact follow-up work needed for the next ru
 - C3 radio and C4 RAW now require direct SPR process evidence;
 - C3 was renamed intentionally so `--resume` cannot reuse the old C3 PASS without the new SPR-path evidence.
 
-These are source/CI changes only. C1/C2/C3/C4 must be rerun before any target status is upgraded.
+These changes are source-side only from Minecraft's point of view, but the cumulative build has completed successfully: checkpoint `87d08d3a62857dfeba16756591560eaa0e62d193`, CI run `36293523518`, artifact `10922887347`. C1/C2/C3/C4 must still be rerun before any target status is upgraded.
 
 ## Release verdict
 

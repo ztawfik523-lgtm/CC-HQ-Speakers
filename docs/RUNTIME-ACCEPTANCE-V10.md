@@ -16,6 +16,9 @@ Runtime-tested artifact: `10905071824`
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
 Master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
 Master-runner CI: `36285305761` — PASS  
+Current source/recheck checkpoint: `87d08d3a62857dfeba16756591560eaa0e62d193`  
+Current source/recheck CI: `36293523518` — PASS  
+Current source/recheck artifact: `10922887347` — `hqspeaker-neoforge-21.1.247`  
 Build baseline: NeoForge **21.1.247 only**.
 
 Do not build a separate 21.1.248 JAR.
@@ -32,7 +35,7 @@ The current branch now contains the recheck fixes:
 - direct SPR `processSound` evidence is captured for finite, radio and RAW;
 - C2 uses a normal-world wall and separately measures long-running refresh vs a fresh behind-wall start.
 
-These changes are **pending runtime acceptance**.
+These changes are **CI-passed but pending runtime acceptance**. Use artifact `10922887347`; do not substitute the older runtime-tested JAR for the recheck because it does not contain the new harness/diagnostic/admission fixes.
 
 ## Built-in diagnostic surface
 

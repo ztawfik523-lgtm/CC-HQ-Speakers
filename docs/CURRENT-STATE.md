@@ -10,6 +10,9 @@ Runtime-tested artifact: `10905071824`
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
 Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
 Current master-runner CI: `36285305761` — PASS  
+Current source/recheck checkpoint: `87d08d3a62857dfeba16756591560eaa0e62d193`  
+Current source/recheck CI: `36293523518` — PASS  
+Current source/recheck artifact: `10922887347` (`hqspeaker-neoforge-21.1.247`)  
 Build baseline: NeoForge **21.1.247 only**  
 Protocol: **v10**, 9 payloads.
 
@@ -83,13 +86,15 @@ Sable-wall acoustics are explicitly deferred from this phase.
 
 ## Next work, in order
 
-1. finish the cumulative NeoForge 21.1.247 CI build for the current branch;
-2. install that JAR and rerun the target checks using the existing master log with `--resume`;
-3. C1 must record a clean PASS with the corrected final-health/movement assertion;
-4. C2 must prove direct SPR processing behind a **normal-world** wall and report whether the same long-running source refreshes before restart;
-5. C3 is intentionally renamed so `--resume` reruns radio and proves the radio path also enters SPR;
-6. C4 must run both finite and RAW independently; finite validates the new shared range scheduler and RAW finally gets its missing 8+ evidence;
-7. only if C2 proves long-running HQ acoustics stale, add the small client-only refresh behavior and rerun C2;
-8. only after exactly-8 scale is clean should >8 Minecraft streaming-channel capacity be tested separately.
+The cumulative NeoForge 21.1.247 source/recheck build is green. The next step is runtime evidence, not more source changes.
+
+1. install artifact `10922887347` from CI run `36293523518` and rerun the target checks using the existing master log with `--resume`;
+2. C1 must record a clean PASS with the corrected final-health/movement assertion;
+3. C2 must prove direct SPR processing behind a **normal-world** wall and report whether the same long-running source refreshes before restart;
+4. C3 is intentionally renamed so `--resume` reruns radio and proves the radio path also enters SPR;
+5. C4 must run both finite and RAW independently; finite validates the new shared range scheduler and RAW finally gets its missing 8+ evidence;
+6. only if C2 proves long-running HQ acoustics stale, add the smallest client-only HQ refresh behavior and rerun C2;
+7. only after exactly-8 scale is clean should >8 Minecraft streaming-channel capacity be tested separately;
+8. Sable-wall acoustics remain deferred until ordinary SPR integration is complete.
 
 Do not declare release acceptance complete until those items are resolved.

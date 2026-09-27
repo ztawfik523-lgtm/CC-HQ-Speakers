@@ -12,6 +12,10 @@ Runtime-tested artifact: `10905071824`
 Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
 Network protocol: **v10**, 9 payloads.
 
+Current recheck source checkpoint: `87d08d3a62857dfeba16756591560eaa0e62d193`  
+Current recheck CI: `36293523518` — PASS  
+Current recheck artifact: `10922887347` — `hqspeaker-neoforge-21.1.247`
+
 A1-A19 and R1-R9 have passed in real Minecraft. C3 MP3/ICY radio + strict membership also passed.
 
 Release acceptance is still blocked by **runtime recheck evidence**, not by an unresolved architecture redesign:
