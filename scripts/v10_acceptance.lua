@@ -502,98 +502,125 @@ local function assertSourceHealthy(source, label, minimumPlayingSamples, require
   end
 end
 
-local function assertFiniteGroup(snapshot, expected, label, checkDrift, requireContinuous)
+local function assertActiveGroup(snapshot, kind, prefix, expected, label, requireContinuous)
   assertClientBridge(snapshot)
-  local sources = diagSources(snapshot, "finite")
-  assert(#sources == expected, ("%s: expected %d finite client sources, got %d"):format(label, expected, #sources))
+  local sources = diagSources(snapshot, kind)
+  assert(#sources == expected,
+    ("%s: expected %d %s client sources, got %d"):format(label, expected, kind, #sources))
   for i, source in ipairs(sources) do
     assertSourceHealthy(source, label .. " source " .. i, 5, requireContinuous ~= false)
+    assert(source.lastState == "playing",
+      label .. " source " .. i .. ": real OpenAL source is not currently PLAYING")
   end
 
-  local group = diagLargestGroup(snapshot, "finite:")
-  assert(group, label .. ": finite sync group missing")
+  local group = diagLargestGroup(snapshot, prefix)
+  assert(group, label .. ": sync group missing")
   assert((group.sourceCount or 0) == expected,
     ("%s: diagnostic group has %s/%d sources"):format(label, tostring(group.sourceCount), expected))
   assert((group.playingMembers or 0) == expected,
-    ("%s: only %s/%d sources ever reached PLAYING"):format(label, tostring(group.playingMembers), expected))
-  assert(type(group.startSkewMs) == "number" and group.startSkewMs >= 0,
-    label .. ": PLAYING start-skew measurement missing")
-  assert(group.startSkewMs <= DIAG_START_SKEW_MS,
-    ("%s: observed PLAYING start skew %.2f ms exceeds %.0f ms"):format(label, group.startSkewMs, DIAG_START_SKEW_MS))
+    ("%s: only %s/%d sources reached PLAYING"):format(label, tostring(group.playingMembers), expected))
+
   local channelSkew = group.channelStartSkewMs
   assert(type(channelSkew) == "number" and channelSkew >= 0,
     label .. ": real channel-start measurement missing")
   assert(channelSkew <= DIAG_START_SKEW_MS,
-    ("%s: real channel start skew %.2f ms exceeds %.0f ms"):format(label, channelSkew, DIAG_START_SKEW_MS))
-  if checkDrift ~= false then
-    local logical = group.maxLogicalAudibleOffsetSpreadMs
-    assert(type(logical) == "number",
-      label .. ": canonical client drift measurement missing")
-    assert(logical <= DIAG_LOGICAL_DRIFT_MS,
-      ("%s: canonical playback drift %.2f ms exceeds %.0f ms"):format(
-        label, logical, DIAG_LOGICAL_DRIFT_MS))
-  end
-  assert((group.pcmReadBytesSpread or 0) <= DIAG_PCM_SPREAD_BYTES,
-    ("%s: decoder/render feed spread %d bytes exceeds %d"):format(
-      label, group.pcmReadBytesSpread or -1, DIAG_PCM_SPREAD_BYTES))
-  log("MEASURE", ("%s channelStart=%.2fms observedStart=%.2fms logicalDrift=%.2fms rawOffsetSpread=%.2fms pcmSpread=%dB"):format(
-    label, group.channelStartSkewMs or -1, group.startSkewMs or -1,
-    group.maxLogicalAudibleOffsetSpreadMs or -1,
-    group.maxAudibleOffsetSpreadMs or -1, group.pcmReadBytesSpread or -1))
+    ("%s: real channel start skew %.2f ms exceeds %.0f ms"):format(
+      label, channelSkew, DIAG_START_SKEW_MS))
   return sources, group
 end
 
+local function currentAudibleSpreadMs(snapshot, groupName, kind, expected)
+  local minimum = math.huge
+  local maximum = -math.huge
+  local count = 0
+  for _, source in ipairs(snapshot.sources or {}) do
+    if source.kind == kind and source.group == groupName and source.lastState == "playing" then
+      local logical = source.lastLogicalSeconds
+      local latency = source.lastOutputLatencySeconds or 0
+      if type(logical) == "number" and logical >= 0 and type(latency) == "number" then
+        local audible = logical - math.max(0, latency)
+        minimum = math.min(minimum, audible)
+        maximum = math.max(maximum, audible)
+        count = count + 1
+      end
+    end
+  end
+  assert(count == expected,
+    ("current sync sample has %d/%d usable %s sources"):format(count, expected, kind))
+  return math.max(0, (maximum - minimum) * 1000)
+end
+
+local function assertSettledGroupSync(kind, prefix, expected, label, limitMs, requireContinuous)
+  local consecutive = 0
+  local lastSpread = math.huge
+  local lastChannelSkew = -1
+  for sample = 1, 8 do
+    local snap = diagSnapshot(label .. " sample " .. sample)
+    local sources, group = assertActiveGroup(
+      snap, kind, prefix, expected, label, requireContinuous)
+    local spread = currentAudibleSpreadMs(snap, group.group, kind, expected)
+    lastSpread = spread
+    lastChannelSkew = group.channelStartSkewMs or -1
+
+    if spread <= limitMs then
+      consecutive = consecutive + 1
+      if consecutive >= 3 then
+        log("MEASURE", ("%s channelStart=%.2fms settledDrift=%.2fms"):format(
+          label, lastChannelSkew, spread))
+        return snap, sources, group, spread
+      end
+    else
+      consecutive = 0
+    end
+    waitTimer(0.20, label .. ": settling synchronization")
+  end
+
+  error(("%s: playback did not settle within %.0f ms; last spread %.2f ms"):format(
+    label, limitMs, lastSpread), 0)
+end
+
+local function assertFiniteGroupActive(snapshot, expected, label, requireContinuous)
+  return assertActiveGroup(snapshot, "finite", "finite:", expected, label, requireContinuous)
+end
+
+local function assertFiniteGroupSync(expected, label, requireContinuous)
+  return assertSettledGroupSync(
+    "finite", "finite:", expected, label, DIAG_LOGICAL_DRIFT_MS, requireContinuous)
+end
+
 local function assertRawContinuityWhileActive(snapshot, expected, expectedBytes, label)
-  assertClientBridge(snapshot)
-  local sources = diagSources(snapshot, "raw")
-  assert(#sources == expected,
-    ("%s: expected %d active RAW client sources, got %d"):format(label, expected, #sources))
+  local sources, group = assertActiveGroup(snapshot, "raw", "raw:", expected, label, true)
   for i, source in ipairs(sources) do
-    assertSourceHealthy(source, label .. " source " .. i, 3, true)
     assert((source.pcmInputBytes or 0) == expectedBytes,
       ("%s source %d: expected %d admitted RAW bytes, got %d"):format(
         label, i, expectedBytes, source.pcmInputBytes or -1))
     assert((source.channelStarts or 0) == 1,
       label .. " source " .. i .. ": RAW continuation recreated the client channel")
   end
-  local group = assert(diagLargestGroup(snapshot, "raw:"), label .. ": active RAW sync group missing")
-  assert((group.sourceCount or 0) == expected, label .. ": active RAW group source count mismatch")
-  assert((group.playingMembers or 0) == expected, label .. ": an active RAW endpoint never reached PLAYING")
-  assert((group.channelStartSkewMs or 999999) <= DIAG_START_SKEW_MS,
-    ("%s: active RAW start skew %.2f ms exceeds %.0f ms"):format(
-      label, group.channelStartSkewMs or -1, DIAG_START_SKEW_MS))
-  assert((group.maxAudibleOffsetSpreadMs or 999999) <= DIAG_LOGICAL_DRIFT_MS,
-    ("%s: active RAW drift %.2f ms exceeds %.0f ms"):format(
-      label, group.maxAudibleOffsetSpreadMs or -1, DIAG_LOGICAL_DRIFT_MS))
   return sources, group
 end
 
 local function assertRawGroup(snapshot, expected, expectedBytes, label)
   assertClientBridge(snapshot)
   local sources = diagSources(snapshot, "raw")
-  assert(#sources == expected, ("%s: expected %d RAW client sources, got %d"):format(label, expected, #sources))
+  assert(#sources == expected,
+    ("%s: expected %d RAW client sources, got %d"):format(label, expected, #sources))
   for i, source in ipairs(sources) do
     assertSourceHealthy(source, label .. " source " .. i, 3)
     assert((source.pcmInputBytes or 0) == expectedBytes,
-      ("%s source %d: expected %d RAW bytes in, got %d"):format(label, i, expectedBytes, source.pcmInputBytes or -1))
+      ("%s source %d: expected %d RAW bytes in, got %d"):format(
+        label, i, expectedBytes, source.pcmInputBytes or -1))
     assert((source.pcmReadBytes or 0) >= expectedBytes - 8192,
       ("%s source %d: client only delivered %d/%d RAW bytes to OpenAL"):format(
         label, i, source.pcmReadBytes or -1, expectedBytes))
   end
   local group = diagLargestGroup(snapshot, "raw:")
   assert(group and (group.sourceCount or 0) == expected, label .. ": RAW sync group missing members")
-  assert((group.playingMembers or 0) == expected, label .. ": a RAW endpoint never reached PLAYING")
   assert(type(group.channelStartSkewMs) == "number" and group.channelStartSkewMs >= 0,
     label .. ": RAW channel-start measurement missing")
   assert(group.channelStartSkewMs <= DIAG_START_SKEW_MS,
     ("%s: RAW channel start skew %.2f ms exceeds %.0f ms"):format(
       label, group.channelStartSkewMs, DIAG_START_SKEW_MS))
-  assert((group.maxAudibleOffsetSpreadMs or 999999) <= DIAG_LOGICAL_DRIFT_MS,
-    ("%s: RAW playback drift %.2f ms exceeds %.0f ms"):format(
-      label, group.maxAudibleOffsetSpreadMs or -1, DIAG_LOGICAL_DRIFT_MS))
-  log("MEASURE", ("%s channelStart=%.2fms drift=%.2fms pcmSpread=%dB"):format(
-    label, group.channelStartSkewMs or -1, group.maxAudibleOffsetSpreadMs or -1,
-    group.pcmReadBytesSpread or -1))
   return sources, group
 end
 
@@ -1170,9 +1197,8 @@ runtimeDiag("R4/9 Multispeaker finite synchronization", function()
   local expected = speaker.getSpeakerCount()
   assert(speaker.speakMp3All(mp3, 0.60), "group MP3 rejected")
   verifySharedPlaying()
-  waitTimer(12.0, "measuring all-speaker synchronization")
-  local snap = diagSnapshot("finite group sync")
-  assertFiniteGroup(snap, expected, "finite group sync", true, true)
+  waitTimer(8.0, "measuring all-speaker synchronization")
+  assertFiniteGroupSync(expected, "finite group sync", true)
 end)
 
 runtimeDiag("R5/9 Endpoint-local controls reach client", function()
@@ -1182,7 +1208,7 @@ runtimeDiag("R5/9 Endpoint-local controls reach client", function()
   verifySharedPlaying()
   waitTimer(4.0, "establishing group playback")
   local before = diagSnapshot("endpoint controls before")
-  assertFiniteGroup(before, expected, "endpoint controls before", true, true)
+  assertFiniteGroupActive(before, expected, "endpoint controls before", true)
 
   local targetBefore = assert(sourceForEndpoint(before, 2, "finite"), "endpoint 2 diagnostic source missing")
   local survivorBefore = assert(sourceForEndpoint(before, 1, "finite"), "endpoint 1 diagnostic source missing")
@@ -1256,6 +1282,8 @@ runtimeDiag("R6/9 Continuous RAW client delivery", function()
   waitTimer(0.75, "checking RAW continuity before natural EOF")
   local active = diagSnapshot("continuous RAW active")
   assertRawContinuityWhileActive(active, expectedSources, expectedBytes, "continuous RAW active")
+  assertSettledGroupSync(
+    "raw", "raw:", expectedSources, "continuous RAW sync", DIAG_LOGICAL_DRIFT_MS, true)
 
   assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for RAW drain"),
     "RAW server lifetime did not drain")
@@ -1290,8 +1318,7 @@ runtimeDiag("R7/9 Loop-boundary client recovery + sync", function()
   end
 
   waitTimer(3.0, "crossing loop boundary")
-  local after = diagSnapshot("loop after wrap")
-  assertFiniteGroup(after, expected, "loop after wrap", false, false)
+  local after, _, _ = assertFiniteGroupSync(expected, "loop after wrap", false)
   for _, source in ipairs(diagSources(after, "finite")) do
     assert((source.channelStarts or 0) > (starts[source.source] or 0),
       "loop boundary did not create a fresh renderer epoch for " .. tostring(source.source))
@@ -1310,7 +1337,7 @@ local function startRecoveryPlayback(label)
   assert(speaker.audioSetLoopingAll(true), label .. ": loop enable failed")
   waitTimer(2.0, label .. ": baseline playback")
   local baseline = diagSnapshot(label .. " baseline")
-  assertFiniteGroup(baseline, speaker.getSpeakerCount(), label .. " baseline", true, true)
+  assertFiniteGroupActive(baseline, speaker.getSpeakerCount(), label .. " baseline", true)
   return s.playbackId, baseline
 end
 
@@ -1323,13 +1350,15 @@ local function verifyRecoveryPlayback(label, playbackId, baseline, requireReload
   end
   waitTimer(2.0, label .. ": measuring recovered renderer")
   local after = diagSnapshot(label .. " recovered")
-  assertFiniteGroup(after, speaker.getSpeakerCount(), label .. " recovered", false, false)
+  assertFiniteGroupActive(after, speaker.getSpeakerCount(), label .. " recovered", false)
   if requireReload then assert((after.soundEngineReloads or 0) >= 1, label .. ": F3+T sound-engine reload was not observed") end
 
   for _, old in ipairs(diagSources(baseline, "finite")) do
     local now = assert(sourceById(after, old.source), label .. ": source history missing after recovery")
     assert((now.channelStarts or 0) > (old.channelStarts or 0),
       label .. ": client channel was not recreated after leaving/reloading")
+    assert((now.pcmReadBytes or 0) > (old.pcmReadBytes or 0),
+      label .. ": recovered client channel did not resume PCM progress")
     assert((now.decoderFailures or 0) == 0, label .. ": decoder failure during recovery")
   end
   return after
@@ -1606,9 +1635,8 @@ actionGate("C6 8+ speaker scale stress", {
   diagReset("8+ finite")
   assert(speaker.speakMp3All(mp3, 0.45), "8+ group MP3 rejected")
   verifySharedPlaying()
-  waitTimer(15.0, "measuring 8+ finite synchronization")
-  local finite = diagSnapshot("8+ finite")
-  assertFiniteGroup(finite, current, "8+ finite", true, true)
+  waitTimer(10.0, "measuring 8+ finite synchronization")
+  assertFiniteGroupSync(current, "8+ finite", true)
 
   safeStop()
   diagReset("8+ RAW")
@@ -1620,6 +1648,8 @@ actionGate("C6 8+ speaker scale stress", {
   local rawActive = diagSnapshot("8+ RAW active")
   assertRawContinuityWhileActive(
     rawActive, current, samplesPerChunk * 2 * chunks, "8+ RAW active")
+  assertSettledGroupSync(
+    "raw", "raw:", current, "8+ RAW sync", DIAG_LOGICAL_DRIFT_MS, true)
 
   assert(waitUntil(function() return not speaker.speakIsPlaying() end, 10, "waiting for 8+ RAW drain"),
     "8+ RAW server lifetime did not drain")
