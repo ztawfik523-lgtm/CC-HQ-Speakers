@@ -1,4 +1,7 @@
 # CC:HQ Speakers — diagnostic runtime handoff
+> **2026-09-27 update:** the runtime procedure in this historical handoff has been simplified. Use `docs/CURRENT-STATE.md`, `docs/RUNTIME-ACCEPTANCE-V10.md` and `docs/RUNTIME-RESULTS-V10.md` as current authority. The master now records independent failures and continues, uses settled-current sync verdicts, has C1-C4 target checks, and has no dimension release gate. Runtime-tested JAR remains SHA-256 `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`; current runner checkpoint is `7b8e4d4a095611bf89d05726c4824a95edcea3ba` (CI `36285305761`).
+
+
 
 Updated: 2026-09-26
 
