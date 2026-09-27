@@ -34,6 +34,8 @@ class MasterAcceptanceLuaSyntaxTest {
             "independent test failures should be recorded instead of aborting the suite");
         assertFalse(source.contains("MASTER ACCEPTANCE FAILED"),
             "an independent failure must not terminate the whole master run");
+        assertTrue(source.contains("if message == \"terminated\""),
+            "explicit operator termination must still stop the runner");
         assertFalse(source.contains("log(\"DIAG\", label .. \" = \" .. serialize(snap))"),
             "successful checks should not dump full diagnostic snapshots");
         assertTrue(source.contains("currentAudibleSpreadMs"),
