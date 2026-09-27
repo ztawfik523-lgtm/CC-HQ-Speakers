@@ -50,7 +50,7 @@ The latest target rerun used the same candidate JAR and narrowed the remaining w
 - **A core:** A1-A7, A10-A17 and A19 passed. A8, A9 and A18 were interrupted only because the runner's error logger called a missing `shorten()` helper; a focused standalone rejection recheck now covers those three checks;
 - **R1-R9:** all nine real-client/OpenAL checks passed again;
 - **C1 Sable:** PASS. Both sources tracked roughly 65 blocks of requested/actual movement and ended healthy;
-- **C2 SPR:** skipped because a usable ordinary-world wall was not available during that run. A one-speaker standalone C2 now allows the speaker/computer to remain on a parked Sable contraption while the wall itself is normal-world geometry;
+- **C2 SPR:** skipped because a usable ordinary-world wall was not available during that run. A one-speaker standalone C2 now requires both the computer and speaker to be placed on normal Minecraft ground, completely outside Sable;
 - **C3 radio:** PASS with the updated direct SPR requirement, including strict membership rerun to eight speakers;
 - **C4 8+ finite:** the old ~2.2-second admission-stall fingerprint is gone. The eight real channel starts were within about 58.7 ms. The runner's later 81.29 ms failure came from treating OpenAL's streamed-buffer-relative offset as an absolute song clock; reconstructing the shared media-zero time from channel start plus finite catch-up gives about 3.9 ms alignment;
 - **C4 8+ RAW:** PASS, with about 11 ms channel-start spread and 0 ms settled drift.
@@ -80,7 +80,7 @@ Implemented diagnostics:
 - diagnostics record process-call count, source position, category, sound id, optional reflected position and the resulting environment writes;
 - finite, radio and RAW target checks now require direct SPR process evidence.
 
-C2 uses **ordinary Minecraft-world geometry only** and now tests the smallest useful compatibility contract: one HQ finite source is measured in open air, then restarted behind the same normal-world wall. The speaker/computer may remain on a parked Sable contraption.
+C2 uses **ordinary Minecraft-world geometry only** and now tests the smallest useful compatibility contract: one HQ finite source is measured in open air, then restarted behind the same normal-world wall. The computer and speaker must both be normal Minecraft-world blocks, not part of a Sable contraption.
 
 No HQ-only acoustic refresh system is planned from this test. SPR's own moving-sound setting controls whether long-running sounds are periodically reevaluated; HQ should match normal SPR behavior instead of adding special refresh policy by default. The server and network protocol remain completely SPR-independent.
 
@@ -91,7 +91,7 @@ Sable-wall acoustics are explicitly deferred from this phase.
 No further product/JAR change is currently indicated. The remaining work is focused runtime evidence:
 
 1. run `v10_rejection_recheck` to record clean A8/A9/A18 PASS results with the fixed logger;
-2. run standalone `v10_c2_spr` with one speaker and a normal-world wall;
+2. run standalone `v10_c2_spr` with one normal-ground speaker/computer setup and a solid normal-world wall;
 3. run standalone `v10_c4_finite` with the existing 8+ speaker setup to record the corrected catch-up-alignment verdict;
 4. if those pass, close the selected release-target acceptance;
 5. keep >8 streamed-source capacity and Sable-wall acoustics as separate later questions, not blockers for the selected target.
