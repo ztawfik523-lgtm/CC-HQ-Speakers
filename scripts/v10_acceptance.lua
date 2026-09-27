@@ -2,7 +2,7 @@
 -- Usage:
 --   v10_acceptance <mp3> <wav> [radio-url] [--resume]
 --
--- One file, one command, one monitor dashboard, one log.
+-- One file, one command, one compact log.
 -- The mod's built-in diagnostics judge the real client/OpenAL playback automatically.
 -- You only perform physical actions Minecraft cannot perform itself (walk away, F3+T, move Sable, etc.).
 -- Target scope for this runner: singleplayer + Sable/Aeronautics. VS2 and dedicated-server testing are intentionally out of scope.
@@ -31,7 +31,6 @@ assert(args[5] == nil, "usage: v10_acceptance <mp3> <wav> [radio-url] [--resume]
 local speaker = peripheral.find("speaker")
 assert(speaker, "attach a ComputerCraft speaker")
 local speakerName = assert(peripheral.getName(speaker), "could not resolve speaker peripheral name")
-local monitor = peripheral.find("monitor")
 
 local LOG = "/v10-acceptance.log"
 local startedMs = os.epoch("utc")
@@ -67,14 +66,17 @@ local state = {
   runtimePassed = 0,
   runtimeTotal = 9,
   optionalPassed = 0,
+  optionalFailed = 0,
   optionalSkipped = 0,
   optionalTotal = 6,
+  autoFailed = 0,
+  runtimeFailed = 0,
+  failures = {},
   skippedNames = {},
   lastStatus = "-",
   lastEvent = "-",
   prompt = {},
 }
-local tail = {}
 
 local interesting = {
   speaker_audio_empty = true,
@@ -94,85 +96,22 @@ local function serialize(value)
   return ok and encoded or tostring(value)
 end
 
-local function shorten(value, limit)
-  local s = tostring(value or "")
-  if #s <= limit then return s end
-  return s:sub(1, math.max(1, limit - 3)) .. "..."
-end
-
-local function appendTail(line)
-  tail[#tail + 1] = line
-  while #tail > 8 do table.remove(tail, 1) end
-end
-
 local function log(kind, message)
   local line = ("[%7.2fs] %-8s %s"):format(elapsed(), kind, tostring(message))
   print(line)
-  appendTail(line)
   local h = fs.open(LOG, "a")
   if h then h.writeLine(line) h.close() end
 end
 
-local function writeAt(target, y, text)
-  local w = select(1, target.getSize())
-  target.setCursorPos(1, y)
-  target.clearLine()
-  target.write(shorten(text, w))
-end
-
-local function render()
-  if not monitor then return end
-  local ok = pcall(function()
-    monitor.setTextScale(0.5)
-    local w, h = monitor.getSize()
-    monitor.setCursorBlink(false)
-    monitor.clear()
-
-    writeAt(monitor, 1, "CC:HQ Speakers - v10 MASTER")
-    writeAt(monitor, 2, ("Mode %s | %s"):format(state.mode, state.result))
-    writeAt(monitor, 3, ("Auto %d/%d | Runtime %d/%d | Speakers %d")
-      :format(state.autoPassed, state.autoTotal, state.runtimePassed, state.runtimeTotal, speaker.getSpeakerCount()))
-    writeAt(monitor, 4, ("Target %d/%d pass | %d skipped")
-      :format(state.optionalPassed, state.optionalTotal, state.optionalSkipped))
-    writeAt(monitor, 5, "Test: " .. state.test)
-    writeAt(monitor, 6, "Now: " .. state.detail)
-
-    local y = 7
-    for _, line in ipairs(state.prompt) do
-      if y > h then break end
-      writeAt(monitor, y, line)
-      y = y + 1
-    end
-
-    if y <= h then
-      writeAt(monitor, y, "Status: " .. shorten(state.lastStatus, math.max(12, w - 8)))
-      y = y + 1
-    end
-    if y <= h then
-      writeAt(monitor, y, "Event: " .. shorten(state.lastEvent, math.max(12, w - 7)))
-      y = y + 1
-    end
-    if y <= h then writeAt(monitor, y, "Log: " .. LOG) end
-
-    if h >= 14 then
-      local first = math.max(1, #tail - (h - 14))
-      local row = 14
-      for i = first, #tail do
-        if row > h then break end
-        writeAt(monitor, row, tail[i])
-        row = row + 1
-      end
-    end
-  end)
-  if not ok then monitor = nil end
-end
+-- State is retained for prompts and the final summary, but the master runner intentionally
+-- has no monitor/dashboard UI. Successful checks stay compact; failure diagnostics go to the log.
+local function render() end
 
 local function display(mode, test, detail, prompt)
   state.mode = mode or state.mode
   state.test = test or state.test
   state.detail = detail or ""
   state.prompt = prompt or {}
-  render()
 end
 
 local function noteEvent(e)
@@ -323,25 +262,27 @@ local function dumpSnapshot(reason)
   end
 end
 
-local function fail(test, err)
+local function recordFailure(test, err, bucket)
+  local message = tostring(err)
   state.result = "FAIL"
-  state.detail = tostring(err)
-  render()
-  log("FAIL", test .. ": " .. tostring(err))
+  state.detail = message
+  state.failures[#state.failures + 1] = {name = test, error = message}
+  if bucket == "auto" then state.autoFailed = state.autoFailed + 1
+  elseif bucket == "runtime" then state.runtimeFailed = state.runtimeFailed + 1
+  elseif bucket == "target" then state.optionalFailed = state.optionalFailed + 1 end
 
-  -- Preserve the real client/OpenAL evidence before stopping playback. Stopping first can
-  -- detach channels and obscure the state which actually caused the failure.
+  log("FAIL", test .. ": " .. message)
+
+  -- Capture the detailed backend state only when something failed. This keeps successful
+  -- runs readable without throwing away forensic information.
   pcall(function()
     if speaker.hqDiagSnapshot then
-      local snap = speaker.hqDiagSnapshot()
-      log("DIAGFAIL", serialize(snap))
+      log("DIAGFAIL", serialize(speaker.hqDiagSnapshot()))
     end
   end)
   dumpSnapshot("failure in " .. test)
-
   safeStop()
-  pcall(function() if speaker.hqDiagEnable then speaker.hqDiagEnable(false) end end)
-  error(("MASTER ACCEPTANCE FAILED in %s\n%s\nLog: %s"):format(test, tostring(err), LOG), 0)
+  return false
 end
 
 local function auto(name, fn)
@@ -349,17 +290,17 @@ local function auto(name, fn)
     state.autoPassed = state.autoPassed + 1
     display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
-    render()
-    return
+    return true
   end
 
   display("AUTO", name, "running mechanical check", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
-  if not ok then fail(name, err) end
+  safeStop()
+  if not ok then return recordFailure(name, err, "auto") end
   state.autoPassed = state.autoPassed + 1
   log("PASS", name)
-  render()
+  return true
 end
 
 local function waitEnter()
@@ -410,14 +351,17 @@ local function actionGate(name, instructions, action, optional)
   log("ACTION", name .. " started")
 
   local ok, err = pcall(action)
-  if not ok then fail(name, err) end
   safeStop()
+  if not ok then
+    state.prompt = {}
+    recordFailure(name, err, optional and "target" or "runtime")
+    return "fail"
+  end
 
   if optional then state.optionalPassed = state.optionalPassed + 1
   else state.runtimePassed = state.runtimePassed + 1 end
-  log("PASS", name .. " = automatic diagnostic PASS")
+  log("PASS", name)
   state.prompt = {}
-  render()
   return "pass"
 end
 
@@ -480,7 +424,7 @@ end
 local function diagSnapshot(label, settle)
   if settle and settle > 0 then waitTimer(settle, "collecting client diagnostics") end
   local snap = speaker.hqDiagSnapshot()
-  log("DIAG", label .. " = " .. serialize(snap))
+  log("DIAG", label .. " captured")
   return snap
 end
 
@@ -658,18 +602,17 @@ local function runtimeDiag(name, fn)
     state.runtimePassed = state.runtimePassed + 1
     display("RESUME", name, "reusing prior PASS from existing master log", {})
     log("RESUME", name .. " = prior PASS")
-    render()
-    return
+    return true
   end
 
   display("RUNTIME", name, "automatic client/audio diagnostic", {})
   log("BEGIN", name)
   local ok, err = pcall(fn)
-  if not ok then fail(name, err) end
   safeStop()
+  if not ok then return recordFailure(name, err, "runtime") end
   state.runtimePassed = state.runtimePassed + 1
-  log("PASS", name .. " = automatic diagnostic PASS")
-  render()
+  log("PASS", name)
+  return true
 end
 
 local function waitUntil(predicate, timeout, detail)
