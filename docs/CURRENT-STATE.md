@@ -52,29 +52,44 @@ Attempt 7 then ran all current target checks:
 
 ## Concrete C4 finite defect
 
-The current finite transport permits 2 in-flight requests per client source, while the server admits only 4 outstanding range requests per player.
+Attempt 7 proved that the old client/server admission composition was wrong: 8 endpoints could attempt up to 16 range requests while the server admitted only 4 per player, and silently dropped over-limit requests waited for the 2-second loss timeout.
 
-With 8 endpoints, the client can attempt up to 16 requests at once. Server `OVER_LIMIT` admission currently produces no response. The client therefore retains that request as pending until its 2-second request expiry, then retries.
+A source fix is now implemented on the branch:
 
-Attempt 7's delayed source started around 2334 ms while the other seven started around 115-145 ms, closely matching that contract. This is the current finite scale blocker.
+- all local finite endpoints share the same `MAX_OUTSTANDING_REQUESTS_PER_PLAYER` budget the server enforces;
+- the client still allows up to 2 requests per source when there is spare capacity;
+- shared slots are issued fairly, preferring endpoints which have issued fewer requests, so early endpoints cannot monopolize the player budget;
+- protocol v10 and the 9-payload shape are unchanged;
+- the 2-second timeout remains only as loss/recovery protection, not the normal admission mechanism.
 
-Do not misclassify this specific attempt as an OpenAL source-pool failure. A separate >8 streamed-source capacity question still exists and must be measured after the range bug is fixed.
+This is the smallest fix for the demonstrated bug. It is **CI-built but not yet runtime-proven**; C4 must confirm the ~2.2-second outlier is gone.
 
 ## SPR state
 
-Current built-in SPR diagnostics observe `setEnvironment` values. That is no longer enough for final acceptance because it cannot distinguish a full world/ray `processSound` evaluation from another environment-write path.
+The current branch now proves actual SPR processing instead of inferring it from `setEnvironment` alone.
 
-Before changing playback architecture, add diagnostics that record actual SPR `processSound` invocation/results and explicitly test whether the obstruction is in the normal client world or inside Sable sub-level geometry.
+Implemented diagnostics:
 
-The older `ztawfik523-lgtm/cchq-soundphysics-compat` project is a valuable architecture/reference implementation, not a drop-in dependency for today's protocol. Its architecture will be re-evaluated rather than copied blindly.
+- an optional client-only mixin observes the exact SPR 1.21.1-1.5.1 `processSound` overload;
+- process observations are scoped specifically to `hqspeaker:hq_audio_source`, so unrelated Minecraft/mod sounds and recycled OpenAL source ids cannot create false HQ evidence;
+- diagnostics record process-call count, source position, category, sound id, optional reflected position and the resulting environment writes;
+- finite, radio and RAW target checks now require direct SPR process evidence.
+
+C2 has also been changed to use **ordinary Minecraft-world geometry only**. It first measures open air, then keeps the same HQ sound running while the listener moves behind a normal-world wall, and finally restarts behind that wall. This distinguishes startup processing from stale long-running acoustics.
+
+No acoustic refresh system has been added yet. If the live-wall phase proves stale while the restarted wall works, the next product change will be a small **client-only HQ refresh path**. The server and network protocol remain completely SPR-independent.
+
+Sable-wall acoustics are explicitly deferred from this phase.
 
 ## Next work, in order
 
-1. fix C1 so the Sable movement scenario judges movement/tracking only;
-2. fix the finite range admission/retry contract exposed by C4;
-3. split/sequence scale evidence so an 8+ finite failure cannot prevent 8+ RAW evidence from running;
-4. add direct SPR `processSound` diagnostics and isolate static-world vs Sable-world geometry;
-5. re-evaluate SPR integration architecture using the old compat project plus the freedom of the current fork;
-6. rerun only the affected target checks, then complete >8 source-capacity testing if the product target truly includes more than eight simultaneous speakers.
+1. finish the cumulative NeoForge 21.1.247 CI build for the current branch;
+2. install that JAR and rerun the target checks using the existing master log with `--resume`;
+3. C1 must record a clean PASS with the corrected final-health/movement assertion;
+4. C2 must prove direct SPR processing behind a **normal-world** wall and report whether the same long-running source refreshes before restart;
+5. C3 is intentionally renamed so `--resume` reruns radio and proves the radio path also enters SPR;
+6. C4 must run both finite and RAW independently; finite validates the new shared range scheduler and RAW finally gets its missing 8+ evidence;
+7. only if C2 proves long-running HQ acoustics stale, add the small client-only refresh behavior and rerun C2;
+8. only after exactly-8 scale is clean should >8 Minecraft streaming-channel capacity be tested separately.
 
 Do not declare release acceptance complete until those items are resolved.

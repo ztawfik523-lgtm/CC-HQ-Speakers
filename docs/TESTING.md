@@ -20,45 +20,46 @@ C3 radio/membership is also PASS: sustained grouped radio, metadata, strict late
 
 ### C1
 
-The movement itself worked. Attempt 7 measured roughly 52-53 blocks of both requested and actual OpenAL movement with sources healthy at the end.
-
-The runner's generic `playingToStoppedTransitions == 0` assertion is inappropriate for a long Sable movement scenario which can cross the listener relevance boundary and legitimately detach/rejoin.
+The product movement evidence was already good. The runner has now been corrected to accept expected relevance leave/rejoin history while requiring final PLAYING health and real movement.
 
 ### C2
 
-Current diagnostics record Sound Physics environment writes. Attempt 7 saw those writes but no open/wall gain or HF change.
+The old evidence was insufficient because it observed only `setEnvironment` and used a Sable wall.
 
-This is insufficient to decide whether HQ audio fully entered SPR's `processSound`/ray path. Add direct process-call evidence before changing product code.
+The branch now records the exact SPR `processSound` call for HQ custom sounds and C2 uses ordinary world geometry. It also keeps the same sound running while moving behind the wall before doing a fresh behind-wall restart, so stale long-running behavior is automatically distinguished from startup failure.
 
 ### C4
 
-Eight finite endpoints exposed a transport-scale stall. One source started ~2.219 seconds after the other seven.
+The demonstrated range-admission mismatch has a source fix: all finite sessions on one client share the same four-request per-player budget enforced by the server, with fair request-slot assignment.
 
-The source contract currently permits each client source 2 pending range requests but admits only 4 requests per player server-side; over-limit requests are silently dropped and only retried after a 2-second client request expiry.
-
-C4 RAW did not run because the finite assertion stopped that scenario.
+The runner also guarantees RAW runs independently from finite.
 
 ## Required deterministic regression coverage before rerun
 
-Add tests for:
+Implemented/covered in source tests and CI:
 
-- finite range admission under multiple simultaneous endpoint clients;
-- no silent `OVER_LIMIT` request that remains client-pending until timeout;
-- bounded fairness/progress for at least 8 endpoints sharing one player;
-- C1 allowing expected relevance detach/rejoin while still requiring healthy final tracking;
-- C4 finite and RAW subchecks completing/reporting independently;
-- SPR diagnostics distinguishing `setEnvironment` observation from actual `processSound` execution.
+- Lua syntax/runner invariants for corrected C1;
+- C4 finite/RAW independent-subcheck structure;
+- direct SPR process hook presence;
+- HQ-only SPR diagnostic scoping so unrelated/recycled OpenAL ids cannot create false evidence;
+- direct SPR evidence required for finite, radio and RAW target paths.
+
+The new finite request scheduler is intentionally validated by the real exactly-8 C4 runtime test rather than by inventing a second mock scheduler implementation in tests.
 
 ## Next runtime evidence
 
-After fixes:
+Use the new branch JAR and the existing master log with `--resume`.
 
-1. C1 focused rerun for a clean harness PASS;
-2. C2 static-world SPR proof with direct `processSound` evidence;
-3. C2 Sable-geometry comparison if Sable-world obstruction matters to the target;
-4. C4 exactly-8 finite rerun;
-5. C4 8+ RAW;
-6. explicit >8 source-capacity test only if >8 simultaneous playback is a required product target.
+The next run should produce all four target results:
+
+1. corrected C1 clean Sable tracking result;
+2. C2 normal-world open/live-wall/restarted-wall SPR result;
+3. fresh C3 radio + SPR-path result;
+4. C4 exactly-8 finite plus independently recorded 8+ RAW result.
+
+Interpret C2 narrowly: only if restarted-wall occlusion works while the live source stays stale do we add a client-only HQ SPR refresh mechanism.
+
+After exactly 8 is clean, test >8 separately only if that concurrency level is an intended guarantee.
 
 The master command remains:
 

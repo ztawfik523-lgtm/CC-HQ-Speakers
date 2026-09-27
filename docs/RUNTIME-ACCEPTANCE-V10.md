@@ -22,16 +22,17 @@ Do not build a separate 21.1.248 JAR.
 
 ## Current runtime status
 
-A1-A19 and R1-R9 are already real-runtime PASS.
+Historical real-runtime evidence is unchanged: A1-A19 and R1-R9 are PASS, attempt 7 had C3 PASS, C1 was a harness false-negative, C2 used insufficient SPR evidence/Sable geometry, and C4 finite exposed the ~2.2-second admission stall before RAW could run.
 
-Attempt 7 ran all four target scenarios:
+The current branch now contains the recheck fixes:
 
-- C1 recorded FAIL, but the actual Sable movement evidence was good; the assertion incorrectly rejected expected listener leave/rejoin history;
-- C2 remains unresolved because the current SPR hook saw environment writes but not a measurable open/wall difference and does not prove `processSound` ran;
-- C3 radio/membership passed completely;
-- C4 finite exposed a real ~2-second scale stall caused by the finite range admission/retry contract; C4 RAW was not reached.
+- C1 judges Sable movement and final health instead of uninterrupted relevance history;
+- finite range requests are shared fairly under the server's 4-request per-player budget;
+- C4 finite and RAW execute independently;
+- direct SPR `processSound` evidence is captured for finite, radio and RAW;
+- C2 uses a normal-world wall and separately measures long-running refresh vs a fresh behind-wall start.
 
-Do not rerun the whole core merely to reproduce those target findings. Fix/isolate the affected target paths first.
+These changes are **pending runtime acceptance**.
 
 ## Built-in diagnostic surface
 
@@ -42,32 +43,29 @@ The release JAR exposes dormant:
 - `hqDiagSnapshot()`
 - `hqDiagCapabilities()`
 
-The current SPR diagnostic records `setEnvironment` values. Before C2 can be considered authoritative it must additionally record actual SPR `processSound` execution/results.
+SPR diagnostics now distinguish actual `processSound` calls from later `setEnvironment` writes and record the processed HQ position/category/sound id plus reflected-position output when present. The observation is client-only and scoped to `hqspeaker:hq_audio_source`.
 
 ## Target-check corrections required before the next acceptance
 
 ### C1 Sable
 
-C1 must judge source tracking, not generic uninterrupted audibility. Listener relevance leave/rejoin during a long movement run is allowed if:
-
-- requested movement is >= threshold;
-- actual OpenAL movement is >= threshold;
-- the source recovers and ends healthy/PLAYING;
-- no real decoder failure is recorded.
+Correction is implemented. C1 now permits listener relevance leave/rejoin history while still requiring requested movement, actual OpenAL movement, final PLAYING state and no decoder failure.
 
 ### C2 Sound Physics
 
-Do not infer success merely from one `setEnvironment` write.
+Use a **normal Minecraft-world wall**, not a Sable wall.
 
-The next diagnostic should prove whether SPR actually invokes `processSound` for each HQ source and capture the resulting acoustic values. Test a known static-world wall and, separately if relevant, a wall made from Sable sub-level geometry.
+The runner now proves the real SPR `processSound` path and performs two behind-wall measurements: first while the same HQ sound keeps playing, then after restarting behind the same wall. If restart occlusion works but the live source never gets reprocessed, that is direct evidence that HQ needs a client-only long-running SPR refresh path.
+
+### C3 radio
+
+C3 now also proves grouped radio sources enter SPR. Its test name was intentionally changed, so an old `--resume` log will not reuse the previous C3 PASS.
 
 ### C4 scale
 
-Fix finite range request admission before retesting.
+The client-side admission fix is implemented. Exactly 8 finite endpoints must confirm that one endpoint no longer waits around the 2-second request timeout.
 
-The finite and RAW scale halves must report independently so a finite assertion cannot prevent RAW evidence from running.
-
-After the finite admission fix, test exactly 8 first. If supporting more than eight simultaneous speakers is part of the release target, add an explicit >8 source-capacity check rather than inferring it from the 8-speaker result.
+Finite and RAW are independent subchecks, so RAW evidence is recorded even if finite fails.
 
 ## Run
 
@@ -77,7 +75,7 @@ Normal master command remains:
 v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
-`--resume` can reuse the already-passed A/R results after the target harness/source fixes.
+`--resume` should be used with the existing attempt-7 log for the next run. It reuses the already-passed A/R results. C1/C2/C4 previously failed and will rerun; C3's renamed test deliberately forces a fresh radio + SPR-path run.
 
 ## Existing matrix
 

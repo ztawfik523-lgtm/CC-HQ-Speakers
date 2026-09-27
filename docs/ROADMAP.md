@@ -18,13 +18,17 @@ The public v10 API/product semantics remain frozen, but runtime acceptance has n
 
 ## Active work — evidence-driven fixes
 
-1. **C1 harness correction** — remove the unrelated no-stop-history requirement from Sable movement tracking while keeping movement/final-health assertions.
-2. **Finite scale transport fix** — resolve the 4-per-player admission vs per-source in-flight mismatch and eliminate silent over-limit requests waiting 2 seconds before retry.
-3. **Scale test separation** — ensure finite failure does not prevent 8+ RAW evidence.
-4. **SPR diagnostic truth** — instrument actual `SoundPhysics.processSound`, then test known static-world geometry and Sable geometry separately.
-5. **SPR architecture review** — reevaluate the historical `cchq-soundphysics-compat` design against the current fork. Reuse proven acoustic pieces where useful, but prefer simpler integration when it provides the same correctness.
-6. **Scale rerun** — exactly 8 finite + RAW after fixes.
-7. **>8 capacity check** — only if the release intends more than eight simultaneous HQ sources; treat Minecraft streamed-source capacity as a separate question.
+The source-side corrections from attempt 7 are now implemented. The next phase is evidence, not another redesign.
+
+1. **Final cumulative CI** — current NeoForge 21.1.247 branch must remain green.
+2. **Target rerun** — run C1-C4 with `--resume`; A/R prior PASS evidence is retained, and C3 is intentionally forced fresh.
+3. **C2 decision point** — if normal-world restart occlusion works but the continuously-playing source stays stale, add the smallest client-only HQ refresh path. If the live source already refreshes, add nothing.
+4. **C4 verification** — confirm fair shared finite admission removes the ~2.2-second outlier and obtain the missing RAW result.
+5. **Exactly-8 closure** — only once finite + RAW are clean do we consider the scale blocker resolved.
+6. **>8 capacity** — test separately only if more than eight simultaneous streamed HQ sounds is a required guarantee.
+7. **Sable acoustics** — deferred until ordinary SPR integration is complete; do not mix Sable-wall geometry into this phase.
+
+No old compat playback engine, custom OpenAL rewrite, adaptive room scheduler, smoothing or diffraction port is planned unless runtime evidence identifies a specific need.
 
 ## Release gate
 

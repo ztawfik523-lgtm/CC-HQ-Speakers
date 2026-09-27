@@ -8,31 +8,39 @@ Only unresolved release-target evidence and concrete deferred risks are listed h
 
 ### KI-RUNTIME-003 — C1 Sable harness assertion
 
-Attempt 7 produced strong Sable tracking evidence: requested and actual OpenAL movement matched over roughly 52-53 blocks, both sources ended PLAYING and no decoder failure occurred.
+Attempt 7's actual Sable tracking was good: requested and actual OpenAL movement matched over roughly 52-53 blocks, both sources ended PLAYING and there were no decoder failures.
 
-The runner failed C1 because it reused the generic continuous-playback health assertion and saw one historical PLAYING->STOPPED transition while the long movement test crossed the 32-block listener relevance boundary. Repeated BEGINs for the same playback/generation confirm leave/rejoin activity.
+**Source status:** fixed in the acceptance runner. C1 now allows expected listener relevance detach/rejoin history and requires movement plus a healthy final PLAYING source instead of zero historical STOPPED transitions.
 
-Fix the C1 assertion; do not change working Sable movement code for this result.
+**Remaining work:** one clean runtime rerun to turn the previous harness false-negative into recorded PASS evidence.
 
 ### KI-RUNTIME-005 — 8+ finite range-admission stall
 
 Attempt 7's 8-speaker finite group had seven channel starts around 115-145 ms and one around 2334 ms, yielding 2219.15 ms start skew.
 
-Current client sources can each maintain 2 in-flight finite range requests, while `FiniteRangeReadService` admits only 4 outstanding requests / 512 KiB per player. Server `OVER_LIMIT` currently sends no rejection/deferral signal, so the client waits for its 2-second request timeout before retrying.
+**Source status:** fix implemented. The client now shares the server's four-request per-player range budget across all local finite endpoints and schedules those slots fairly instead of letting every endpoint independently submit two requests.
 
-This is a concrete release blocker for the scale target.
+The protocol and server bounds stay unchanged. The old 2-second request timeout remains only for true loss/recovery.
+
+**Remaining work:** rerun C4 exactly-8 finite. Do not call the bug closed until runtime confirms the late-source fingerprint is gone.
 
 ### KI-RUNTIME-006 — 8+ RAW not yet executed
 
-Attempt 7 failed inside the finite half of C4, so the RAW scale half never ran. The runner should let finite and RAW scale evidence complete independently.
+Attempt 7 failed inside finite before RAW ran.
+
+**Source status:** the C4 runner now executes finite and RAW as independent subchecks and records each result even if the other fails.
+
+**Remaining work:** run C4 and obtain real 8+ RAW evidence.
 
 ### KI-RUNTIME-008 — Sound Physics integration not yet proven
 
-Attempt 7 observed SPR environment writes on HQ finite sources, but both open-air and wall direct gain/HF remained exactly 1.0000.
+Attempt 7 only proved that an SPR environment-write hook fired; the Sable wall used in that run was not valid evidence for ordinary SPR world geometry.
 
-The current diagnostic hook observes `setEnvironment`, not actual `SoundPhysics.processSound` invocation. The user's later visual-ray observation happened after the radio had already started, and SPR 1.21.1 defaults moving-sound reevaluation off, so that observation alone is not conclusive.
+**Source status:** direct `SoundPhysics.processSound` diagnostics are implemented and scoped only to HQ custom sounds. C2 now uses a normal-world wall, checks live long-running behavior before restart, then restarts behind the same wall to separate stale refresh from startup processing.
 
-Next evidence must record actual SPR processing/ray evaluation and isolate normal-world geometry from Sable sub-level geometry.
+Radio and RAW target checks also require direct SPR process evidence.
+
+**Remaining work:** runtime C2 decides whether any actual product integration behavior is missing. No refresh/smoothing/diffraction system will be added unless the new evidence requires it.
 
 ### KI-RUNTIME-009 — >8 Minecraft streamed-source capacity
 
