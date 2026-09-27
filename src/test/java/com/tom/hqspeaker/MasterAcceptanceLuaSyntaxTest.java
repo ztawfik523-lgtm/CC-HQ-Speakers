@@ -82,6 +82,7 @@ class MasterAcceptanceLuaSyntaxTest {
     void standaloneTargetRechecksCompileWithComputerCraftLua() throws Exception {
         assertLuaCompiles("v10_c2_spr.lua");
         assertLuaCompiles("v10_c4_finite.lua");
+        assertLuaCompiles("v10_rejection_recheck.lua");
     }
 
     private static void assertLuaCompiles(String filename) throws Exception {
