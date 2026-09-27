@@ -1,4 +1,7 @@
 # Next-chat prompt — CC:HQ Speakers
+> **2026-09-27 update:** this prompt is historical. Current runtime authority is `docs/CURRENT-STATE.md` + `docs/RUNTIME-ACCEPTANCE-V10.md` + `docs/RUNTIME-RESULTS-V10.md`. The simplified master continues after independent failures, uses settled-current sync checks, and has four target scenarios (Sable, SPR, radio+membership, 8+ scale).
+
+
 
 Continue the project in repository `ztawfik523-lgtm/CC-HQ-Speakers`, branch `codex/m1j-multispeaker`.
 
