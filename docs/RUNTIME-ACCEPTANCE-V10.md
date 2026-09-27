@@ -58,7 +58,7 @@ Correction is implemented. C1 now permits listener relevance leave/rejoin histor
 
 Use a **normal Minecraft-world wall**, not a Sable wall.
 
-The runner now proves the real SPR `processSound` path with one endpoint: open air first, then a fresh restart behind a normal-world wall. The speaker/computer may stay on a parked Sable contraption. Live reprocessing is not a release gate when SPR's own moving-sound reevaluation is disabled.
+The runner now proves the real SPR `processSound` path with one endpoint: open air first, then a fresh restart behind a normal-world wall. The computer and speaker must both be placed normally in the Minecraft world, outside Sable. Live reprocessing is not a release gate when SPR's own moving-sound reevaluation is disabled.
 
 ### C3 radio
 
