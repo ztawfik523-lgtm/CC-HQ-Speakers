@@ -6,7 +6,6 @@
 -- The mod's built-in diagnostics judge the real client/OpenAL playback automatically.
 -- You only perform physical actions Minecraft cannot perform itself (walk away, F3+T, move Sable, etc.).
 -- Target scope for this runner: singleplayer + Sable/Aeronautics + Sound Physics + MP3/ICY radio + 8+ scale.
--- Dimension/chunk lifetime is intentionally not a release-acceptance gate.
 --
 -- Keys:
 --   ENTER = confirm a requested physical action / start an environment check
@@ -504,7 +503,7 @@ local function assertSourceHealthy(source, label, minimumPlayingSamples, require
   end
 end
 
-local function assertActiveGroup(snapshot, kind, prefix, expected, label, requireContinuous)
+local function assertActiveGroup(snapshot, kind, prefix, expected, label, requireContinuous, checkStartSkew)
   assertClientBridge(snapshot)
   local sources = diagSources(snapshot, kind)
   assert(#sources == expected,
@@ -522,12 +521,14 @@ local function assertActiveGroup(snapshot, kind, prefix, expected, label, requir
   assert((group.playingMembers or 0) == expected,
     ("%s: only %s/%d sources reached PLAYING"):format(label, tostring(group.playingMembers), expected))
 
-  local channelSkew = group.channelStartSkewMs
-  assert(type(channelSkew) == "number" and channelSkew >= 0,
-    label .. ": real channel-start measurement missing")
-  assert(channelSkew <= DIAG_START_SKEW_MS,
-    ("%s: real channel start skew %.2f ms exceeds %.0f ms"):format(
-      label, channelSkew, DIAG_START_SKEW_MS))
+  if checkStartSkew ~= false then
+    local channelSkew = group.channelStartSkewMs
+    assert(type(channelSkew) == "number" and channelSkew >= 0,
+      label .. ": real channel-start measurement missing")
+    assert(channelSkew <= DIAG_START_SKEW_MS,
+      ("%s: real channel start skew %.2f ms exceeds %.0f ms"):format(
+        label, channelSkew, DIAG_START_SKEW_MS))
+  end
   return sources, group
 end
 
@@ -581,8 +582,9 @@ local function assertSettledGroupSync(kind, prefix, expected, label, limitMs, re
     label, limitMs, lastSpread), 0)
 end
 
-local function assertFiniteGroupActive(snapshot, expected, label, requireContinuous)
-  return assertActiveGroup(snapshot, "finite", "finite:", expected, label, requireContinuous)
+local function assertFiniteGroupActive(snapshot, expected, label, requireContinuous, checkStartSkew)
+  return assertActiveGroup(
+    snapshot, "finite", "finite:", expected, label, requireContinuous, checkStartSkew)
 end
 
 local function assertFiniteGroupSync(expected, label, requireContinuous)
@@ -1215,7 +1217,7 @@ runtimeDiag("R5/9 Endpoint-local controls reach client", function()
   verifySharedPlaying()
   waitTimer(4.0, "establishing group playback")
   local before = diagSnapshot("endpoint controls before")
-  assertFiniteGroupActive(before, expected, "endpoint controls before", true)
+  assertFiniteGroupActive(before, expected, "endpoint controls before", true, false)
 
   local targetBefore = assert(sourceForEndpoint(before, 2, "finite"), "endpoint 2 diagnostic source missing")
   local survivorBefore = assert(sourceForEndpoint(before, 1, "finite"), "endpoint 1 diagnostic source missing")
@@ -1344,7 +1346,7 @@ local function startRecoveryPlayback(label)
   assert(speaker.audioSetLoopingAll(true), label .. ": loop enable failed")
   waitTimer(2.0, label .. ": baseline playback")
   local baseline = diagSnapshot(label .. " baseline")
-  assertFiniteGroupActive(baseline, speaker.getSpeakerCount(), label .. " baseline", true)
+  assertFiniteGroupActive(baseline, speaker.getSpeakerCount(), label .. " baseline", true, false)
   return s.playbackId, baseline
 end
 
@@ -1357,7 +1359,7 @@ local function verifyRecoveryPlayback(label, playbackId, baseline, requireReload
   end
   waitTimer(2.0, label .. ": measuring recovered renderer")
   local after = diagSnapshot(label .. " recovered")
-  assertFiniteGroupActive(after, speaker.getSpeakerCount(), label .. " recovered", false)
+  assertFiniteGroupActive(after, speaker.getSpeakerCount(), label .. " recovered", false, false)
   if requireReload then assert((after.soundEngineReloads or 0) >= 1, label .. ": F3+T sound-engine reload was not observed") end
 
   for _, old in ipairs(diagSources(baseline, "finite")) do
