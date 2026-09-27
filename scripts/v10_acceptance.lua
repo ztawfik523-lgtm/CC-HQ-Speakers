@@ -1349,7 +1349,7 @@ end
 actionGate("R8/9 Range leave/rejoin", {
   "A looping group will start automatically.",
   "Walk more than 32 blocks away from the speakers, then return.",
-  "Keep the source chunk loaded. Reopen this computer and press ENTER.",
+  "Reopen this computer and press ENTER.",
   "Do not judge the sound yourself; diagnostics decide.",
 }, function()
   local id, baseline = startRecoveryPlayback("range recovery")
