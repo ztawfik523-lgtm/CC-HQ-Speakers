@@ -1,6 +1,6 @@
 # Testing
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 ## Evidence rule
 
@@ -33,7 +33,7 @@ Measured evidence includes channel creation/state, source position, source gain,
 Run:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
 The master runner is the only normal user-facing acceptance workflow. Smaller scripts are developer isolation tools only after the master test identifies a specific failure.
@@ -41,16 +41,17 @@ The master runner is the only normal user-facing acceptance workflow. Smaller sc
 Current master matrix:
 
 - A1-A19: API surface, declared limits, staged media, native CC:T paths, MP3/WAV lifecycle, malformed media, argument/RAW bounds, RAW backpressure, finite shared authority, endpoint-local controls, gain/mute/clamp, shared controls, stress/restarts, stream security and final cleanup;
-- R1-R9: real native channels, MP3/WAV renderer continuity, finite synchronization, endpoint-local client effects, continuous RAW, loop recovery/sync, range rejoin and F3+T recovery;
-- C1-C6: dimension rejoin, Sable tracking, Sound Physics processing, grouped MP3/ICY radio, strict radio membership, 8+ speaker stress.
+- R1-R9: real native channels, MP3/WAV renderer continuity, finite synchronization, endpoint-local client effects, continuous RAW, loop recovery/sync, listener rejoin and F3+T recovery;
+- C1-C4: Sable tracking, Sound Physics processing, grouped MP3/ICY radio + strict membership, and 8+ speaker stress.
+
+Each runtime scenario judges only the property it exists to test. Synchronization verdicts use settled current playback measurements rather than a historical worst-ever sample. Independent failures are recorded and the runner continues.
 
 ## Human involvement
 
 The operator only performs actions Minecraft cannot automate:
 
-- walk out of range and return;
+- walk out of listener range and return;
 - press F3+T;
-- change dimension and return if the source remains loaded;
 - translate/rotate the Sable contraption;
 - move behind the prepared wall/obstacle;
 - connect a late radio speaker;
