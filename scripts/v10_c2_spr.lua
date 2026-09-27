@@ -180,18 +180,16 @@ local ok, err = pcall(function()
 
   local gainDrop = (before.directGain or 1) - (after.directGain or 1)
   local hfDrop = (before.directGainHF or 1) - (after.directGainHF or 1)
-  log("DROP", ("gain=%.4f HF=%.4f"):format(gainDrop, hfDrop))
+  log("DROP", ("open->wall gain=%.4f HF=%.4f"):format(gainDrop, hfDrop))
 
   assert(gainDrop > 0.01 or hfDrop > 0.01,
     "SPR processed HQ audio, but the normal-world wall did not measurably increase occlusion")
 
-  -- Optional long listening confirmation without changing the automatic verdict.
   prompt({
-    "AUTOMATIC C2 CHECK PASSED.",
-    "",
-    "OPTIONAL LISTENING PHASE:",
-    "Move back to the open-air side of the wall.",
-    "Press ENTER to restart the sound in open air for one final comparison.",
+    "PHASE 3: OPEN AIR AGAIN",
+    "Move back to the OPEN side of the same wall.",
+    "Keep roughly the same distance from speaker 1.",
+    "Press ENTER to restart the sound for the final comparison.",
   })
   waitEnter()
 
@@ -204,7 +202,13 @@ local ok, err = pcall(function()
     finalSource.directGain or -1, finalSource.directGainHF or -1,
     finalSource.soundPhysicsProcessCalls or 0))
 
-  log("PASS", "C2 Sound Physics normal-ground startup occlusion")
+  local gainRecovery = (finalSource.directGain or 1) - (after.directGain or 1)
+  local hfRecovery = (finalSource.directGainHF or 1) - (after.directGainHF or 1)
+  log("RECOVER", ("wall->open gain=%.4f HF=%.4f"):format(gainRecovery, hfRecovery))
+  assert(gainRecovery > 0.01 or hfRecovery > 0.01,
+    "SPR wall occlusion did not measurably clear after returning to open air and restarting")
+
+  log("PASS", "C2 Sound Physics normal-ground open/wall/open test")
 end)
 
 safeStop()
