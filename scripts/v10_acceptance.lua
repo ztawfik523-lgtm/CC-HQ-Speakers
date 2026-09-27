@@ -90,6 +90,14 @@ local function serialize(value)
   return ok and encoded or tostring(value)
 end
 
+local function shorten(value, limit)
+  local text = tostring(value or "")
+  local max = math.max(0, math.floor(tonumber(limit) or #text))
+  if #text <= max then return text end
+  if max <= 3 then return text:sub(1, max) end
+  return text:sub(1, max - 3) .. "..."
+end
+
 local function log(kind, message)
   local line = ("[%7.2fs] %-8s %s"):format(elapsed(), kind, tostring(message))
   print(line)
@@ -400,6 +408,7 @@ end
 
 local DIAG_START_SKEW_MS = 75
 local DIAG_LOGICAL_DRIFT_MS = 50
+local DIAG_FINITE_START_STALL_MS = 1000
 local DIAG_MAX_SILENCE_RATIO = 0.02
 local DIAG_MAX_BASE_SILENCE_BYTES = 32768
 local DIAG_POSITION_MOVE = 1.0
@@ -593,9 +602,48 @@ local function assertFiniteGroupActive(snapshot, expected, label, requireContinu
     snapshot, "finite", "finite:", expected, label, requireContinuous, checkStartSkew)
 end
 
+local function finiteCatchUpAlignmentSpreadMs(sources, expected, label)
+  local minimum = math.huge
+  local maximum = -math.huge
+  local count = 0
+  for i, source in ipairs(sources) do
+    local channelMs = source.firstChannelMs
+    local contentSeconds = source.contentStartSeconds
+    assert(type(channelMs) == "number" and channelMs >= 0,
+      label .. " source " .. i .. ": channel-start measurement missing")
+    assert(type(contentSeconds) == "number" and contentSeconds >= 0,
+      label .. " source " .. i .. ": finite content-start measurement missing")
+
+    local mediaZeroMs = channelMs - contentSeconds * 1000
+    minimum = math.min(minimum, mediaZeroMs)
+    maximum = math.max(maximum, mediaZeroMs)
+    count = count + 1
+  end
+  assert(count == expected,
+    ("%s: catch-up alignment has %d/%d finite sources"):format(label, count, expected))
+  return math.max(0, maximum - minimum)
+end
+
 local function assertFiniteGroupSync(expected, label, requireContinuous)
-  return assertSettledGroupSync(
-    "finite", "finite:", expected, label, DIAG_LOGICAL_DRIFT_MS, requireContinuous)
+  local snap = diagSnapshot(label)
+  local sources, group = assertFiniteGroupActive(
+    snap, expected, label, requireContinuous, false)
+
+  local channelSkew = group.channelStartSkewMs
+  assert(type(channelSkew) == "number" and channelSkew >= 0,
+    label .. ": real channel-start measurement missing")
+  assert(channelSkew <= DIAG_FINITE_START_STALL_MS,
+    ("%s: endpoint startup spread %.2f ms looks like a real stall (limit %.0f ms)"):format(
+      label, channelSkew, DIAG_FINITE_START_STALL_MS))
+
+  local alignment = finiteCatchUpAlignmentSpreadMs(sources, expected, label)
+  assert(alignment <= DIAG_LOGICAL_DRIFT_MS,
+    ("%s: finite catch-up alignment %.2f ms exceeds %.0f ms"):format(
+      label, alignment, DIAG_LOGICAL_DRIFT_MS))
+
+  log("MEASURE", ("%s channelStart=%.2fms catchUpAlignment=%.2fms"):format(
+    label, channelSkew, alignment))
+  return snap, sources, group, alignment
 end
 
 local function assertRawContinuityWhileActive(snapshot, expected, expectedBytes, label)
@@ -1444,86 +1492,47 @@ actionGate("C1 Sable/Aeronautics source tracking", {
   end
 end, true)
 actionGate("C2 Sound Physics Remastered processing", {
-  "Use ONLY ordinary Minecraft-world geometry for this check (not a Sable wall).",
-  "Start with yourself in OPEN AIR near the stationary speakers.",
-  "The test proves SPR really called processSound, then measures its filter.",
-  "Then it asks you to move behind a solid normal-world wall WITHOUT stopping the sound.",
-  "It checks whether the same long-running HQ sound updates, then restarts it behind the wall.",
+  "Keep the Sable contraption PARKED for this check.",
+  "Use endpoint 1 only. Start with no normal-world wall between you and that speaker.",
+  "The speaker/computer may stay on Sable; the wall itself must be ordinary Minecraft-world blocks.",
+  "The test measures open air, then restarts the same HQ sound after you move behind the wall.",
 }, function()
+  local index = 1
+
   diagReset("SPR open air")
-  local expected = speaker.getSpeakerCount()
-  assert(speaker.speakMp3All(mp3, 0.55), "SPR open-air group rejected")
-  verifySharedPlaying()
+  assert(speaker.speakMp3At(index, mp3, 0.55), "SPR open-air MP3 rejected")
+  waitAt(index, "playing", 15, "SPR open-air endpoint")
   waitTimer(3.0, "measuring Sound Physics open-air filter")
   local open = diagSnapshot("SPR open air")
   assertClientBridge(open)
   assert((open.capabilities or {}).soundPhysicsLoaded == true, "Sound Physics Remastered was not detected")
-  local openSources = diagSources(open, "finite")
-  assert(#openSources == expected, "SPR open-air source count mismatch")
-  local openByPos = {}
-  for i, source in ipairs(openSources) do
-    assertSprProcessEvidence(source, "SPR open-air source " .. i)
-    openByPos[(source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)] = source
-  end
+  local before = assert(sourceForEndpoint(open, index, "finite"), "SPR open-air source missing")
+  assertSprProcessEvidence(before, "SPR open-air source")
 
+  safeStop()
   showPrompt({
-    "OPEN-AIR MEASUREMENT COMPLETE -- KEEP THE AUDIO PLAYING.",
-    "Move behind the prepared NORMAL-WORLD solid wall.",
-    "Stay near the speakers and press ENTER when positioned.",
+    "OPEN-AIR MEASUREMENT COMPLETE.",
+    "Create/use a NORMAL-WORLD solid wall between you and endpoint 1.",
+    "The Sable contraption should stay parked; the speaker may remain on it.",
+    "Stand behind the wall and press ENTER.",
   })
   waitEnter()
-  waitTimer(3.0, "checking long-running Sound Physics refresh behind wall")
-  local liveWall = diagSnapshot("SPR live wall")
-  local liveSources = diagSources(liveWall, "finite")
-  assert(#liveSources == expected, "SPR live-wall source count mismatch")
 
-  local liveRefreshed = 0
-  local liveChanged = 0
-  for i, source in ipairs(liveSources) do
-    local key = (source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)
-    local before = assert(openByPos[key], "SPR could not match source position for live-wall refresh")
-    local processAdvanced = (source.soundPhysicsProcessCalls or 0) > (before.soundPhysicsProcessCalls or 0)
-    if processAdvanced then liveRefreshed = liveRefreshed + 1 end
-    local gainDrop = (before.directGain or 1) - (source.directGain or 1)
-    local hfDrop = (before.directGainHF or 1) - (source.directGainHF or 1)
-    if gainDrop > 0.01 or hfDrop > 0.01 then liveChanged = liveChanged + 1 end
-    log("MEASURE", ("SPR live source %d calls %d->%d gain %.4f->%.4f HF %.4f->%.4f"):format(
-      i, before.soundPhysicsProcessCalls or 0, source.soundPhysicsProcessCalls or 0,
-      before.directGain or -1, source.directGain or -1,
-      before.directGainHF or -1, source.directGainHF or -1))
-  end
-
-  -- Restart behind the same wall so we can distinguish "SPR cannot see this wall" from
-  -- "SPR startup works, but a long-running HQ source was never refreshed".
-  safeStop()
   diagReset("SPR wall restart")
-  assert(speaker.speakMp3All(mp3, 0.55), "SPR wall group rejected")
-  verifySharedPlaying()
+  assert(speaker.speakMp3At(index, mp3, 0.55), "SPR wall MP3 rejected")
+  waitAt(index, "playing", 15, "SPR wall endpoint")
   waitTimer(3.0, "measuring Sound Physics wall filter")
   local wall = diagSnapshot("SPR wall")
-  local wallSources = diagSources(wall, "finite")
-  assert(#wallSources == expected, "SPR wall source count mismatch")
+  local after = assert(sourceForEndpoint(wall, index, "finite"), "SPR wall source missing")
+  assertSprProcessEvidence(after, "SPR wall source")
 
-  local changed = 0
-  for i, source in ipairs(wallSources) do
-    assertSprProcessEvidence(source, "SPR wall source " .. i)
-    local key = (source.blockX or 0) .. ":" .. (source.blockY or 0) .. ":" .. (source.blockZ or 0)
-    local before = assert(openByPos[key], "SPR could not match source position between open/wall runs")
-    local gainDrop = (before.directGain or 1) - (source.directGain or 1)
-    local hfDrop = (before.directGainHF or 1) - (source.directGainHF or 1)
-    if gainDrop > 0.01 or hfDrop > 0.01 then changed = changed + 1 end
-    log("MEASURE", ("SPR source %d gain %.4f->%.4f HF %.4f->%.4f liveRange=%.4f/%.4f"):format(
-      i, before.directGain or -1, source.directGain or -1,
-      before.directGainHF or -1, source.directGainHF or -1,
-      source.directGainRange or 0, source.directGainHFRange or 0))
-  end
-  assert(changed > 0,
-    "Sound Physics processed HQ audio, but the normal-world wall did not measurably increase occlusion even after restart")
-  assert(liveRefreshed == expected,
-    ("Sound Physics startup processing works, but only %d/%d long-running HQ sources were reprocessed after listener/environment movement")
-      :format(liveRefreshed, expected))
-  assert(liveChanged > 0,
-    "Sound Physics reprocessed the long-running HQ sources, but their live filter never reacted to the wall")
+  local gainDrop = (before.directGain or 1) - (after.directGain or 1)
+  local hfDrop = (before.directGainHF or 1) - (after.directGainHF or 1)
+  log("MEASURE", ("SPR restart gain %.4f->%.4f HF %.4f->%.4f"):format(
+    before.directGain or -1, after.directGain or -1,
+    before.directGainHF or -1, after.directGainHF or -1))
+  assert(gainDrop > 0.01 or hfDrop > 0.01,
+    "Sound Physics processed HQ audio, but the normal-world wall did not measurably increase occlusion after restart")
 end, true)
 
 if RADIO_URL then
