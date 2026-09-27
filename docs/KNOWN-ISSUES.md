@@ -6,14 +6,6 @@ Only unresolved release-target evidence and concrete deferred risks are listed h
 
 ## Runtime blockers / open investigations
 
-### KI-RUNTIME-003 — C1 Sable harness assertion
-
-Attempt 7's actual Sable tracking was good: requested and actual OpenAL movement matched over roughly 52-53 blocks, both sources ended PLAYING and there were no decoder failures.
-
-**Source status:** fixed in the acceptance runner. C1 now allows expected listener relevance detach/rejoin history and requires movement plus a healthy final PLAYING source instead of zero historical STOPPED transitions.
-
-**Remaining work:** one clean runtime rerun to turn the previous harness false-negative into recorded PASS evidence.
-
 ### KI-RUNTIME-005 — 8+ finite range-admission stall
 
 Attempt 7's 8-speaker finite group had seven channel starts around 115-145 ms and one around 2334 ms, yielding 2219.15 ms start skew.
@@ -22,25 +14,15 @@ Attempt 7's 8-speaker finite group had seven channel starts around 115-145 ms an
 
 The protocol and server bounds stay unchanged. The old 2-second request timeout remains only for true loss/recovery.
 
-**Remaining work:** rerun C4 exactly-8 finite. Do not call the bug closed until runtime confirms the late-source fingerprint is gone.
-
-### KI-RUNTIME-006 — 8+ RAW not yet executed
-
-Attempt 7 failed inside finite before RAW ran.
-
-**Source status:** the C4 runner now executes finite and RAW as independent subchecks and records each result even if the other fails.
-
-**Remaining work:** run C4 and obtain real 8+ RAW evidence.
+**Runtime status:** the latest 8-speaker rerun removed the old ~2.2-second fingerprint; real channel-start spread was about 58.7 ms. A focused standalone C4 finite rerun remains only to record the corrected catch-up-alignment verdict.
 
 ### KI-RUNTIME-008 — Sound Physics integration not yet proven
 
 Attempt 7 only proved that an SPR environment-write hook fired; the Sable wall used in that run was not valid evidence for ordinary SPR world geometry.
 
-**Source status:** direct `SoundPhysics.processSound` diagnostics are implemented and scoped only to HQ custom sounds. C2 now uses a normal-world wall, checks live long-running behavior before restart, then restarts behind the same wall to separate stale refresh from startup processing.
+**Source status:** direct `SoundPhysics.processSound` diagnostics are implemented and scoped only to HQ custom sounds. Radio and 8-speaker RAW already passed with direct SPR evidence. C2 is now a one-speaker open-air vs normal-world-wall restart check; the speaker may remain on a parked Sable contraption.
 
-Radio and RAW target checks also require direct SPR process evidence.
-
-**Remaining work:** runtime C2 decides whether any actual product integration behavior is missing. No refresh/smoothing/diffraction system will be added unless the new evidence requires it.
+**Remaining work:** run the standalone C2 and prove that a fresh HQ source behind ordinary-world geometry receives measurable SPR occlusion. HQ-only live refresh is not a release requirement when SPR's own moving-sound reevaluation is disabled.
 
 ### KI-RUNTIME-009 — >8 Minecraft streamed-source capacity
 
@@ -60,7 +42,7 @@ Finite playback still keeps independent endpoint decoders/renderers. This is not
 
 ### KI-RELEASE-010 — integrated acceptance incomplete
 
-A1-A19 and R1-R9 are runtime-passed and C3 is target-passed, but C1/C2/C4 still require corrected evidence/fixes.
+R1-R9, C1, C3 and 8-speaker RAW are runtime-passed. The remaining focused evidence is A8/A9/A18 rejection rerun, standalone C2 ordinary-world SPR occlusion and standalone C4 finite catch-up alignment.
 
 ### KI-REPO-011 — release branch hygiene
 
