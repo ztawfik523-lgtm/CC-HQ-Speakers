@@ -21,6 +21,24 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class SoundPhysicsProcessMixin {
     @Inject(
         method = "processSound(IDDDLnet/minecraft/sounds/SoundSource;Lnet/minecraft/resources/ResourceLocation;Z)Lnet/minecraft/world/phys/Vec3;",
+        at = @At("HEAD"),
+        remap = false,
+        require = 0
+    )
+    private static void hqspeaker$beginProcessSound(
+        int sourceId,
+        double x, double y, double z,
+        SoundSource category,
+        ResourceLocation sound,
+        boolean auxOnly,
+        CallbackInfoReturnable<Vec3> cir
+    ) {
+        HQAudioDiagnosticsClient.soundPhysicsProcessBegin(
+            sourceId, sound == null ? "" : sound.toString());
+    }
+
+    @Inject(
+        method = "processSound(IDDDLnet/minecraft/sounds/SoundSource;Lnet/minecraft/resources/ResourceLocation;Z)Lnet/minecraft/world/phys/Vec3;",
         at = @At("RETURN"),
         remap = false,
         require = 0
@@ -43,5 +61,6 @@ public abstract class SoundPhysicsProcessMixin {
             reflected == null ? 0.0 : reflected.x,
             reflected == null ? 0.0 : reflected.y,
             reflected == null ? 0.0 : reflected.z);
+        HQAudioDiagnosticsClient.soundPhysicsProcessEnd(sourceId);
     }
 }

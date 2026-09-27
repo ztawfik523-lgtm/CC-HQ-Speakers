@@ -26,7 +26,9 @@ class DiagnosticOpenALSafetyTest {
         String source = Files.readString(mixin);
 
         assertTrue(source.contains("processSound(IDDD"));
+        assertTrue(source.contains("HQAudioDiagnosticsClient.soundPhysicsProcessBegin"));
         assertTrue(source.contains("HQAudioDiagnosticsClient.soundPhysicsProcessed"));
+        assertTrue(source.contains("HQAudioDiagnosticsClient.soundPhysicsProcessEnd"));
         assertTrue(source.contains("require = 0"));
     }
 
@@ -39,5 +41,10 @@ class DiagnosticOpenALSafetyTest {
 
         assertTrue(source.contains("setEnvironment"));
         assertTrue(source.contains("HQAudioDiagnosticsClient.soundPhysicsApplied"));
+
+        String client = Files.readString(Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "client", "HQAudioDiagnosticsClient.java"));
+        assertTrue(client.contains("ACTIVE_HQ_SPR_SOURCE"));
+        assertTrue(client.contains("HQ_SPR_SOUND_ID.equals(sound)"));
     }
 }

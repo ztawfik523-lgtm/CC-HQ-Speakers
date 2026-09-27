@@ -30,9 +30,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @OnlyIn(Dist.CLIENT)
 public final class HQAudioDiagnosticsClient {
+    private static final String HQ_SPR_SOUND_ID = "hqspeaker:hq_audio_source";
     private static final ConcurrentHashMap<UUID, Binding> BINDINGS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Integer, SprObservation> SOUND_PHYSICS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Integer, SprProcessObservation> SOUND_PHYSICS_PROCESS = new ConcurrentHashMap<>();
+    private static final ThreadLocal<Integer> ACTIVE_HQ_SPR_SOURCE = new ThreadLocal<>();
     private static final AtomicBoolean SAMPLE_SCHEDULED = new AtomicBoolean();
 
     private HQAudioDiagnosticsClient() {}
@@ -125,11 +127,34 @@ public final class HQAudioDiagnosticsClient {
     }
 
     /**
-     * Called by the optional Sound Physics mixin exactly when SPR applies its environment to an OpenAL source.
-     * This avoids querying AL_DIRECT_FILTER, which OpenAL Soft deliberately rejects as a source query property.
+     * Mark the sound-thread scope of one SPR processSound evaluation.
+     *
+     * <p>setEnvironment does not carry the sound id, so this scope is what lets the environment hook ignore ordinary
+     * Minecraft/other-mod sounds and attribute only hqspeaker:hq_audio_source writes to HQ diagnostics.</p>
+     */
+    public static void soundPhysicsProcessBegin(int sourceId, String sound) {
+        if (!HQDiagnostics.enabled() || sourceId <= 0 || !HQ_SPR_SOUND_ID.equals(sound)) {
+            ACTIVE_HQ_SPR_SOURCE.remove();
+            return;
+        }
+        ACTIVE_HQ_SPR_SOURCE.set(sourceId);
+    }
+
+    public static void soundPhysicsProcessEnd(int sourceId) {
+        Integer active = ACTIVE_HQ_SPR_SOURCE.get();
+        if (active != null && active == sourceId) ACTIVE_HQ_SPR_SOURCE.remove();
+    }
+
+    /**
+     * Called by the optional Sound Physics mixin exactly when SPR applies the environment for the currently-active
+     * HQ processSound evaluation. This avoids both false attribution from recycled OpenAL ids and querying
+     * AL_DIRECT_FILTER, which OpenAL Soft deliberately rejects as a source query property.
      */
     public static void soundPhysicsApplied(int sourceId, float directGain, float directGainHF) {
         if (!HQDiagnostics.enabled() || sourceId <= 0) return;
+        Integer active = ACTIVE_HQ_SPR_SOURCE.get();
+        if (active == null || active != sourceId) return;
+
         long epoch = HQDiagnostics.epoch();
         SOUND_PHYSICS.put(sourceId, new SprObservation(epoch, directGain, directGainHF));
 
@@ -155,7 +180,7 @@ public final class HQAudioDiagnosticsClient {
         boolean reflected,
         double reflectedX, double reflectedY, double reflectedZ
     ) {
-        if (!HQDiagnostics.enabled() || sourceId <= 0) return;
+        if (!HQDiagnostics.enabled() || sourceId <= 0 || !HQ_SPR_SOUND_ID.equals(sound)) return;
         long epoch = HQDiagnostics.epoch();
 
         for (Binding binding : BINDINGS.values()) {
