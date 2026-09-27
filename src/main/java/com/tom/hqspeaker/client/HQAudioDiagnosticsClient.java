@@ -97,7 +97,7 @@ public final class HQAudioDiagnosticsClient {
         HQDiagnostics.channelStarted(identity, 0, 1.0f, 1.0f);
         BINDINGS.put(identity.source(), new Binding(identity, sound, sourceId, executor, epoch));
 
-        SprObservation spr = SOUND_PHYSICS.get(sourceId);
+        SprObservation spr = SOUND_PHYSICS.remove(sourceId);
         if (spr != null && spr.epoch() == epoch) {
             HQDiagnostics.soundPhysicsApplied(identity.source(), spr.directGain(), spr.directGainHF());
         }
@@ -137,6 +137,9 @@ public final class HQAudioDiagnosticsClient {
             ACTIVE_HQ_SPR_SOURCE.remove();
             return;
         }
+        // A recycled OpenAL id must not inherit pending evidence from an older HQ source.
+        SOUND_PHYSICS.remove(sourceId);
+        SOUND_PHYSICS_PROCESS.remove(sourceId);
         ACTIVE_HQ_SPR_SOURCE.set(sourceId);
     }
 
@@ -250,6 +253,8 @@ public final class HQAudioDiagnosticsClient {
                     int source = binding.sourceId();
                     if (source <= 0 || !AL10.alIsSource(source)) {
                         BINDINGS.remove(binding.identity().source(), binding);
+                        SOUND_PHYSICS.remove(source);
+                        SOUND_PHYSICS_PROCESS.remove(source);
                         continue;
                     }
 
