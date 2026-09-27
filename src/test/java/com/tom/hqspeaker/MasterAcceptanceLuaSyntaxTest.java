@@ -24,6 +24,19 @@ class MasterAcceptanceLuaSyntaxTest {
         assertTrue(source.contains("--resume"), "master runner should support continuation without rerunning prior passes");
         assertTrue(source.contains("resumePassed[name]"), "resume mode must reuse only named prior PASS results");
 
+        assertFalse(source.contains("peripheral.find(\"monitor\")"),
+            "master acceptance should not carry a monitor/dashboard UI");
+        assertFalse(source.contains("C1 Dimension leave/rejoin"),
+            "dimension/chunk lifetime is not a release-acceptance gate");
+        assertTrue(source.contains("optionalTotal = 4"),
+            "target matrix should remain Sable + SPR + radio/membership + 8+ scale");
+        assertTrue(source.contains("recordFailure(name, err"),
+            "independent test failures should be recorded instead of aborting the suite");
+        assertTrue(source.contains("currentAudibleSpreadMs"),
+            "sync verdicts should use current settled playback measurements");
+        assertFalse(source.contains("maxLogicalAudibleOffsetSpreadMs"),
+            "historical worst-ever drift must not be a hard acceptance verdict");
+
         int reloadBaseline = source.indexOf("local id, baseline = startRecoveryPlayback(\"resource reload\")");
         int reloadActionPrompt = source.indexOf("BASELINE READY -- NOW exit GUI.", reloadBaseline);
         assertTrue(reloadBaseline >= 0 && reloadActionPrompt > reloadBaseline,
