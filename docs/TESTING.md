@@ -6,11 +6,13 @@ Updated: 2026-09-27
 
 CI proves compilation, deterministic tests and package structure. It does not by itself prove real Minecraft/OpenAL playback, physical movement, listener-range recovery, Sound Physics behavior or realistic multi-speaker load.
 
-Current tested code checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`  
-Current CI: `36205257110` — PASS  
-Current build baseline: NeoForge 21.1.247 only  
-Artifact: `10892998704`  
-JAR SHA-256: `0febd6eceb6f165582d514afc3086d8f6e8768c5be323f67e9573ac6203995ee`
+Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
+Runtime-tested candidate CI: `36238699768` — PASS  
+Runtime-tested artifact: `10905071824`  
+Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
+Current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`  
+Current master-runner CI: `36285305761` — PASS  
+Current build baseline: NeoForge 21.1.247 only
 
 The artifact declares NeoForge `[21.1,21.2)`. Historical dual-version CI is compatibility history, not a reason to build 21.1.248 separately.
 
