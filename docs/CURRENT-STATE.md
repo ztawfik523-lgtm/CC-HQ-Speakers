@@ -93,7 +93,7 @@ Runtime-confirmed evidence now includes:
 - 2-speaker finite synchronization and endpoint-local client controls;
 - the producer-fed continuous RAW fix;
 - loop-boundary recovery/sync;
-- real >32-block range leave/rejoin;
+- real listener leave/rejoin through the client recovery path;
 - real F3+T sound-engine teardown/rebuild with authoritative playback rejoin and no decoder fault.
 
 The master runner has been simplified without reducing the real-client evidence: recovery tests no longer inherit unrelated sync thresholds, dedicated sync checks use settled current playback samples, successful logging is compact, and independent failures no longer abort the whole run.
