@@ -1527,7 +1527,7 @@ actionGate("C2 Sound Physics Remastered processing", {
 end, true)
 
 if RADIO_URL then
-  actionGate("C3 MP3/ICY radio + strict membership", {
+  actionGate("C3 MP3/ICY radio + strict membership + SPR path", {
     "Uses the supplied direct MP3/ICY stream URL.",
     "Measures sustained grouped playback, then late-speaker membership.",
     "Have one extra speaker ready but NOT connected yet.",
@@ -1611,7 +1611,7 @@ if RADIO_URL then
     assertSourceHealthy(indexedSource, "indexed radio", 3, true)
   end, true)
 else
-  markSkipped("C3 MP3/ICY radio + strict membership (no radio URL supplied)")
+  markSkipped("C3 MP3/ICY radio + strict membership + SPR path (no radio URL supplied)")
 end
 
 actionGate("C4 8+ speaker scale stress", {
