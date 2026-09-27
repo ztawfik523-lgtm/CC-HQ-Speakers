@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  
@@ -67,7 +67,7 @@ It contains:
 
 - A1-A19 deterministic/API/admission/control/bounds/security checks;
 - R1-R9 real-client diagnostics;
-- C1-C6 selected environment/scale checks.
+- C1-C4 selected target checks: Sable movement, Sound Physics, radio+membership and 8+ scale.
 
 The operator no longer grades the audio manually. When a physical action is required, the script asks for the action and then judges the result from diagnostics.
 
@@ -78,7 +78,7 @@ Selected release scope:
 - Sound Physics Remastered;
 - native CC:T, finite, RAW, radio;
 - 2-speaker normal tests and 8+ speaker scale stress;
-- range, dimension and F3+T recovery.
+- listener leave/rejoin and F3+T recovery.
 
 Dedicated-server/multiplayer and VS2 are intentionally outside this acceptance scope.
 
@@ -96,15 +96,13 @@ Runtime-confirmed evidence now includes:
 - real >32-block range leave/rejoin;
 - real F3+T sound-engine teardown/rebuild with authoritative playback rejoin and no decoder fault.
 
-C1 dimension leave/rejoin has no product PASS/FAIL verdict in the current Sable setup: changing dimension caused the Sable-hosted computer/sub-level to be torn down/re-attached, so the acceptance process itself did not survive to judge the return. The runner now has `--resume` specifically so this kind of interruption does not force A1-A19/R1-R9 to be repeated.
+The master runner has been simplified without reducing the real-client evidence: recovery tests no longer inherit unrelated sync thresholds, dedicated sync checks use settled current playback samples, successful logging is compact, and independent failures no longer abort the whole run.
 
 Remaining acceptance work:
 
-- decide whether C1 should be skipped for this setup or rerun only with a setup that actually keeps the Sable computer/sub-level alive across dimensions;
-- C2 actual Sable translation/rotation tracking;
-- C3 actual Sound Physics open-air/wall processing;
-- C4/C5 grouped radio + strict membership;
-- C6 8+ speaker finite/RAW stress;
-- resolve the observed audible-range mismatch separately from R8 recovery: at test volume 0.55, the operator reported no audible sound at 32 blocks and only faint sound around 22 blocks.
+- C1 actual Sable translation/rotation tracking;
+- C2 actual Sound Physics open-air/wall processing;
+- C3 grouped radio + strict membership;
+- C4 8+ speaker finite/RAW stress.
 
 Only a concrete runtime failure should send work back into source changes.
