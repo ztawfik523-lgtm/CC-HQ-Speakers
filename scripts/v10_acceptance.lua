@@ -74,7 +74,6 @@ local state = {
   failures = {},
   skippedNames = {},
   lastStatus = "-",
-  lastEvent = "-",
   prompt = {},
 }
 
@@ -121,7 +120,6 @@ local function noteEvent(e)
   if interesting[e[1]] then
     local detail = e[1]
     if type(e[2]) == "string" then detail = detail .. " " .. e[2] end
-    state.lastEvent = detail
     log("EVENT", detail)
   end
 end
@@ -406,7 +404,6 @@ end
 
 local DIAG_START_SKEW_MS = 75
 local DIAG_LOGICAL_DRIFT_MS = 50
-local DIAG_PCM_SPREAD_BYTES = 65536
 local DIAG_MAX_SILENCE_RATIO = 0.02
 local DIAG_MAX_BASE_SILENCE_BYTES = 32768
 local DIAG_POSITION_MOVE = 1.0
@@ -1514,7 +1511,7 @@ if RADIO_URL then
     assert(speaker.getStreamUrl() == RADIO_URL, "active radio URL getter mismatch")
     waitTimer(30.0, "measuring sustained radio playback")
 
-    local _, sources, group = assertSettledGroupSync(
+    local _, sources = assertSettledGroupSync(
       "stream", "stream:", initial, "group radio sync", 100, true, 150)
     for i, source in ipairs(sources) do
       assert((source.pcmReadBytes or 0) > 100000,
