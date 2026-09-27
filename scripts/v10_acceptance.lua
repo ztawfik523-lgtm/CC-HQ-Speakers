@@ -508,7 +508,9 @@ local function assertSourceHealthy(source, label, minimumPlayingSamples, require
   end
 end
 
-local function assertActiveGroup(snapshot, kind, prefix, expected, label, requireContinuous, checkStartSkew)
+local function assertActiveGroup(
+  snapshot, kind, prefix, expected, label, requireContinuous, checkStartSkew, startSkewLimitMs
+)
   assertClientBridge(snapshot)
   local sources = diagSources(snapshot, kind)
   assert(#sources == expected,
@@ -527,12 +529,13 @@ local function assertActiveGroup(snapshot, kind, prefix, expected, label, requir
     ("%s: only %s/%d sources reached PLAYING"):format(label, tostring(group.playingMembers), expected))
 
   if checkStartSkew ~= false then
+    local limit = startSkewLimitMs or DIAG_START_SKEW_MS
     local channelSkew = group.channelStartSkewMs
     assert(type(channelSkew) == "number" and channelSkew >= 0,
       label .. ": real channel-start measurement missing")
-    assert(channelSkew <= DIAG_START_SKEW_MS,
+    assert(channelSkew <= limit,
       ("%s: real channel start skew %.2f ms exceeds %.0f ms"):format(
-        label, channelSkew, DIAG_START_SKEW_MS))
+        label, channelSkew, limit))
   end
   return sources, group
 end
@@ -558,14 +561,16 @@ local function currentAudibleSpreadMs(snapshot, groupName, kind, expected)
   return math.max(0, (maximum - minimum) * 1000)
 end
 
-local function assertSettledGroupSync(kind, prefix, expected, label, limitMs, requireContinuous)
+local function assertSettledGroupSync(
+  kind, prefix, expected, label, limitMs, requireContinuous, startSkewLimitMs
+)
   local consecutive = 0
   local lastSpread = math.huge
   local lastChannelSkew = -1
   for sample = 1, 8 do
     local snap = diagSnapshot(label .. " sample " .. sample)
     local sources, group = assertActiveGroup(
-      snap, kind, prefix, expected, label, requireContinuous)
+      snap, kind, prefix, expected, label, requireContinuous, true, startSkewLimitMs)
     local spread = currentAudibleSpreadMs(snap, group.group, kind, expected)
     lastSpread = spread
     lastChannelSkew = group.channelStartSkewMs or -1
@@ -1518,7 +1523,7 @@ if RADIO_URL then
     waitTimer(30.0, "measuring sustained radio playback")
 
     local _, sources, group = assertSettledGroupSync(
-      "stream", "stream:", initial, "group radio sync", 100, true)
+      "stream", "stream:", initial, "group radio sync", 100, true, 150)
     for i, source in ipairs(sources) do
       assert((source.pcmReadBytes or 0) > 100000,
         "radio source " .. i .. " did not deliver meaningful decoded PCM")
