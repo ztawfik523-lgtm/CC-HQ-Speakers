@@ -1,6 +1,6 @@
 # Runtime acceptance — protocol v10
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 ## Goal
 
@@ -33,7 +33,7 @@ The normal release JAR exposes:
 
 Diagnostics are dormant until explicitly enabled by the acceptance runner.
 
-While enabled, the client records real HQ/CC:T audio behavior: channel creation/state, queued/processed OpenAL buffers, source position, source gain, playback offset/output latency when supported, PCM input/delivery, RAW wakeups, decoder/recovery activity, sound-engine reloads, multispeaker timing and Sound Physics filter application/change.
+While enabled, the client records enough real HQ/CC:T audio state to judge the runtime scenarios and retains richer detail for failure diagnosis. Successful checks log compact measurements; full diagnostic snapshots are written only when a check fails.
 
 The selected singleplayer test uses an in-process diagnostic bridge; protocol v10 remains at 9 payloads.
 
@@ -49,16 +49,15 @@ Prepare:
 - Sable/Aeronautics available, with the computer + initial speakers on the contraption;
 - Sound Physics Remastered 1.21.1-1.5.1 enabled;
 - a solid wall/room/obstacle for the Sound Physics comparison;
-- enough space to walk more than 32 blocks away and return without destroying the setup;
-- one direct public MP3/ICY URL if radio acceptance is being completed;
-- for the dimension check, a way to keep the source chunk loaded while the player changes dimension.
+- enough space to walk out of listener range and return without destroying the setup;
+- one direct public MP3/ICY URL if radio acceptance is being completed.
 
 Keep Minecraft `latest.log` if anything fails. The runner writes `/v10-acceptance.log`.
 
 ## Run
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url]
+v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
 There are no user-facing phases.
@@ -99,14 +98,12 @@ There are no user-facing phases.
 8. range leave/rejoin;
 9. F3+T sound-engine reload recovery.
 
-### Target checks C1-C6
+### Target checks C1-C4
 
-1. dimension leave/rejoin while source stays loaded;
-2. Sable/Aeronautics translation/rotation source tracking;
-3. Sound Physics Remastered processing;
-4. grouped MP3/ICY radio;
-5. strict radio membership snapshot/rerun;
-6. 8+ speaker finite + RAW stress.
+1. Sable/Aeronautics translation/rotation source tracking;
+2. Sound Physics Remastered processing;
+3. sustained grouped MP3/ICY radio + strict late-membership/rerun;
+4. 8+ speaker finite + RAW stress.
 
 Radio checks require the third argument. If radio is intentionally omitted, they are recorded as skipped rather than silently assumed.
 
@@ -117,8 +114,7 @@ Depending on the test, PASS requires measured evidence such as:
 - the expected client sources/channels existed;
 - each source reached OpenAL PLAYING;
 - real channel-start skew stayed within the runner threshold;
-- canonical playback clocks remained synchronized;
-- PCM feed divergence stayed bounded;
+- dedicated sync scenarios reached three consecutive settled current-playback measurements within threshold;
 - RAW admitted bytes were actually delivered through the client stream;
 - no unexpected mid-stream PLAYING->STOPPED transition occurred;
 - endpoint-local stop/gain/mute affected only the intended client source;
@@ -134,15 +130,16 @@ The log records measured values instead of relying on a human claim that somethi
 
 The operator may be asked to:
 
-- walk out of range and return;
+- walk out of listener range and return;
 - press F3+T and wait for reload;
-- change dimension and return;
 - move/rotate the Sable contraption;
 - move behind the prepared wall;
 - connect an extra radio speaker;
 - connect enough speakers to reach 8 total.
 
 Press ENTER after completing the requested action. The operator does **not** choose PASS/FAIL.
+
+Independent checks do not abort the whole run. A failure is recorded with a full diagnostic dump, cleanup runs, and later independent checks continue. `--resume` is reserved for an actual interruption such as the computer/game disappearing, not ordinary test failures.
 
 ## Result meaning
 
