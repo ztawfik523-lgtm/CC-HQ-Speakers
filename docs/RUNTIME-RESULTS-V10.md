@@ -1,6 +1,6 @@
 # Runtime results — protocol v10
 
-Updated: 2026-09-26
+Updated: 2026-09-27
 
 Fill this during the final diagnostic master run.
 
@@ -10,8 +10,9 @@ Fill this during the final diagnostic master run.
 - runtime-tested candidate CI: `36238699768` — PASS
 - runtime-tested artifact: `10905071824`
 - runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`
-- current master-runner checkpoint: `1360eb2f04d0e22420175040ce2e3735c4e9b294`
-- current master-runner CI: `36240136369` — PASS on retry; first attempt failed only because NeoForge Maven returned HTTP 502
+- current master-runner checkpoint: `7b8e4d4a095611bf89d05726c4824a95edcea3ba`
+- current master-runner CI: `36285305761` — PASS
+- current CI artifact: `10920218268`; extracted JAR contents are identical to the runtime-tested candidate JAR (archive metadata differs)
 - previous locked pre-runtime checkpoint: `37755ccdb34ac72a27797dc2e6581463e85cbcd7`
 - built against NeoForge: **21.1.247**
 - supported NeoForge metadata range: **[21.1,21.2)**
@@ -43,12 +44,10 @@ v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 | R7 loop-boundary recovery/sync | PASS (attempt 6) | authoritative loop recovery + sync passed |
 | R8 range leave/rejoin | PASS (attempt 6) | real leave/rejoin recovery passed; attempt 5 had one transient 65.34 ms baseline drift failure before the clean rerun |
 | R9 F3+T recovery | PASS (attempt 6) | clean baseline, real sound-engine reload, authoritative rejoin, decoderFailures=0 |
-| C1 dimension leave/rejoin | INCOMPLETE / NO VERDICT | current Sable sub-level/computer did not stay stable across dimension transition; runner stopped before it could judge recovery |
-| C2 Sable/Aeronautics tracking | PENDING | target check |
-| C3 Sound Physics Remastered | PENDING | target check |
-| C4 grouped MP3/ICY radio | PENDING | requires direct radio URL |
-| C5 strict radio membership | PENDING | requires direct radio URL + extra speaker |
-| C6 8+ speaker scale stress | PENDING | finite + RAW |
+| C1 Sable/Aeronautics tracking | PENDING | target check |
+| C2 Sound Physics Remastered | PENDING | target check |
+| C3 MP3/ICY radio + strict membership | PENDING | requires direct radio URL + one late speaker |
+| C4 8+ speaker scale stress | PENDING | finite + RAW |
 
 A **TARGET FULL PASS** requires every required runtime diagnostic and every selected target-scope check to pass. A **CORE PASS / TARGET INCOMPLETE** means the automatic core passed but one or more target checks were skipped.
 
@@ -130,6 +129,23 @@ The operator performs requested actions but does not assign PASS/FAIL; built-in 
 - Minecraft logs show the dimension transition, finite renderer teardown/rejoin attempts, Sable reporting unknown sub-level tracking removals, and both HQ speaker peripherals attaching to computer 1 again after return. That means the Sable-hosted test computer/sub-level did not satisfy C1's keep-loaded prerequisite in this setup;
 - the operator stopped after repeated prior reruns rather than restarting the entire suite again;
 - the master runner now supports opt-in `--resume`: it reads prior PASS lines from the existing master log, reuses those results, and reruns only unfinished/failed/skipped checks. This avoids repeating A1-A19/R1-R9 after an environment check interrupts the computer.
+
+## Acceptance-runner simplification — 2026-09-27
+
+The product/runtime-tested JAR is unchanged. The master runner was simplified after reviewing the six live attempts:
+
+- A1-A19 remain because they finish quickly and validate the real CC:T/Lua integration boundary;
+- recovery scenarios no longer inherit unrelated synchronization thresholds;
+- dedicated sync scenarios use three consecutive settled **current** playback-offset samples rather than a historical worst-ever drift value;
+- independent failures are recorded with a full forensic snapshot, cleaned up and followed by later independent checks instead of terminating the whole suite;
+- successful snapshots/logging are compact; detailed snapshots are failure-only;
+- monitor/dashboard code and dead UI state were removed; multi-step actions print their second-stage prompts directly in the terminal;
+- target checks are now C1-C4: Sable movement, Sound Physics, radio+membership and 8+ scale;
+- the previous dimension action is no longer part of release acceptance;
+- grouped radio continuity and strict late-membership are one scenario; singular/indexed radio paths remain lightweight checks inside it;
+- `--resume` remains for genuine interruptions, while ordinary failures no longer require a restart.
+
+The previous R8 audible-distance comments remain operator observations only; they are not used as a release verdict or public range contract.
 
 ## Failures
 
