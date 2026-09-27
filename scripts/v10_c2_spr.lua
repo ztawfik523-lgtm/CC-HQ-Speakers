@@ -11,8 +11,9 @@ local MIN_LISTEN_SECONDS = 20
 
 if fs.exists(LOG) then fs.delete(LOG) end
 
-local speaker = assert(peripheral.find("speaker"), "attach a ComputerCraft speaker")
-assert(speaker.getSpeakerCount() >= 1, "at least one speaker must be attached")
+local speaker = assert(peripheral.find("speaker"), "attach one ComputerCraft speaker")
+assert(speaker.getSpeakerCount() == 1,
+  "C2 normal-ground test requires exactly one attached speaker")
 assert(type(speaker.hqDiagEnable) == "function" and type(speaker.hqDiagSnapshot) == "function",
   "this JAR does not expose the required HQ diagnostics")
 
