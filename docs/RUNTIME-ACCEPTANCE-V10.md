@@ -25,17 +25,17 @@ Do not build a separate 21.1.248 JAR.
 
 ## Current runtime status
 
-Historical real-runtime evidence is unchanged: A1-A19 and R1-R9 are PASS, attempt 7 had C3 PASS, C1 was a harness false-negative, C2 used insufficient SPR evidence/Sable geometry, and C4 finite exposed the ~2.2-second admission stall before RAW could run.
+The latest rerun used the current 21.1.247 candidate JAR.
 
-The current branch now contains the recheck fixes:
+- R1-R9 passed again.
+- C1 Sable passed cleanly.
+- C3 radio/membership passed with direct SPR evidence and an 8-speaker rerun.
+- C4 RAW passed at 8 speakers.
+- C4 finite no longer shows the old ~2.2-second range-admission stall. Eight real channels started within about 58.7 ms and finite catch-up reconstructs to about 3.9 ms alignment. The old 81.29 ms failure was a diagnostic mistake caused by treating OpenAL's streamed-buffer-relative offset as an absolute song clock.
+- C2 was skipped because no usable ordinary-world wall was available during the run.
+- A8/A9/A18 were interrupted only by a missing `shorten()` helper in the runner's expected-error logger.
 
-- C1 judges Sable movement and final health instead of uninterrupted relevance history;
-- finite range requests are shared fairly under the server's 4-request per-player budget;
-- C4 finite and RAW execute independently;
-- direct SPR `processSound` evidence is captured for finite, radio and RAW;
-- C2 uses a normal-world wall and separately measures long-running refresh vs a fresh behind-wall start.
-
-These changes are **CI-passed but pending runtime acceptance**. Use artifact `10922887347`; do not substitute the older runtime-tested JAR for the recheck because it does not contain the new harness/diagnostic/admission fixes.
+The branch now contains corrected acceptance logic plus standalone probes for the only remaining focused evidence. No product/JAR change is currently required by these results.
 
 ## Built-in diagnostic surface
 
@@ -58,7 +58,7 @@ Correction is implemented. C1 now permits listener relevance leave/rejoin histor
 
 Use a **normal Minecraft-world wall**, not a Sable wall.
 
-The runner now proves the real SPR `processSound` path and performs two behind-wall measurements: first while the same HQ sound keeps playing, then after restarting behind the same wall. If restart occlusion works but the live source never gets reprocessed, that is direct evidence that HQ needs a client-only long-running SPR refresh path.
+The runner now proves the real SPR `processSound` path with one endpoint: open air first, then a fresh restart behind a normal-world wall. The speaker/computer may stay on a parked Sable contraption. Live reprocessing is not a release gate when SPR's own moving-sound reevaluation is disabled.
 
 ### C3 radio
 
@@ -66,19 +66,27 @@ C3 now also proves grouped radio sources enter SPR. Its test name was intentiona
 
 ### C4 scale
 
-The client-side admission fix is implemented. Exactly 8 finite endpoints must confirm that one endpoint no longer waits around the 2-second request timeout.
+The client-side admission fix is runtime-proven to remove the old ~2.2-second outlier. Finite sync now accepts small endpoint start delays when the later endpoint catches up to the shared media position. The verdict uses finite media-zero alignment, with a separate 1-second startup-stall guard.
 
-Finite and RAW are independent subchecks, so RAW evidence is recorded even if finite fails.
+Finite and RAW remain independent subchecks. RAW already has an 8-speaker PASS; the standalone finite probe records the corrected finite verdict without rerunning RAW.
 
 ## Run
 
-Normal master command remains:
+The master runner remains available:
 
 ```
 v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
 ```
 
-`--resume` should be used with the existing attempt-7 log for the next run. It reuses the already-passed A/R results. C1/C2/C4 previously failed and will rerun; C3's renamed test deliberately forces a fresh radio + SPR-path run.
+For the current final recheck, do **not** dismantle the 8-speaker setup just to satisfy the master's original two-speaker start condition. Use the focused scripts instead:
+
+```
+v10_rejection_recheck <mp3> <wav>
+v10_c2_spr <mp3>
+v10_c4_finite <mp3>
+```
+
+These cover the three automated checks interrupted by the logger bug, the remaining ordinary-world SPR proof, and the corrected 8+ finite catch-up verdict.
 
 ## Existing matrix
 
@@ -105,6 +113,6 @@ The operator does **not** choose PASS/FAIL.
 
 ## Release meaning
 
-A **TARGET FULL PASS** still requires all selected target checks to pass after the corrections above. Current status is not release-ready.
+A **TARGET FULL PASS** now requires the three focused rechecks above to pass. C1, C3, 8-speaker RAW and R1-R9 are already established.
 
 See `RUNTIME-RESULTS-V10.md` and `RUNTIME-INVESTIGATION-2026-09-27.md`.
