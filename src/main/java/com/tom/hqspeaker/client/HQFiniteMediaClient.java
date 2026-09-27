@@ -80,6 +80,7 @@ public final class HQFiniteMediaClient {
         boolean rendererActiveSeen;
         boolean fixedAttenuationApplied;
         Boolean appliedPause;
+        long rangeRequestsIssued;
 
         Session(HQFiniteMediaBeginPacket begin) {
             this.begin = begin;
@@ -178,11 +179,14 @@ public final class HQFiniteMediaClient {
             }
 
             session.window.expireRequests(now, REQUEST_TIMEOUT_NANOS);
-            pump(session, now);
             tryStartRenderer(session, now);
             observeRendererLifecycle(session, now);
             applyRendererState(session);
         });
+
+        // All finite endpoints on this client share the server's per-player admission budget.
+        // Schedule them together so one or two early endpoints cannot consume every request slot.
+        pumpAll(now);
     }
 
     public static void stopAll() {
@@ -267,7 +271,7 @@ public final class HQFiniteMediaClient {
             restartDecodeEpoch(session, packet.anchorOffset(), packet.anchorTime(), session.targetPosition);
         }
 
-        pump(session, now);
+        pumpAll(now);
         tryStartRenderer(session, now);
         observeRendererLifecycle(session, now);
         applyRendererState(session);
@@ -280,7 +284,7 @@ public final class HQFiniteMediaClient {
         if (session.window.accept(packet.offset(), packet.data())) {
             FiniteEncodedInputStream input = session.encodedInput;
             if (input != null) input.signalDataAvailable();
-            pump(session, System.nanoTime());
+            pumpAll(System.nanoTime());
         }
     }
 
@@ -422,7 +426,7 @@ public final class HQFiniteMediaClient {
         if (session.looping && session.volume > 0.0f) {
             double target = projectedServerPosition(session, nowNanos);
             restartDecodeEpoch(session, loopStartOffset(session), 0.0, target);
-            pump(session, nowNanos);
+            pumpAll(nowNanos);
             return;
         }
 
@@ -563,22 +567,64 @@ public final class HQFiniteMediaClient {
         return (bytes & 1) == 0 ? bytes : bytes + 1;
     }
 
-    private static void pump(Session session, long nowNanos) {
-        if (session.terminal || !session.anchorReady || session.volume <= 0.0f
-                || session.localExhausted || !session.window.anchored()) return;
-        while (session.window.pendingRequests() < MAX_IN_FLIGHT_REQUESTS) {
-            var next = session.window.nextRequest(FiniteRangeLimits.MAX_RANGE_BYTES, nowNanos);
-            if (next.isEmpty()) return;
+    /**
+     * Share the server's finite-range admission budget fairly across every local finite endpoint.
+     *
+     * <p>The server admits at most {@link FiniteRangeLimits#MAX_OUTSTANDING_REQUESTS_PER_PLAYER} requests for one
+     * player. Pumping two requests independently from every source lets an 8-speaker group attempt 16 at once and
+     * leaves admission-dropped requests waiting for the loss timeout. Keep the existing two-request per-source
+     * pipeline for small groups, but never exceed the shared player budget and prefer sources which have issued fewer
+     * requests so a newly-started endpoint cannot starve behind earlier endpoints.</p>
+     */
+    private static void pumpAll(long nowNanos) {
+        int globalPending = 0;
+        ArrayList<Session> candidates = new ArrayList<>();
+        for (Session session : SESSIONS.values()) {
+            globalPending += session.window.pendingRequests();
+            if (canRequestRange(session)) candidates.add(session);
+        }
+
+        int available = FiniteRangeLimits.MAX_OUTSTANDING_REQUESTS_PER_PLAYER - globalPending;
+        while (available > 0 && !candidates.isEmpty()) {
+            Session best = null;
+            for (Session candidate : candidates) {
+                if (candidate.window.pendingRequests() >= MAX_IN_FLIGHT_REQUESTS) continue;
+                if (best == null
+                        || candidate.rangeRequestsIssued < best.rangeRequestsIssued
+                        || (candidate.rangeRequestsIssued == best.rangeRequestsIssued
+                            && candidate.begin.source().compareTo(best.begin.source()) < 0)) {
+                    best = candidate;
+                }
+            }
+            if (best == null) return;
+
+            var next = best.window.nextRequest(FiniteRangeLimits.MAX_RANGE_BYTES, nowNanos);
+            if (next.isEmpty()) {
+                candidates.remove(best);
+                continue;
+            }
+
             FiniteRangeWindow.Range range = next.get();
             try {
                 HQSpeakerNetwork.sendToServer(new HQFiniteMediaRangeRequestPacket(
-                    session.begin.source(), session.begin.mediaId(), session.begin.generation(),
+                    best.begin.source(), best.begin.mediaId(), best.begin.generation(),
                     range.offset(), range.length()));
+                best.rangeRequestsIssued++;
+                available--;
             } catch (RuntimeException e) {
-                session.window.requestFailed(range.offset());
-                return;
+                best.window.requestFailed(range.offset());
+                candidates.remove(best);
             }
         }
+    }
+
+    private static boolean canRequestRange(Session session) {
+        return session != null
+            && !session.terminal
+            && session.anchorReady
+            && session.volume > 0.0f
+            && !session.localExhausted
+            && session.window.anchored();
     }
 
     private static HQDiagnostics.SourceIdentity diagnosticIdentity(Session session) {
