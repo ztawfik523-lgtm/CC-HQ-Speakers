@@ -13,6 +13,7 @@ public final class HQSpeakerClientModEvents {
 
     @SubscribeEvent
     public static void soundEngineLoad(SoundEngineLoadEvent event) {
+        HQSoundPhysicsRefreshClient.soundEngineReloaded();
         HQAudioDiagnosticsClient.soundEngineReloaded();
     }
 }
