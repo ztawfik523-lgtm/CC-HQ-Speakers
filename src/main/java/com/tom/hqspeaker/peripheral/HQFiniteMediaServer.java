@@ -808,11 +808,11 @@ public final class HQFiniteMediaServer {
         SharedNotification notification = null;
         synchronized (this) {
             Session s = session;
-            if (s == null || player == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
+            if (s == null || player == null || s.playback.terminal() || effectiveGain(s) <= 0.0f) return;
             if (!FiniteRangeValidation.requestMatches(
                     source, s.mediaId, s.generation, s.totalBytes,
                     packet.source(), packet.assetId(), packet.generation(), packet.offset(), packet.length())) return;
-            if (!s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+            if (!s.listeners.contains(player.getUUID()) || !isRelevant(s, player)) return;
 
             UUID playerId = player.getUUID();
             UUID assetId = s.mediaId;
@@ -840,11 +840,11 @@ public final class HQFiniteMediaServer {
         SharedNotification notification = null;
         synchronized (this) {
             Session s = session;
-            if (s == null || s.playback.terminal() || effectiveVolume(s) <= 0.0f) return;
+            if (s == null || s.playback.terminal() || effectiveGain(s) <= 0.0f) return;
             if (!FiniteRangeValidation.completionMatches(s.mediaId, s.generation, assetId, generation)) return;
 
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-            if (player == null || !s.listeners.contains(playerId) || !isRelevant(player)) return;
+            if (player == null || !s.listeners.contains(playerId) || !isRelevant(s, player)) return;
             if (!result.success()) {
                 notification = failServerSessionLocked(
                     s, "media range read failed: " + result.error(), System.nanoTime());
@@ -866,7 +866,7 @@ public final class HQFiniteMediaServer {
         synchronized (this) {
             Session s = session;
             if (s == null || player == null || packet.generation() != s.generation
-                    || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+                    || !s.listeners.contains(player.getUUID()) || !isRelevant(s, player)) return;
 
             if (packet.transition() == HQFiniteMediaStatusPacket.Transition.READY) {
                 long now = System.nanoTime();
@@ -959,13 +959,13 @@ public final class HQFiniteMediaServer {
                 s.listeners.remove(playerId);
                 continue;
             }
-            if (relevantOnly && !isRelevant(player)) continue;
+            if (relevantOnly && !isRelevant(s, player)) continue;
             sendPacketToPlayer("STATE", packet, player);
         }
     }
 
     private void sendState(Session s, ServerPlayer player) {
-        if (player == null || !s.listeners.contains(player.getUUID()) || !isRelevant(player)) return;
+        if (player == null || !s.listeners.contains(player.getUUID()) || !isRelevant(s, player)) return;
         sendPacketToPlayer("STATE", statePacket(s, System.nanoTime()), player);
     }
 
