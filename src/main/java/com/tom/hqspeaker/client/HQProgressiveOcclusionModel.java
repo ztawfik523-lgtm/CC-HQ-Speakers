@@ -87,11 +87,10 @@ final class HQProgressiveOcclusionModel {
             sourceX, sourceY, sourceZ,
             lastFullSourceX, lastFullSourceY, lastFullSourceZ) > SOURCE_CHANGE_EPSILON_SQUARED;
 
-        double center = boundedSample(
+        double center = sample(
             sampler,
             sourceX, sourceY, sourceZ,
-            listenerX, listenerY, listenerZ,
-            maximum);
+            listenerX, listenerY, listenerZ);
 
         boolean full = !ringsValid
             || sourceChanged
@@ -103,13 +102,11 @@ final class HQProgressiveOcclusionModel {
             innerSum = sampleRing(
                 sampler, INNER_VARIATION,
                 sourceX, sourceY, sourceZ,
-                listenerX, listenerY, listenerZ,
-                maximum);
+                listenerX, listenerY, listenerZ);
             outerSum = sampleRing(
                 sampler, OUTER_VARIATION,
                 sourceX, sourceY, sourceZ,
-                listenerX, listenerY, listenerZ,
-                maximum);
+                listenerX, listenerY, listenerZ);
             sampledPaths = 17;
             ringsValid = true;
             updateInnerNext = true;
@@ -124,16 +121,14 @@ final class HQProgressiveOcclusionModel {
             innerSum = sampleRing(
                 sampler, INNER_VARIATION,
                 sourceX, sourceY, sourceZ,
-                listenerX, listenerY, listenerZ,
-                maximum);
+                listenerX, listenerY, listenerZ);
             sampledPaths = 9;
             updateInnerNext = false;
         } else {
             outerSum = sampleRing(
                 sampler, OUTER_VARIATION,
                 sourceX, sourceY, sourceZ,
-                listenerX, listenerY, listenerZ,
-                maximum);
+                listenerX, listenerY, listenerZ);
             sampledPaths = 9;
             updateInnerNext = true;
         }
@@ -172,8 +167,7 @@ final class HQProgressiveOcclusionModel {
         OcclusionSampler sampler,
         double variation,
         double sourceX, double sourceY, double sourceZ,
-        double listenerX, double listenerY, double listenerZ,
-        double maxOcclusion
+        double listenerX, double listenerY, double listenerZ
     ) {
         double sum = 0.0;
         for (int sx = -1; sx <= 1; sx += 2) {
@@ -182,28 +176,28 @@ final class HQProgressiveOcclusionModel {
                     double ox = sx * variation;
                     double oy = sy * variation;
                     double oz = sz * variation;
-                    sum += boundedSample(
+                    sum += sample(
                         sampler,
                         sourceX + ox, sourceY + oy, sourceZ + oz,
-                        listenerX + ox, listenerY + oy, listenerZ + oz,
-                        maxOcclusion);
+                        listenerX + ox, listenerY + oy, listenerZ + oz);
                 }
             }
         }
         return sum;
     }
 
-    private static double boundedSample(
+    private static double sample(
         OcclusionSampler sampler,
         double sourceX, double sourceY, double sourceZ,
-        double listenerX, double listenerY, double listenerZ,
-        double maxOcclusion
+        double listenerX, double listenerY, double listenerZ
     ) {
         double value = sampler.sample(sourceX, sourceY, sourceZ, listenerX, listenerY, listenerZ);
         if (!Double.isFinite(value)) {
             throw new IllegalStateException("SPR occlusion sampler returned a non-finite value");
         }
-        return clamp(value, 0.0, maxOcclusion);
+        // Match the runtime-approved Beta3/Beta5 model: individual runOcclusion paths stay raw.
+        // SPR maxOcclusion is applied only after the weighted path blend, separately to cutoff/gain.
+        return value;
     }
 
     private static double distance(
