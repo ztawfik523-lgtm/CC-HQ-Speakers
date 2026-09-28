@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.diagnostics.HQDiagnostics;
+import com.tom.hqspeaker.config.HQAudioTuningProfile;
 import com.tom.hqspeaker.media.FiniteMediaFormat;
 import com.tom.hqspeaker.media.MediaAsset;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
@@ -993,11 +994,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
         LinkedHashMap<HQSpeakerCompositePeripheral, Long> expectedLifecycles = new LinkedHashMap<>();
+        LinkedHashMap<HQSpeakerCompositePeripheral, HQSpeakerPeripheral.PreparedTuning> preparedTunings =
+            new LinkedHashMap<>();
+        HQAudioTuningProfile groupProfile = HQSpeakerPeripheral.currentServerAudioProfile();
         for (HQSpeakerCompositePeripheral target : targets) {
             expectedLifecycles.put(target, target.legacy.lifecycleEpochSnapshot());
+            preparedTunings.put(target, target.legacy.prepareNewSourceTuning(groupProfile, volume, range));
         }
 
-        // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
+        // Validate all cheap tuning/input state before DNS or replacing current output.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
         UUID groupId = targets.size() > 1 ? UUID.randomUUID() : null;
         List<HQSpeakerCompositePeripheral> snapshot = targets;
@@ -1017,7 +1022,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 boolean complete = true;
                 for (HQSpeakerCompositePeripheral member : snapshot) {
                     boolean started = member.legacy.startValidatedStreamAtTick(
-                        url, volume, range, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                        url, preparedTunings.get(member), HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                         sealTick, groupId, expectedLifecycles.get(member));
                     if (!started) {
                         complete = false;
@@ -1045,6 +1050,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         String url = args.getString(1);
         Optional<Double> volume = args.optDouble(2);
         Optional<Double> range = args.optDouble(3);
+        HQSpeakerPeripheral.PreparedTuning preparedTuning =
+            target.legacy.prepareNewSourceTuning(volume, range);
 
         long expectedRevision = target.commandRevision.incrementAndGet();
         long expectedLifecycle = target.legacy.lifecycleEpochSnapshot();
@@ -1060,7 +1067,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             target.beginReplacingHQ(Owner.STREAM);
             boolean started = target.legacy.startValidatedStreamAtTick(
-                url, volume, range, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                url, preparedTuning, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                 0L, null, expectedLifecycle);
             if (started) target.owner = Owner.STREAM;
             return new Object[]{ started };
@@ -1072,9 +1079,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
         Optional<Double> range = args.optDouble(2);
+        HQSpeakerPeripheral.PreparedTuning preparedTuning =
+            legacy.prepareNewSourceTuning(volume, range);
         long expectedLifecycle = legacy.lifecycleEpochSnapshot();
 
-        // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
+        // Validate tuning before potentially blocking DNS and before replacing current output.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
 
         if (!"speakStream".equals(name)) throw new LuaException("No such stream method " + name);
@@ -1086,7 +1095,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 synchronized (this) {
                     if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return new Object[]{ false };
                     beginReplacingHQ(Owner.STREAM);
-                    boolean started = legacy.startValidatedStream(url, volume, range, format, name, expectedLifecycle);
+                    boolean started = legacy.startValidatedStream(url, preparedTuning, format, name, expectedLifecycle);
                     if (started) owner = Owner.STREAM;
                     return new Object[]{ started };
                 }

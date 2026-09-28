@@ -71,6 +71,8 @@ public class HQSpeakerPeripheral implements IPeripheral {
         float deliveryRange, long startTick
     ) {}
 
+    record PreparedTuning(HQAudioTuningProfile profile, HQAudioTuningProfile.Resolved resolved) {}
+
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
         this.world = world;
@@ -420,22 +422,32 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         return lifecycleEpoch == expected;
     }
 
-    boolean startValidatedStream(String url, Optional<Double> volume, Optional<Double> range,
+    PreparedTuning prepareNewSourceTuning(Optional<Double> volume, Optional<Double> range) throws LuaException {
+        return prepareNewSourceTuning(currentAudioProfile(), volume, range);
+    }
+
+    PreparedTuning prepareNewSourceTuning(
+            HQAudioTuningProfile profile, Optional<Double> volume, Optional<Double> range) throws LuaException {
+        Double requestedVolume = volume.orElse(null);
+        if (requestedVolume == null && Double.isFinite(speakerDefaultVolume)) requestedVolume = speakerDefaultVolume;
+        return new PreparedTuning(profile, resolve(profile, requestedVolume, range.orElse(null)));
+    }
+
+    boolean startValidatedStream(String url, PreparedTuning tuning,
                                  HQSpeakerAudioPacket.AudioFormat format,
                                  String method, long expectedLifecycle) throws LuaException {
-        return startValidatedStreamAtTick(url, volume, range, format, method, 0L, null, expectedLifecycle);
+        return startValidatedStreamAtTick(url, tuning, format, method, 0L, null, expectedLifecycle);
     }
 
     synchronized boolean startValidatedStreamAtTick(
-            String url, Optional<Double> volume, Optional<Double> range,
+            String url, PreparedTuning prepared,
             HQSpeakerAudioPacket.AudioFormat format, String method,
             long startTick, java.util.UUID syncGroupId, long expectedLifecycle) throws LuaException {
         if (lifecycleEpoch != expectedLifecycle) return false;
-
-        HQAudioTuningProfile tuning = currentAudioProfile();
-        Double requestedVolume = volume.orElse(null);
-        if (requestedVolume == null && Double.isFinite(speakerDefaultVolume)) requestedVolume = speakerDefaultVolume;
-        HQAudioTuningProfile.Resolved resolved = resolve(tuning, requestedVolume, range.orElse(null));
+        if (prepared == null || prepared.profile() == null || prepared.resolved() == null) {
+            throw new LuaException("audio tuning was not prepared");
+        }
+        HQAudioTuningProfile.Resolved resolved = prepared.resolved();
 
         speakStop();
         clearIcyMeta();
@@ -462,7 +474,7 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         return true;
     }
 
-    private HQAudioTuningProfile currentAudioProfile() throws LuaException {
+    static HQAudioTuningProfile currentServerAudioProfile() throws LuaException {
         try {
             return HQSpeakerServerConfig.audioProfile();
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -470,8 +482,22 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         }
     }
 
+    private HQAudioTuningProfile currentAudioProfile() throws LuaException {
+        return currentServerAudioProfile();
+    }
+
+    /*
+     * Kept separate so active RAW sources can resolve later chunks against their original profile.
+     */
     private HQAudioTuningProfile.Resolved resolve(
             HQAudioTuningProfile tuning, Double requestedVolume, Double requestedRange) throws LuaException {
+        try {
+            return HQSpeakerServerConfig.audioProfile();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw new LuaException("invalid HQ speaker server audio config: " + e.getMessage());
+        }
+    }
+
         double volume = requestedVolume == null ? tuning.defaultVolume() : requestedVolume;
         try {
             return tuning.resolve(volume, requestedRange);
