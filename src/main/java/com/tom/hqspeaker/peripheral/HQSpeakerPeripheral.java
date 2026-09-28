@@ -52,9 +52,15 @@ public class HQSpeakerPeripheral implements IPeripheral {
     /** NaN means "use the current server config default" for the next new source. */
     private volatile double speakerDefaultVolume = Double.NaN;
     private HQAudioTuningProfile rawTuning;
+    private float rawLastVolume;
+    private float rawLastGain;
     private float rawLastRange;
+    private boolean rawLastExplicitRange;
     private float activeStopRange;
+    private float streamVolume;
+    private float streamGain;
     private float streamRange;
+    private boolean streamExplicitRange;
 
     private final AtomicBoolean streamActive = new AtomicBoolean(false);
     private volatile String     streamUrl    = null;
@@ -218,6 +224,25 @@ public class HQSpeakerPeripheral implements IPeripheral {
         );
     }
 
+    /**
+     * Reuse one already-converted RAW sample block while resolving it against this endpoint's existing
+     * source-lifetime profile. This matters when speakPCMAll joins endpoints whose RAW lifetimes began
+     * under different server-config snapshots.
+     */
+    synchronized PreparedPcm retunePreparedPcm(PreparedPcm template, Double requestedRange)
+            throws LuaException {
+        if (template == null) throw new LuaException("speakPCM: audio was not prepared");
+        HQAudioTuningProfile tuning = rawTuning != null ? rawTuning : currentAudioProfile();
+        HQAudioTuningProfile.Resolved resolved =
+            resolve(tuning, (double) template.volume(), requestedRange);
+        return new PreparedPcm(
+            template.data(),
+            resolved.logicalVolume(), resolved.gain(), resolved.range(), resolved.explicitRange(),
+            tuning,
+            template.samples()
+        );
+    }
+
     synchronized boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
         if (prepared == null) return false;
         if (rawTuning != null && rawTuning != prepared.tuning()) {
@@ -235,7 +260,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
         if (!speakerQueue.offer(chunk)) return false;
 
         if (rawTuning == null) rawTuning = prepared.tuning();
+        rawLastVolume = prepared.volume();
+        rawLastGain = prepared.gain();
         rawLastRange = prepared.range();
+        rawLastExplicitRange = prepared.explicitRange();
         activeStopRange = Math.max(activeStopRange, deliveryRange);
         if (speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return true;
@@ -465,7 +493,10 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
 
         streamActive.set(true);
         streamUrl = url;
+        streamVolume = resolved.logicalVolume();
+        streamGain = resolved.gain();
         streamRange = resolved.range();
+        streamExplicitRange = resolved.explicitRange();
         activeStopRange = resolved.range();
         IcyMetaPacket.SPEAKER_REGISTRY.put(speakerSource, this);
         HQSpeakerMod.log("HQSpeaker: started stream (" + method + ") from " + url
@@ -499,11 +530,27 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         }
     }
 
+    record ActiveTuning(float volume, float gain, float range, boolean explicitRange) {}
+
+    synchronized ActiveTuning rawActiveTuning() {
+        return new ActiveTuning(rawLastVolume, rawLastGain, rawLastRange, rawLastExplicitRange);
+    }
+
+    synchronized ActiveTuning streamActiveTuning() {
+        return new ActiveTuning(streamVolume, streamGain, streamRange, streamExplicitRange);
+    }
+
     private void resetTuningState() {
         rawTuning = null;
+        rawLastVolume = 0.0f;
+        rawLastGain = 0.0f;
         rawLastRange = 0.0f;
+        rawLastExplicitRange = false;
         activeStopRange = 0.0f;
+        streamVolume = 0.0f;
+        streamGain = 0.0f;
         streamRange = 0.0f;
+        streamExplicitRange = false;
     }
 
     private void clearIcyMeta() {

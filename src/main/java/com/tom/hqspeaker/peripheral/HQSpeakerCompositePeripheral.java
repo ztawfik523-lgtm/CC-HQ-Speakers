@@ -902,12 +902,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult startRawAll(IComputerAccess computer, String name, IArguments args) throws LuaException {
-        HQSpeakerPeripheral.PreparedPcm prepared = legacy.preparePcm(args);
-        validateRawPrepared(name, prepared);
+        HQSpeakerPeripheral.PreparedPcm anchorPrepared = legacy.preparePcm(args);
+        validateRawPrepared(name, anchorPrepared);
+        Double requestedRange = args.optDouble(2).orElse(null);
 
         List<HQSpeakerCompositePeripheral> members = membersFor(computer);
         if (members.isEmpty()) members = List.of(this);
         members = List.copyOf(members);
+
+        LinkedHashMap<HQSpeakerCompositePeripheral, HQSpeakerPeripheral.PreparedPcm> preparedByMember =
+            new LinkedHashMap<>();
+        for (HQSpeakerCompositePeripheral member : members) {
+            HQSpeakerPeripheral.PreparedPcm prepared = member.legacy == legacy
+                ? anchorPrepared
+                : member.legacy.retunePreparedPcm(anchorPrepared, requestedRange);
+            validateRawPrepared(name, prepared);
+            preparedByMember.put(member, prepared);
+        }
 
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(members);
         long startTick = members.size() > 1 ? members.getFirst().legacy.nextGroupStartTick() : 0L;
@@ -916,9 +927,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return withGroupLocks(snapshot, () -> {
             if (!revisionsMatch(expectedRevisions)) return MethodResult.of(false);
 
-            // Preflight and commit happen while the complete target snapshot is reserved. No other Lua command can
-            // consume RAW capacity or replace one member between the all-speaker admission check and its commit.
+            // Preflight and commit happen while the complete target snapshot is reserved. Each endpoint keeps the
+            // tuning profile of its own current RAW lifetime; new endpoints use the current server profile.
             for (HQSpeakerCompositePeripheral member : snapshot) {
+                HQSpeakerPeripheral.PreparedPcm prepared = preparedByMember.get(member);
                 if (!member.canAcceptRaw(prepared)) {
                     member.rawCapacityWaiters.put(computer, prepared.samples());
                     return MethodResult.of(false);
@@ -926,6 +938,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
 
             for (HQSpeakerCompositePeripheral member : snapshot) {
+                HQSpeakerPeripheral.PreparedPcm prepared = preparedByMember.get(member);
                 if (!member.commitRawPrepared(computer, prepared, startTick)) {
                     throw new IllegalStateException("preflighted RAW multispeaker commit was unexpectedly rejected");
                 }
@@ -1244,6 +1257,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         status.put("state", active ? "playing" : "idle");
         status.put("kind", active ? "stream" : "none");
         status.put("observed", false);
+        if (active) addTuningStatus(status, legacy.streamActiveTuning());
         status.put("canPause", false);
         status.put("canSeek", false);
         status.put("canLoop", false);
@@ -1252,13 +1266,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private Map<String, Object> rawStatus() {
         Map<String, Object> status = new HashMap<>();
-        status.put("state", isHQContinuousActive() ? "playing" : "idle");
+        boolean active = isHQContinuousActive();
+        status.put("state", active ? "playing" : "idle");
         status.put("kind", "raw");
         status.put("observed", false);
+        if (active) addTuningStatus(status, legacy.rawActiveTuning());
         status.put("canPause", false);
         status.put("canSeek", false);
         status.put("canLoop", false);
         return status;
+    }
+
+    private static void addTuningStatus(Map<String, Object> status, HQSpeakerPeripheral.ActiveTuning tuning) {
+        if (status == null || tuning == null) return;
+        status.put("volume", (double) tuning.volume());
+        status.put("gain", (double) tuning.gain());
+        status.put("range", (double) tuning.range());
+        status.put("rangeMode", tuning.explicitRange() ? "explicit" : "auto");
     }
 
     private static Map<String, Object> idleStatus() {
