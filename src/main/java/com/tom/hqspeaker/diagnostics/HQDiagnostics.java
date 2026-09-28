@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>The normal release carries this code, but it is dormant until explicitly enabled from the speaker peripheral.
  * The client and integrated server share these static structures in singleplayer, which lets ComputerCraft query
- * client/OpenAL evidence without adding another network payload to protocol v10.</p>
+ * client/OpenAL evidence without adding another network payload to protocol v11.</p>
  */
 public final class HQDiagnostics {
     public record SourceIdentity(
@@ -203,6 +203,21 @@ public final class HQDiagnostics {
         if (metrics != null) metrics.soundPhysicsApplied(directGain, directGainHF);
     }
 
+    public static void soundPhysicsProgressive(
+        UUID source,
+        double rawOcclusion,
+        int sampledPaths,
+        boolean fullRefresh
+    ) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null) metrics.soundPhysicsProgressive(rawOcclusion, sampledPaths, fullRefresh);
+    }
+
+    public static void soundPhysicsReflectionStabilized(UUID source) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null) metrics.soundPhysicsReflectionStabilized();
+    }
+
     /**
      * Record direct evidence that SPR's full processSound path returned for one tracked HQ source.
      *
@@ -370,6 +385,12 @@ public final class HQDiagnostics {
         private long soundPhysicsChannelStarts;
         private long soundPhysicsSamples;
         private long soundPhysicsProcessCalls;
+        private long soundPhysicsProgressiveCalls;
+        private long soundPhysicsProgressiveFullRefreshes;
+        private long soundPhysicsProgressivePartialRefreshes;
+        private long soundPhysicsProgressivePaths;
+        private double lastSoundPhysicsProgressiveRawOcclusion;
+        private long soundPhysicsReflectionStabilizedCalls;
         private double lastSoundPhysicsProcessX;
         private double lastSoundPhysicsProcessY;
         private double lastSoundPhysicsProcessZ;
@@ -426,6 +447,23 @@ public final class HQDiagnostics {
                 minDirectGainHF = Math.min(minDirectGainHF, directGainHF);
                 maxDirectGainHF = Math.max(maxDirectGainHF, directGainHF);
             }
+        }
+
+        synchronized void soundPhysicsProgressive(
+            double rawOcclusion,
+            int sampledPaths,
+            boolean fullRefresh
+        ) {
+            soundPhysicsProgressiveCalls++;
+            soundPhysicsProgressivePaths += Math.max(0, sampledPaths);
+            lastSoundPhysicsProgressiveRawOcclusion =
+                Double.isFinite(rawOcclusion) ? Math.max(0.0, rawOcclusion) : 0.0;
+            if (fullRefresh) soundPhysicsProgressiveFullRefreshes++;
+            else soundPhysicsProgressivePartialRefreshes++;
+        }
+
+        synchronized void soundPhysicsReflectionStabilized() {
+            soundPhysicsReflectionStabilizedCalls++;
         }
 
         synchronized void soundPhysicsProcessed(
@@ -585,6 +623,12 @@ public final class HQDiagnostics {
             out.put("soundPhysicsReflectedZ", lastSoundPhysicsReflectedZ);
             out.put("soundPhysicsChannelStarts", soundPhysicsChannelStarts);
             out.put("soundPhysicsSamples", soundPhysicsSamples);
+            out.put("soundPhysicsProgressiveCalls", soundPhysicsProgressiveCalls);
+            out.put("soundPhysicsProgressiveFullRefreshes", soundPhysicsProgressiveFullRefreshes);
+            out.put("soundPhysicsProgressivePartialRefreshes", soundPhysicsProgressivePartialRefreshes);
+            out.put("soundPhysicsProgressivePaths", soundPhysicsProgressivePaths);
+            out.put("soundPhysicsProgressiveRawOcclusion", lastSoundPhysicsProgressiveRawOcclusion);
+            out.put("soundPhysicsReflectionStabilizedCalls", soundPhysicsReflectionStabilizedCalls);
             out.put("directFilter", lastDirectFilter);
             out.put("directGain", lastDirectGain);
             out.put("directGainHF", lastDirectGainHF);

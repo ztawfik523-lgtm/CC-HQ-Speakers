@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.client;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
@@ -109,6 +110,8 @@ public final class HQSoundPhysicsAcousticsClient {
                     state.rawOcclusion = direct.rawOcclusion();
                     targetDirectCutoff = direct.directCutoff();
                     targetDirectGain = direct.directGain();
+                    HQDiagnostics.soundPhysicsProgressive(
+                        state.source, direct.rawOcclusion(), direct.sampledPaths(), direct.fullRefresh());
                 } catch (RuntimeException failure) {
                     state.progressive.reset();
                     if (OCCLUSION_WARNING_LOGGED.compareAndSet(false, true)) {
@@ -168,6 +171,7 @@ public final class HQSoundPhysicsAcousticsClient {
                 state.reflection.update(physical, reflected, state.rawOcclusion);
             HQSoundPhysicsRefreshClient.applyAcousticPosition(
                 openAlSource, stabilized.x(), stabilized.y(), stabilized.z());
+            HQDiagnostics.soundPhysicsReflectionStabilized(state.source);
         }
     }
 
