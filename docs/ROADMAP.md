@@ -43,7 +43,7 @@ volume: 0    0.5   1.0   1.5   2.0   2.5   3.0
 range:  0     12    29    48    70    96    132 blocks
 ```
 
-Starting gain anchors may use a simple monotonic 0..1 curve, but gain tuning is not acoustically frozen until runtime listening. Minecraft clamps normal SoundInstance gain to 1.0, so the default server gain anchors must remain within 0..1 unless we deliberately replace Minecraft's gain ownership later.
+Selected starting gain anchors are `0, 0.17, 0.34, 0.50, 0.67, 0.84, 1.0`. This is the requested near-linear progression with slight upward rounding. Minecraft clamps normal SoundInstance gain to 1.0, so the default server gain anchors remain within 0..1.
 
 ## Server config
 
@@ -55,7 +55,7 @@ Planned controls:
 defaultVolume = 1.5
 maxVolume = 3.0
 allowRangeOverride = true
-maxRange = 512.0
+maxRange = 256.0
 
 gain anchors at 0 / 0.5 / 1 / 1.5 / 2 / 2.5 / 3
 range anchors at 0 / 0.5 / 1 / 1.5 / 2 / 2.5 / 3

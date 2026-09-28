@@ -1,15 +1,15 @@
-# Lua API — frozen v10
+# Lua API — working v11
 
 Updated: 2026-09-26
 
-Peripheral type remains `speaker`. See `API-FREEZE-V10.md` for the release contract.
+Peripheral type remains `speaker`. The v10 freeze remains historical evidence; the current working contract is being updated for protocol v11 volume/range tuning.
 
 ## Recommended finite files
 
 ```lua
 local speaker = peripheral.find("speaker")
 local hq = require("hqspeaker")
-hq.playFile(speaker, "/music/song.mp3", { volume = 0.6 })
+hq.playFile(speaker, "/music/song.mp3", { volume = 1.5, range = 48 })
 ```
 
 Module helpers: `prepareFile`, `preparedInfo`, `preparedFormats`, `playPrepared`, `playPreparedAll`, `playFile`, `playFileAll`, `releasePrepared`, mute helpers.
@@ -20,13 +20,15 @@ Compatibility byte names: `speakMp3/speakWav` plus All/At.
 
 ## Finite controls
 
-Singular: `audioStatus`, `audioPause`, `audioResume`, `audioSeek`, `audioSetVolume`, `audioSetLooping`, `audioStop`, `audioSetMuted`.
+Singular: `audioStatus`, `audioPause`, `audioResume`, `audioSeek`, `audioSetVolume`, `audioSetRange`, `audioSetLooping`, `audioStop`, `audioSetMuted`.
 
-All/At equivalents exist for status, pause/resume, seek, volume, looping, stop and mute.
+All/At equivalents exist for status, pause/resume, seek, volume, range, looping, stop and mute.
 
 Shared playback operations: pause/resume/seek/loop and ordinary/All stop.
 
-Endpoint operations: volume/mute. `audioStopAt(index)` stops/detaches only that endpoint.
+Endpoint operations: volume/range/mute. `audioStopAt(index)` stops/detaches only that endpoint. Calling `audioSetRange()` (or the All/At equivalent without a range value) returns that endpoint to automatic volume-derived range.
+
+`audioStatus` reports logical `volume`, resolved `gain`, resolved `range`, and `rangeMode` (`auto` or `explicit`).
 
 ## Native CC:T
 
@@ -36,7 +38,7 @@ Added selected-endpoint helpers: `playNoteAll/At`, `playSoundAll/At`, `playAudio
 
 ## RAW
 
-`speakPCM(samples [, volume])`, `speakPCMAll`, `speakPCMAt`.
+`speakPCM(samples [, volume [, range]])`, `speakPCMAll`, `speakPCMAt`.
 
 Samples are signed 16-bit integers, mono 48 kHz, max 131072 samples/call. Backpressure rejection returns false; a producer that observed rejection may wait for `hqspeaker_audio_empty`.
 
@@ -44,9 +46,9 @@ Helpers: `speakStop`, `speakVolume`, `speakIsPlaying`, `speakQueueSize`, `speakS
 
 ## MP3/ICY radio
 
-`speakStream(url [, volume])`  
-`speakStreamAll(url [, volume])`  
-`speakStreamAt(index, url [, volume])`
+`speakStream(url [, volume [, range]])`  
+`speakStreamAll(url [, volume [, range]])`  
+`speakStreamAt(index, url [, volume [, range]])`
 
 Metadata/status helpers: `isStreaming`, `getStreamUrl`, `getStreamFormats`, `getStreamMeta`, `getStreamTitle`, `getStreamArtist`, `getStreamSong`, `getStreamStation`, `getStreamGenre`, `getStreamMetaSerial`.
 
