@@ -1,5 +1,6 @@
--- Standalone C2: Sound Physics proof on completely normal Minecraft ground.
+-- Standalone C2: live Sound Physics refresh on normal Minecraft ground.
 -- Computer and speaker must NOT be on a Sable contraption.
+-- Sound Physics "Update Moving Sounds" must be OFF for this test.
 -- Usage: v10_c2_spr <mp3>
 
 local args = {...}
@@ -7,7 +8,6 @@ assert(args[1] and not args[2], "usage: v10_c2_spr <mp3>")
 
 local MP3_PATH = args[1]
 local LOG = "/v10-c2-spr.log"
-local MIN_LISTEN_SECONDS = 20
 
 if fs.exists(LOG) then fs.delete(LOG) end
 
@@ -57,14 +57,7 @@ local function waitPlaying(timeout)
     if status.state == "playing" then return end
     sleep(0.05)
   end
-  error("timed out waiting for endpoint 1 to play", 0)
-end
-
-local function resetDiag(label)
-  safeStop()
-  sleep(0.25)
-  local epoch = speaker.hqDiagReset()
-  log("DIAG", label .. " epoch=" .. tostring(epoch))
+  error("timed out waiting for speaker to play", 0)
 end
 
 local function sourceForLocalSpeaker(snapshot)
@@ -76,8 +69,7 @@ local function sourceForLocalSpeaker(snapshot)
       count = count + 1
     end
   end
-  assert(count == 1,
-    "expected exactly one active finite diagnostic source, got " .. tostring(count))
+  assert(count == 1, "expected exactly one active finite diagnostic source, got " .. tostring(count))
   return found
 end
 
@@ -92,124 +84,74 @@ local function assertSpr(source, label)
     label .. ": SPR processSound ran but no environment write was observed")
 end
 
-local function listenForAWhile(label)
-  print("")
-  print(label .. " is now playing and looping.")
-  print("Listen and walk around if you want.")
-  print("Minimum listening time: " .. MIN_LISTEN_SECONDS .. " seconds.")
-
-  local remaining = MIN_LISTEN_SECONDS
-  while remaining > 0 do
-    local step = math.min(5, remaining)
-    sleep(step)
-    remaining = remaining - step
-    if remaining > 0 then
-      print(remaining .. " seconds minimum remaining...")
-    end
-  end
-
-  print("Minimum complete.")
-  print("Keep listening as long as you want.")
-  print("Press ENTER only when you are finished with this phase.")
-  waitEnter()
-end
-
-local function startLoopedMp3(label, mp3)
-  resetDiag(label)
-  assert(speaker.speakMp3(mp3, 0.55), label .. ": MP3 rejected")
-  waitPlaying(15)
-  assert(speaker.audioSetLooping(true), label .. ": could not enable looping")
-end
-
 local mp3 = readBinary(MP3_PATH)
 
 local ok, err = pcall(function()
   speaker.hqDiagEnable(true)
 
   prompt({
-    "C2 NORMAL-GROUND SOUND PHYSICS TEST",
+    "C2 LIVE SOUND PHYSICS TEST",
     "",
-    "IMPORTANT:",
-    "- The COMPUTER must be placed normally in the Minecraft world.",
-    "- The SPEAKER must be placed normally in the Minecraft world.",
-    "- Do NOT use a Sable contraption for either block.",
-    "- Use ONE speaker for this test.",
+    "- Computer and speaker: normal Minecraft ground, NOT Sable.",
+    "- Use one speaker and one solid normal-block wall.",
+    "- In Sound Physics, turn Update Moving Sounds OFF.",
     "",
-    "Prepare an open area and a solid normal-block wall nearby.",
-    "For the two measurements, try to stand about the same distance from the speaker.",
-    "Press ENTER when the normal-ground setup is ready.",
+    "Start on the OPEN side with clear line of sight to the speaker.",
+    "Press ENTER when ready.",
   })
   waitEnter()
 
-  -- Open-air baseline.
-  prompt({
-    "PHASE 1: OPEN AIR",
-    "Stand where there is a clear line between you and the speaker.",
-    "Do not put the wall between you and the speaker yet.",
-    "Press ENTER to start the open-air sound.",
-  })
-  waitEnter()
+  safeStop()
+  sleep(0.25)
+  local epoch = speaker.hqDiagReset()
+  log("DIAG", "live refresh epoch=" .. tostring(epoch))
 
-  startLoopedMp3("open air", mp3)
-  listenForAWhile("OPEN AIR")
-  local open = speaker.hqDiagSnapshot()
-  assert((open.capabilities or {}).soundPhysicsLoaded == true, "Sound Physics Remastered was not detected")
-  local before = sourceForLocalSpeaker(open)
-  assertSpr(before, "open air")
+  assert(speaker.speakMp3(mp3, 0.55), "MP3 rejected")
+  waitPlaying(15)
+  assert(speaker.audioSetLooping(true), "could not enable looping")
+
+  -- Give the HQ-only safety cadence enough time to prove the long-lived source is being reprocessed.
+  sleep(1.6)
+  local openSnap = speaker.hqDiagSnapshot()
+  assert((openSnap.capabilities or {}).soundPhysicsLoaded == true, "Sound Physics Remastered was not detected")
+  local open = sourceForLocalSpeaker(openSnap)
+  assertSpr(open, "open air")
+  local openCalls = open.soundPhysicsProcessCalls or 0
+  assert(openCalls >= 2,
+    "HQ live refresh did not re-run SPR while Update Moving Sounds was off")
   log("OPEN", ("gain=%.4f HF=%.4f calls=%d"):format(
-    before.directGain or -1, before.directGainHF or -1, before.soundPhysicsProcessCalls or 0))
-  safeStop()
+    open.directGain or -1, open.directGainHF or -1, openCalls))
 
-  -- Behind-wall restart.
   prompt({
-    "PHASE 2: BEHIND SOLID WALL",
-    "Move so the NORMAL Minecraft wall is directly between you and the speaker.",
-    "Try to stay about the same distance from the speaker as in Phase 1.",
-    "The sound will be RESTARTED from behind the wall.",
-    "Press ENTER when you are in position.",
+    "",
+    "The SAME MP3 will keep playing. Do NOT restart it.",
+    "Press ENTER, then walk behind the solid wall and stay there.",
+    "The script samples automatically after 8 seconds.",
+    "Do not return to the computer until the sound stops.",
   })
   waitEnter()
 
-  startLoopedMp3("wall restart", mp3)
-  listenForAWhile("BEHIND WALL")
-  local wall = speaker.hqDiagSnapshot()
-  local after = sourceForLocalSpeaker(wall)
-  assertSpr(after, "wall")
-  log("WALL", ("gain=%.4f HF=%.4f calls=%d"):format(
-    after.directGain or -1, after.directGainHF or -1, after.soundPhysicsProcessCalls or 0))
-  safeStop()
+  sleep(8)
+  local wallSnap = speaker.hqDiagSnapshot()
+  local wall = sourceForLocalSpeaker(wallSnap)
+  assertSpr(wall, "live wall")
+  local wallCalls = wall.soundPhysicsProcessCalls or 0
 
-  local gainDrop = (before.directGain or 1) - (after.directGain or 1)
-  local hfDrop = (before.directGainHF or 1) - (after.directGainHF or 1)
-  log("DROP", ("open->wall gain=%.4f HF=%.4f"):format(gainDrop, hfDrop))
+  log("WALL", ("gain=%.4f HF=%.4f calls=%d"):format(
+    wall.directGain or -1, wall.directGainHF or -1, wallCalls))
+
+  assert(wallCalls > openCalls,
+    "SPR did not reprocess the already-playing HQ source after movement")
+
+  local gainDrop = (open.directGain or 1) - (wall.directGain or 1)
+  local hfDrop = (open.directGainHF or 1) - (wall.directGainHF or 1)
+  log("DROP", ("live open->wall gain=%.4f HF=%.4f"):format(gainDrop, hfDrop))
 
   assert(gainDrop > 0.01 or hfDrop > 0.01,
-    "SPR processed HQ audio, but the normal-world wall did not measurably increase occlusion")
+    "already-playing HQ audio did not become measurably occluded behind the wall")
 
-  prompt({
-    "PHASE 3: OPEN AIR AGAIN",
-    "Move back to the OPEN side of the same wall.",
-    "Keep roughly the same distance from the speaker.",
-    "Press ENTER to restart the sound for the final comparison.",
-  })
-  waitEnter()
-
-  startLoopedMp3("final open air", mp3)
-  listenForAWhile("FINAL OPEN AIR")
-  local finalOpen = speaker.hqDiagSnapshot()
-  local finalSource = sourceForLocalSpeaker(finalOpen)
-  assertSpr(finalSource, "final open air")
-  log("FINAL", ("gain=%.4f HF=%.4f calls=%d"):format(
-    finalSource.directGain or -1, finalSource.directGainHF or -1,
-    finalSource.soundPhysicsProcessCalls or 0))
-
-  local gainRecovery = (finalSource.directGain or 1) - (after.directGain or 1)
-  local hfRecovery = (finalSource.directGainHF or 1) - (after.directGainHF or 1)
-  log("RECOVER", ("wall->open gain=%.4f HF=%.4f"):format(gainRecovery, hfRecovery))
-  assert(gainRecovery > 0.01 or hfRecovery > 0.01,
-    "SPR wall occlusion did not measurably clear after returning to open air and restarting")
-
-  log("PASS", "C2 Sound Physics normal-ground open/wall/open test")
+  safeStop()
+  log("PASS", "C2 live SPR refresh works with global Update Moving Sounds OFF")
 end)
 
 safeStop()
