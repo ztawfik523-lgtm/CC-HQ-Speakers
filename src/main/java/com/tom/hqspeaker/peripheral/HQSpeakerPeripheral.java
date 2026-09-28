@@ -491,13 +491,6 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
      */
     private HQAudioTuningProfile.Resolved resolve(
             HQAudioTuningProfile tuning, Double requestedVolume, Double requestedRange) throws LuaException {
-        try {
-            return HQSpeakerServerConfig.audioProfile();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            throw new LuaException("invalid HQ speaker server audio config: " + e.getMessage());
-        }
-    }
-
         double volume = requestedVolume == null ? tuning.defaultVolume() : requestedVolume;
         try {
             return tuning.resolve(volume, requestedRange);
