@@ -183,9 +183,9 @@ final class HQPrivateEfxClient {
             int maxAuxSends = readPrivateStaticInt(soundPhysics, "maxAuxSends");
             if (maxAuxSends <= 0) return null;
 
-            int supported = Math.min(4, maxAuxSends);
-            for (int i = 0; i < supported; i++) {
-                if (slots[i] == 0) return null;
+            for (int i = 0; i < 4; i++) {
+                int requiredSends = 4 - i;
+                if (maxAuxSends >= requiredSends && slots[i] == 0) return null;
             }
             return new SprLayout(slots, maxAuxSends);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
