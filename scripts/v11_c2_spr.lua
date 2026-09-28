@@ -81,6 +81,10 @@ local function assertSpr(source, label)
     label .. ": HQ progressive direct-occlusion path never ran")
   assert((source.soundPhysicsProgressivePaths or 0) >= 17,
     label .. ": HQ progressive path did not complete a full 17-probe refresh")
+  assert((source.soundPhysicsPrivateEfxApplies or 0) > 0,
+    label .. ": HQ private per-source SPR filters were never applied")
+  assert((source.soundPhysicsPrivateDirectFilter or 0) > 0,
+    label .. ": HQ private direct filter was not created")
 end
 
 local mp3 = readBinary(MP3_PATH)
@@ -117,11 +121,13 @@ local ok, err = pcall(function()
   local openCalls = open.soundPhysicsProcessCalls or 0
   assert(openCalls >= 2, "HQ live refresh did not re-run SPR while Update Moving Sounds was off")
 
-  log("OPEN", ("gain=%.4f HF=%.4f calls=%d progressive=%d paths=%d raw=%.4f"):format(
+  log("OPEN", ("gain=%.4f HF=%.4f calls=%d progressive=%d paths=%d raw=%.4f efx=%d filter=%d"):format(
     open.directGain or -1, open.directGainHF or -1, openCalls,
     open.soundPhysicsProgressiveCalls or 0,
     open.soundPhysicsProgressivePaths or 0,
-    open.soundPhysicsProgressiveRawOcclusion or -1))
+    open.soundPhysicsProgressiveRawOcclusion or -1,
+    open.soundPhysicsPrivateEfxApplies or 0,
+    open.soundPhysicsPrivateDirectFilter or 0))
 
   prompt({
     "",
@@ -137,12 +143,14 @@ local ok, err = pcall(function()
   assertSpr(wall, "live wall")
   local wallCalls = wall.soundPhysicsProcessCalls or 0
 
-  log("WALL", ("gain=%.4f HF=%.4f calls=%d progressive=%d paths=%d raw=%.4f reflected=%d"):format(
+  log("WALL", ("gain=%.4f HF=%.4f calls=%d progressive=%d paths=%d raw=%.4f reflected=%d efx=%d fallback=%d"):format(
     wall.directGain or -1, wall.directGainHF or -1, wallCalls,
     wall.soundPhysicsProgressiveCalls or 0,
     wall.soundPhysicsProgressivePaths or 0,
     wall.soundPhysicsProgressiveRawOcclusion or -1,
-    wall.soundPhysicsReflectionStabilizedCalls or 0))
+    wall.soundPhysicsReflectionStabilizedCalls or 0,
+    wall.soundPhysicsPrivateEfxApplies or 0,
+    wall.soundPhysicsPrivateEfxFallbacks or 0))
 
   assert(wallCalls > openCalls, "SPR did not reprocess the already-playing HQ source after movement")
   assert((wall.soundPhysicsProgressiveCalls or 0) > (open.soundPhysicsProgressiveCalls or 0),
