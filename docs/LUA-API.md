@@ -1,6 +1,6 @@
 # Lua API — working v11
 
-Updated: 2026-09-26
+Updated: 2026-09-28
 
 Peripheral type remains `speaker`. The v10 freeze remains historical evidence; the current working contract is being updated for protocol v11 volume/range tuning.
 

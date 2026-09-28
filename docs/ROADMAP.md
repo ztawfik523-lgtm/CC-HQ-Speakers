@@ -2,7 +2,7 @@
 
 Updated: 2026-09-28
 
-Branch baseline: `codex/m1j-multispeaker` at `74a49440dfd7a2aa1ddf83307600a9729ed3f0c5`.
+Current implementation checkpoint before this docs update: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`.
 
 This roadmap supersedes the older “v10 is frozen / no HQ refresh planned” wording. Runtime work proved that long-lived HQ sources need their own efficient SPR reevaluation path, and the product is now intentionally adding the agreed volume/range model plus the previously accepted acoustic tuning work.
 
@@ -19,7 +19,7 @@ Build/test/package only NeoForge **21.1.247**. Keep metadata compatibility `[21.
 - The C2 root cause is established: SPR processes an HQ source at start but does not reevaluate a long-lived source as the listener/environment changes unless moving-sound updates are enabled.
 - Enabling SPR “Update Moving Sounds” makes HQ occlusion update, confirming that missing reevaluation is the issue.
 - Current branch contains the HQ-only movement-gated SPR scheduler candidate: ~0.15-block accumulated movement threshold, ~100 ms moving cadence, settle refresh, fixed ~1 s safety refresh, no catch-up bursts, and at most one expensive SPR refresh task globally at a time.
-- Current server config infrastructure already exists in `HQSpeakerServerConfig`; it should be extended, not replaced.
+- The existing `HQSpeakerServerConfig` SERVER config has been extended with the selected audio tuning profile.
 
 ## Locked volume/range product model
 
@@ -47,9 +47,9 @@ Selected starting gain anchors are `0, 0.17, 0.34, 0.50, 0.67, 0.84, 1.0`. This 
 
 ## Server config
 
-Extend the existing NeoForge SERVER config with an `audio` section.
+The existing NeoForge SERVER config now contains the `audio` section.
 
-Planned controls:
+Implemented controls:
 
 ```text
 defaultVolume = 1.5
@@ -74,68 +74,34 @@ No per-computer config snapshot, no script-restart rule, and no retroactive muta
 
 For a continuous RAW source, the profile snapshot begins when RAW ownership starts and survives subsequent `speakPCM` chunks until that RAW source naturally closes or is stopped.
 
-## Implementation order
+## Implementation status
 
-1. **Audio tuning core**
-   - Add one immutable server-side tuning-profile/snapshot type.
-   - Implement anchor interpolation once and reuse it everywhere.
-   - Resolve logical volume -> source gain + automatic range.
-   - Validate server limits and explicit range overrides with Lua errors.
+Source work through the acoustic integration is implemented and CI-covered. Runtime evidence is now the blocker, not missing core implementation.
 
-2. **Protocol v11, still 9 payloads**
-   - Packet shape must change because clients need the server-resolved gain/range.
-   - Keep exactly the existing 9 payload types; do not add a separate config/tuning payload.
-   - Finite BEGIN/STATE carry resolved gain/range.
-   - RAW/radio audio packets carry resolved gain/range.
-   - Server remains authoritative; clients do not independently reinterpret the server config.
+Completed:
 
-3. **Replace the hard 32-block HQ reach**
-   - Current finite listener relevance and legacy RAW/radio delivery still use a fixed 32-block server radius; this must follow each source's resolved range.
-   - Finite listener membership uses the endpoint's current effective range.
-   - RAW delivery uses the current resolved range and preserves enough previous reach to deliver a shrink/update/stop correctly.
-   - Radio start/metadata/stop use the radio source's snapshotted range.
-   - Do not confuse media range-read transport with audible speaker range.
+1. immutable server-owned audio tuning profiles and Lua-error validation;
+2. protocol v11 with the same 9 payload types and server-resolved gain/range;
+3. removal of the fixed 32-block HQ delivery/relevance limit;
+4. resolved client gain plus explicit linear-clamped attenuation range;
+5. optional Lua range plus endpoint-local finite range controls/status;
+6. the accepted Beta3/Beta5 progressive direct model, smoothing and reflection stabilization;
+7. HQ-only movement-gated SPR reevaluation with global SPR "Update Moving Sounds" allowed to remain OFF;
+8. per-source private EFX filters for HQ sources while retaining SPR's native room/reverb targets and auxiliary effect slots.
 
-4. **Client gain + attenuation**
-   - Replace finite's hardcoded `linearAttenuation(32)`.
-   - Explicitly apply the resolved range to finite, RAW and radio channels.
-   - Keep Minecraft/OpenAL linear-clamped distance rolloff for now: the configured range is the fade-to-zero distance.
-   - Apply the server-resolved gain as the sound source gain.
-   - Range changes on an active finite source update the existing OpenAL channel; no restart.
+The private-EFX decision is no longer conditional. Reinspection of the exact SPR 1.21.1-1.5.1 release source confirmed that stock `setEnvironment` mutates one shared set of direct/send low-pass filters for all sources. Historical runtime evidence already showed that this causes multispeaker contamination. The current implementation therefore uses separate HQ filters per OpenAL source, reattached on every environment application, with native SPR fallback if that path fails.
 
-5. **Lua range control**
-   - Add optional per-start `range` alongside `volume` for modern finite helpers and HQ byte/RAW/radio starts.
-   - Add finite endpoint-local `audioSetRange`, `audioSetRangeAll`, and `audioSetRangeAt`.
-   - Calling the range control without a value returns that endpoint to automatic volume-derived range.
-   - Extend `audioStatus` with logical volume, resolved gain, resolved range, and auto/explicit range mode.
-   - Keep existing shared-vs-endpoint semantics: range, like volume/mute, is endpoint-local.
+The full recheck also fixed:
 
-6. **Acoustic tuning port**
-   - Keep the current Minecraft-owned HQ playback engine and the new HQ-only SPR refresh scheduler.
-   - Port the user-approved Beta3/Beta5 direct acoustic behavior, not the old playback engine:
-     - progressive 17-probe occlusion geometry;
-     - exact center/inner/outer weighting and center-path gate;
-     - adaptive 9/17 probe cache;
-     - accepted direct cutoff/gain tuning;
-     - accepted muffling/clearing smoothing;
-     - reflected-position stabilization.
-   - Keep native SPR room/reverb/reflection evaluation authoritative.
-   - Do not import Beta7 sentinel/snapshot experiments, the old scheduler, or the old raw-OpenAL playback architecture.
-   - Do not restore private EFX ownership unless exact runtime evidence shows the native SPR application path cannot reproduce the accepted direct tuning.
+- scheduler movement decisions accidentally observing the reflection-stabilized render position instead of the physical speaker position;
+- native/strict SPR reflected positions being snapped back by Minecraft's next TickableSoundInstance update;
+- RAW `All` continuation across endpoints with different config-snapshot lifetimes;
+- progressive path samples being capped before the approved weighted blend;
+- a legacy packet-constructor path which could synthesize gain/range client-side instead of requiring server-resolved v11 values.
 
-7. **Deterministic tests**
-   - Anchor interpolation at anchors and between anchors.
-   - volume/range Lua error boundaries.
-   - explicit-range override and return-to-auto.
-   - config snapshot/new-playback reload behavior.
-   - continuous RAW keeps one tuning snapshot across chunks.
-   - protocol-v11 codec round trips.
-   - finite listener relevance follows effective range.
-   - RAW range shrink/grow/stop delivery behavior.
-   - client attenuation update behavior.
-   - progressive acoustic math/cache/smoothing/stabilizer tests.
+## Remaining work
 
-8. **Runtime validation**
+1. **Runtime validation**
    - C2: same continuously-playing HQ source must respond to open/wall movement with global SPR “Update Moving Sounds” OFF.
    - Verify automatic range at representative anchors and interpolation points.
    - Verify explicit range overrides volume-derived range.
@@ -144,7 +110,7 @@ For a continuous RAW source, the profile snapshot begins when RAW ownership star
    - Recheck 8-speaker finite + RAW scale with the new packet fields.
    - Check long-range SPR behavior beyond the default cloned-world neighborhood; do not add a special far-range fallback unless runtime evidence shows one is needed.
 
-9. **Docs/freeze**
+2. **Docs/freeze**
    - Update `CURRENT-STATE.md`, `SERVER-CONFIG.md`, `LUA-API.md`, architecture/known-issues/runtime docs and the API freeze only after the implementation is stable.
    - Freeze the resulting contract as protocol v11.
    - Keep release diagnostics in the normal JAR.
@@ -153,9 +119,7 @@ For a continuous RAW source, the profile snapshot begins when RAW ownership star
 
 - Minecraft 1.21.1's linear attenuation path uses the supplied attenuation distance as the OpenAL linear-clamped max distance; with HQ's setup, range is naturally the fade-to-zero distance.
 - Minecraft clamps normal SoundInstance gain to 1.0, while volume >1 normally affects attenuation distance separately. The new HQ model therefore needs to resolve gain and range separately.
-- Current finite playback explicitly overwrites attenuation with 32 blocks.
-- Current RAW/radio rely on Minecraft's normal attenuation setup, but server packet delivery is still capped at 32 blocks.
-- The server-side 32-block radius is therefore a real blocker for any longer-range design; changing only the client attenuation would not work.
+- The old finite 32-block attenuation override and server-side 32-block delivery/relevance cap have been replaced by each source's server-resolved range.
 - SPR's default maximum processing distance is large, but its safe cloned-world neighborhood is much smaller. Long audible range is valid; far-distance acoustic quality must be runtime-checked rather than treated as a hard 60-block speaker limit.
 
 ## Release/deferred scope

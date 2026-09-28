@@ -1,6 +1,35 @@
 # Current state
 
-Updated: 2026-09-27
+Updated: 2026-09-28
+
+## Working v11 candidate — not yet runtime accepted
+
+The branch has moved past the historical v10 runtime candidate documented below.
+
+Current source checkpoint before this docs update: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`  
+Current source CI: `36467453786` — PASS  
+Current artifact: `10989724714` (`hqspeaker-neoforge-21.1.247`)  
+Current JAR SHA-256: `c4240e252bbc57c3ef767b215f82b3ecd4cba368ebcfaa937b78d442a01adf66`  
+Protocol: **v11**, still 9 payloads.  
+Build baseline: NeoForge **21.1.247 only**.
+
+Implemented since the v10 runtime checkpoint:
+
+- server-configurable anchor curves for logical volume -> gain and automatic range;
+- default volume 1.5, selected gain anchors `0/.17/.34/.50/.67/.84/1`, selected range anchors `0/12/29/48/70/96/132`, default explicit-range ceiling 256;
+- Lua errors for invalid/out-of-server-limit HQ volume/range requests;
+- explicit range overrides plus endpoint-local finite range controls;
+- per-source range used end-to-end for finite listener membership, RAW/radio delivery and client attenuation;
+- live config rule: active source keeps its immutable profile, next source uses the current config;
+- HQ-only movement-gated SPR reevaluation with global SPR moving-sound updates OFF;
+- accepted progressive 17/9-probe direct occlusion, smoothing and reflected-position stabilization;
+- **private per-source HQ EFX filters** while preserving SPR room/reverb targets and aux effect slots.
+
+The 2026-09-28 full recheck found and fixed several issues before runtime testing: shared SPR filter contamination, reflected-position feedback into the scheduler, native reflection persistence, RAW-All profile-lifetime mismatch, premature progressive-path clamping and a legacy packet path that could derive tuning outside server authority.
+
+This candidate is **source/CI verified only**. Do not call v11 runtime acceptance complete until the focused v11 C2/acoustic test and the volume/range/config/multispeaker rechecks pass.
+
+## Historical v10 runtime evidence
 
 Frozen product/source checkpoint: `c61b052beee03ec0f36fed725fb37483bfb57d83`  
 API/docs freeze: `bb0d68c7031bf97c7c7efc10c6458992222cf394`  

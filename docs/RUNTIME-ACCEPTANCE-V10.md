@@ -1,5 +1,7 @@
 # Runtime acceptance — protocol v10
 
+> **Historical acceptance document.** The active branch now uses protocol v11 and includes new volume/range plus live-SPR/acoustic behavior. Do not use this document or the old v10 C2 procedure as the final acceptance for the current candidate. Its recorded v10 PASS evidence remains useful regression history; a focused v11 acceptance update is still pending runtime validation.
+
 Updated: 2026-09-27
 
 ## Goal
