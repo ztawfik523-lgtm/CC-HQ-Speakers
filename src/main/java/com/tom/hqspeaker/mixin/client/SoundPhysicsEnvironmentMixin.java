@@ -8,9 +8,8 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArgs;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 /**
  * Optional diagnostic bridge for Sound Physics Remastered.
@@ -27,14 +26,25 @@ public abstract class SoundPhysicsEnvironmentMixin {
         throw new AssertionError("mixin shadow");
     }
 
+    @Shadow(remap = false)
+    public static void setEnvironment(
+        int sourceId,
+        float r0, float r1, float r2, float r3,
+        float h0, float h1, float h2, float h3,
+        float directCutoff, float directGain
+    ) {
+        throw new AssertionError("mixin shadow");
+    }
+
     /**
-     * Replace only the final environment arguments for a bound HQ source.
+     * Replace only the final normal SPR environment application for a bound HQ source.
      *
-     * <p>SPR still performs its complete native room/reverb/reflection calculation. The HQ layer
-     * reuses SPR's own private runOcclusion primitive for the accepted 17/9-path direct model,
-     * then smooths the resulting direct pair and native wet-send targets before SPR applies them.</p>
+     * <p>SPR still performs its complete room/reverb/reflection calculation. HQ reuses SPR's own
+     * runOcclusion primitive for the approved progressive direct model, then applies the resulting
+     * environment with private per-source filters. Early/default SPR environments and any failure path
+     * call the untouched native setEnvironment method.</p>
      */
-    @ModifyArgs(
+    @Redirect(
         method = "evaluateEnvironment(IDDDLnet/minecraft/sounds/SoundSource;Lnet/minecraft/resources/ResourceLocation;Z)Lnet/minecraft/world/phys/Vec3;",
         at = @At(
             value = "INVOKE",
@@ -43,28 +53,26 @@ public abstract class SoundPhysicsEnvironmentMixin {
         remap = false,
         require = 0
     )
-    private static void hqspeaker$adjustEnvironment(Args args) {
-        int sourceId = (Integer) args.get(0);
-        HQSoundPhysicsAcousticsClient.AdjustedEnvironment adjusted =
-            HQSoundPhysicsAcousticsClient.adjustEnvironment(
-                sourceId,
-                (Float) args.get(1), (Float) args.get(2), (Float) args.get(3), (Float) args.get(4),
-                (Float) args.get(5), (Float) args.get(6), (Float) args.get(7), (Float) args.get(8),
-                (Float) args.get(9), (Float) args.get(10),
-                (sx, sy, sz, lx, ly, lz) -> runOcclusion(
-                    new Vec3(sx, sy, sz), new Vec3(lx, ly, lz)));
+    private static void hqspeaker$applyEnvironment(
+        int sourceId,
+        float r0, float r1, float r2, float r3,
+        float h0, float h1, float h2, float h3,
+        float directCutoff, float directGain
+    ) {
+        boolean handled = HQSoundPhysicsAcousticsClient.applyEnvironment(
+            sourceId,
+            r0, r1, r2, r3,
+            h0, h1, h2, h3,
+            directCutoff, directGain,
+            (sx, sy, sz, lx, ly, lz) -> runOcclusion(
+                new Vec3(sx, sy, sz), new Vec3(lx, ly, lz)));
+        if (handled) return;
 
-        if (adjusted == null) return;
-        args.set(1, adjusted.sendGain0());
-        args.set(2, adjusted.sendGain1());
-        args.set(3, adjusted.sendGain2());
-        args.set(4, adjusted.sendGain3());
-        args.set(5, adjusted.sendCutoff0());
-        args.set(6, adjusted.sendCutoff1());
-        args.set(7, adjusted.sendCutoff2());
-        args.set(8, adjusted.sendCutoff3());
-        args.set(9, adjusted.directCutoff());
-        args.set(10, adjusted.directGain());
+        setEnvironment(
+            sourceId,
+            r0, r1, r2, r3,
+            h0, h1, h2, h3,
+            directCutoff, directGain);
     }
 
     @Inject(method = "setEnvironment", at = @At("TAIL"), remap = false, require = 0)

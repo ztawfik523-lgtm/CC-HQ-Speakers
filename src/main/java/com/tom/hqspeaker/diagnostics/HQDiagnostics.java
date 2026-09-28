@@ -218,6 +218,11 @@ public final class HQDiagnostics {
         if (metrics != null) metrics.soundPhysicsReflectionStabilized();
     }
 
+    public static void soundPhysicsPrivateEfx(UUID source, int directFilter, boolean applied) {
+        SourceMetrics metrics = active(source);
+        if (metrics != null) metrics.soundPhysicsPrivateEfx(directFilter, applied);
+    }
+
     /**
      * Record direct evidence that SPR's full processSound path returned for one tracked HQ source.
      *
@@ -391,6 +396,9 @@ public final class HQDiagnostics {
         private long soundPhysicsProgressivePaths;
         private double lastSoundPhysicsProgressiveRawOcclusion;
         private long soundPhysicsReflectionStabilizedCalls;
+        private long soundPhysicsPrivateEfxApplies;
+        private long soundPhysicsPrivateEfxFallbacks;
+        private int lastSoundPhysicsPrivateDirectFilter;
         private double lastSoundPhysicsProcessX;
         private double lastSoundPhysicsProcessY;
         private double lastSoundPhysicsProcessZ;
@@ -464,6 +472,15 @@ public final class HQDiagnostics {
 
         synchronized void soundPhysicsReflectionStabilized() {
             soundPhysicsReflectionStabilizedCalls++;
+        }
+
+        synchronized void soundPhysicsPrivateEfx(int directFilter, boolean applied) {
+            if (applied) {
+                soundPhysicsPrivateEfxApplies++;
+                lastSoundPhysicsPrivateDirectFilter = directFilter;
+            } else {
+                soundPhysicsPrivateEfxFallbacks++;
+            }
         }
 
         synchronized void soundPhysicsProcessed(
@@ -629,6 +646,9 @@ public final class HQDiagnostics {
             out.put("soundPhysicsProgressivePaths", soundPhysicsProgressivePaths);
             out.put("soundPhysicsProgressiveRawOcclusion", lastSoundPhysicsProgressiveRawOcclusion);
             out.put("soundPhysicsReflectionStabilizedCalls", soundPhysicsReflectionStabilizedCalls);
+            out.put("soundPhysicsPrivateEfxApplies", soundPhysicsPrivateEfxApplies);
+            out.put("soundPhysicsPrivateEfxFallbacks", soundPhysicsPrivateEfxFallbacks);
+            out.put("soundPhysicsPrivateDirectFilter", lastSoundPhysicsPrivateDirectFilter);
             out.put("directFilter", lastDirectFilter);
             out.put("directGain", lastDirectGain);
             out.put("directGainHF", lastDirectGainHF);

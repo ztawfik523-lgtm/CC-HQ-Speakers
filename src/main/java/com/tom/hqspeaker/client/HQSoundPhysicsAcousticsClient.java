@@ -3,6 +3,7 @@ package com.tom.hqspeaker.client;
 import com.tom.hqspeaker.HQSpeakerMod;
 import com.tom.hqspeaker.diagnostics.HQDiagnostics;
 import net.neoforged.api.distmarker.Dist;
+import net.minecraft.client.sounds.SoundEngineExecutor;
 import net.neoforged.api.distmarker.OnlyIn;
 
 import java.lang.reflect.Field;
@@ -49,7 +50,7 @@ public final class HQSoundPhysicsAcousticsClient {
         float directCutoff, float directGain
     ) {}
 
-    static void attach(UUID source, int openAlSource) {
+    static void attach(UUID source, int openAlSource, SoundEngineExecutor executor) {
         if (source == null || openAlSource <= 0) return;
 
         SourceState next = new SourceState(source, openAlSource, NEXT_LIFETIME.incrementAndGet());
@@ -59,12 +60,32 @@ public final class HQSoundPhysicsAcousticsClient {
 
         SourceState oldSource = BY_OPENAL_SOURCE.put(openAlSource, next);
         if (oldSource != null && oldSource != next) BY_IDENTITY.remove(oldSource.source, oldSource);
+
+        // Normal lifecycle removes these before replacement. If a stale registration survived, retire its
+        // private filters on the sound executor rather than leaking OpenAL objects.
+        if (oldIdentity != null && oldIdentity != next) scheduleDestroy(oldIdentity, executor);
+        if (oldSource != null && oldSource != next && oldSource != oldIdentity) scheduleDestroy(oldSource, executor);
     }
 
-    static void detach(UUID source) {
+    static void detach(UUID source, SoundEngineExecutor executor) {
         if (source == null) return;
         SourceState removed = BY_IDENTITY.remove(source);
-        if (removed != null) BY_OPENAL_SOURCE.remove(removed.openAlSource, removed);
+        if (removed != null) {
+            BY_OPENAL_SOURCE.remove(removed.openAlSource, removed);
+            scheduleDestroy(removed, executor);
+        }
+    }
+
+    private static void scheduleDestroy(SourceState state, SoundEngineExecutor executor) {
+        if (state == null) return;
+        Runnable destroy = () -> {
+            synchronized (state) {
+                // A reused OpenAL id must never have its new source's filters detached by stale cleanup.
+                boolean detachSource = BY_OPENAL_SOURCE.get(state.openAlSource) == null;
+                HQPrivateEfxClient.destroy(state.openAlSource, state.efx, detachSource);
+            }
+        };
+        if (executor != null) executor.execute(destroy);
     }
 
     static void clear() {
@@ -136,6 +157,57 @@ public final class HQSoundPhysicsAcousticsClient {
         }
     }
 
+    /**
+     * Apply the approved HQ environment through per-source filters. Returning false tells the mixin to invoke
+     * SPR's original setEnvironment unchanged as the safe fallback.
+     */
+    public static boolean applyEnvironment(
+        int openAlSource,
+        float sendGain0, float sendGain1, float sendGain2, float sendGain3,
+        float sendCutoff0, float sendCutoff1, float sendCutoff2, float sendCutoff3,
+        float nativeDirectCutoff, float nativeDirectGain,
+        OcclusionSampler sampler
+    ) {
+        SourceState state = BY_OPENAL_SOURCE.get(openAlSource);
+        if (state == null || BY_IDENTITY.get(state.source) != state) return false;
+
+        AdjustedEnvironment adjusted = adjustEnvironment(
+            openAlSource,
+            sendGain0, sendGain1, sendGain2, sendGain3,
+            sendCutoff0, sendCutoff1, sendCutoff2, sendCutoff3,
+            nativeDirectCutoff, nativeDirectGain,
+            sampler);
+        if (adjusted == null) return false;
+
+        SprConfigSnapshot config = currentSprConfig();
+        if (config == null) return false;
+
+        synchronized (state) {
+            HQEnvironmentSmoother.Environment environment = new HQEnvironmentSmoother.Environment(
+                new float[]{
+                    adjusted.sendGain0(), adjusted.sendGain1(), adjusted.sendGain2(), adjusted.sendGain3()
+                },
+                new float[]{
+                    adjusted.sendCutoff0(), adjusted.sendCutoff1(), adjusted.sendCutoff2(), adjusted.sendCutoff3()
+                },
+                adjusted.directCutoff(), adjusted.directGain());
+
+            HQPrivateEfxClient.ApplyResult result =
+                HQPrivateEfxClient.apply(openAlSource, state.efx, environment, config.airAbsorption());
+            if (!result.applied()) {
+                HQDiagnostics.soundPhysicsPrivateEfx(state.source, 0, false);
+                return false;
+            }
+
+            HQDiagnostics.soundPhysicsPrivateEfx(state.source, result.directFilter(), true);
+            // Native SPR setEnvironment is intentionally bypassed on this one final environment write, so record
+            // the same direct-filter evidence diagnostics would otherwise observe from its TAIL hook.
+            HQAudioDiagnosticsClient.soundPhysicsApplied(
+                openAlSource, adjusted.directGain(), adjusted.directCutoff());
+            return true;
+        }
+    }
+
     public static boolean shouldSuppressReflectedPosition(int openAlSource) {
         SourceState state = BY_OPENAL_SOURCE.get(openAlSource);
         if (state == null || BY_IDENTITY.get(state.source) != state) return false;
@@ -198,13 +270,16 @@ public final class HQSoundPhysicsAcousticsClient {
                 double blockAbsorption = ((Number) access.read(access.blockAbsorption)).doubleValue();
                 double maxOcclusion = ((Number) access.read(access.maxOcclusion)).doubleValue();
                 boolean strictOcclusion = (Boolean) access.read(access.strictOcclusion);
-                if (!Double.isFinite(blockAbsorption) || !Double.isFinite(maxOcclusion)) {
+                double airAbsorption = ((Number) access.read(access.airAbsorption)).doubleValue();
+                if (!Double.isFinite(blockAbsorption) || !Double.isFinite(maxOcclusion)
+                        || !Double.isFinite(airAbsorption)) {
                     throw new IllegalStateException("non-finite SPR acoustic config");
                 }
                 cached = new SprConfigSnapshot(
                     Math.max(0.0, blockAbsorption),
                     Math.max(0.0, maxOcclusion),
-                    strictOcclusion);
+                    strictOcclusion,
+                    (float) Math.max(0.0, airAbsorption));
                 cachedConfig = cached;
                 cachedConfigNanos = now;
                 return cached;
@@ -233,7 +308,9 @@ public final class HQSoundPhysicsAcousticsClient {
                 Field blockAbsorption = config.getClass().getField("blockAbsorption");
                 Field maxOcclusion = config.getClass().getField("maxOcclusion");
                 Field strictOcclusion = config.getClass().getField("strictOcclusion");
-                configAccess = new SprConfigAccess(config, blockAbsorption, maxOcclusion, strictOcclusion);
+                Field airAbsorption = config.getClass().getField("airAbsorption");
+                configAccess = new SprConfigAccess(
+                    config, blockAbsorption, maxOcclusion, strictOcclusion, airAbsorption);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
                 configAccess = null;
                 if (CONFIG_WARNING_LOGGED.compareAndSet(false, true)) {
@@ -252,6 +329,7 @@ public final class HQSoundPhysicsAcousticsClient {
         final HQProgressiveOcclusionModel progressive = new HQProgressiveOcclusionModel();
         final HQEnvironmentSmoother smoother = new HQEnvironmentSmoother();
         final HQReflectionStabilizer reflection = new HQReflectionStabilizer();
+        final HQPrivateEfxClient.State efx = new HQPrivateEfxClient.State();
         double rawOcclusion;
 
         SourceState(UUID source, int openAlSource, long lifetime) {
@@ -264,14 +342,16 @@ public final class HQSoundPhysicsAcousticsClient {
     private record SprConfigSnapshot(
         double blockAbsorption,
         double maxOcclusion,
-        boolean strictOcclusion
+        boolean strictOcclusion,
+        float airAbsorption
     ) {}
 
     private record SprConfigAccess(
         Object config,
         Field blockAbsorption,
         Field maxOcclusion,
-        Field strictOcclusion
+        Field strictOcclusion,
+        Field airAbsorption
     ) {
         Object read(Field field) throws ReflectiveOperationException {
             Object entry = field.get(config);

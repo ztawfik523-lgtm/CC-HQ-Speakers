@@ -99,14 +99,18 @@ public final class HQSoundPhysicsRefreshClient {
         synchronized (binding) {
             binding.policy.markUrgent();
         }
-        HQSoundPhysicsAcousticsClient.attach(source, openAlSource);
+        HQSoundPhysicsAcousticsClient.attach(source, openAlSource, executor);
     }
 
     public static void detach(UUID source) {
         if (source == null) return;
         Binding removed = BINDINGS.remove(source);
-        if (removed != null) BY_OPENAL_SOURCE.remove(removed.openAlSource(), removed);
-        HQSoundPhysicsAcousticsClient.detach(source);
+        if (removed != null) {
+            BY_OPENAL_SOURCE.remove(removed.openAlSource(), removed);
+            HQSoundPhysicsAcousticsClient.detach(source, removed.executor());
+        } else {
+            HQSoundPhysicsAcousticsClient.detach(source, null);
+        }
     }
 
     public static void setPaused(UUID source, boolean paused) {
@@ -184,12 +188,13 @@ public final class HQSoundPhysicsRefreshClient {
 
             HQSoundPhysicsRefreshPolicy.Reason reason;
             long lastRefresh;
+            AcousticPosition physical = physicalPosition(binding.sound());
             synchronized (binding) {
                 if (binding.paused) continue;
                 reason = binding.policy.due(
                     now,
                     listener.x, listener.y, listener.z,
-                    binding.sound().getX(), binding.sound().getY(), binding.sound().getZ());
+                    physical.x(), physical.y(), physical.z());
                 lastRefresh = binding.policy.lastRefreshNanos();
             }
             if (reason == HQSoundPhysicsRefreshPolicy.Reason.NONE) continue;
@@ -358,7 +363,7 @@ public final class HQSoundPhysicsRefreshClient {
     private static void removeBinding(Binding binding) {
         if (binding == null) return;
         if (BINDINGS.remove(binding.source(), binding)) {
-            HQSoundPhysicsAcousticsClient.detach(binding.source());
+            HQSoundPhysicsAcousticsClient.detach(binding.source(), binding.executor());
         }
         BY_OPENAL_SOURCE.remove(binding.openAlSource(), binding);
     }
