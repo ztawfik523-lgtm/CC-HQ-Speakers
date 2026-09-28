@@ -100,6 +100,24 @@ class HQSoundPhysicsRefreshPolicyTest {
     }
 
     @Test
+    void urgentRefreshStillGetsSettleProtection() {
+        HQSoundPhysicsRefreshPolicy policy = policyAtOrigin();
+
+        assertEquals(HQSoundPhysicsRefreshPolicy.Reason.URGENT,
+            policy.due(10 * MS, 1.10, 0, 0, 0, 0, 0));
+        policy.recordRefresh(
+            10 * MS,
+            1.10, 0, 0,
+            0, 0, 0,
+            HQSoundPhysicsRefreshPolicy.Reason.URGENT);
+
+        assertEquals(HQSoundPhysicsRefreshPolicy.Reason.NONE,
+            policy.due(100 * MS, 1.20, 0, 0, 0, 0, 0));
+        assertEquals(HQSoundPhysicsRefreshPolicy.Reason.SETTLE,
+            policy.due(360 * MS, 1.20, 0, 0, 0, 0, 0));
+    }
+
+    @Test
     void externalSprRefreshResetsSafetyDeadline() {
         HQSoundPhysicsRefreshPolicy policy = policyAtOrigin();
 
