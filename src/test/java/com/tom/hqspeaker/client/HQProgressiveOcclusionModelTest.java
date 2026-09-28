@@ -63,6 +63,19 @@ class HQProgressiveOcclusionModelTest {
     }
 
     @Test
+    void individualPathsAreNotClampedBeforeWeightedBlend() {
+        HQProgressiveOcclusionModel model = new HQProgressiveOcclusionModel();
+        var result = model.evaluate(
+            (sx, sy, sz, lx, ly, lz) -> 5.0,
+            0, 0, 0, 3, 0, 0,
+            1.0, 4.0);
+
+        assertEquals(5.0, result.rawOcclusion(), 1.0e-9);
+        assertEquals(Math.exp(-1.75 * 3.0), result.directCutoff(), 1.0e-6);
+        assertEquals(Math.exp(-2.5 * 0.3), result.directGain(), 1.0e-6);
+    }
+
+    @Test
     void centerDeltaAndListenerTravelForceFreshSeventeenPaths() {
         HQProgressiveOcclusionModel model = new HQProgressiveOcclusionModel();
         double[] center = { 0.2 };
