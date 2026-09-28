@@ -326,6 +326,11 @@ public final class HQSoundPhysicsRefreshClient {
         if (binding == null || BINDINGS.get(binding.source()) != binding) return;
         if (binding.sound() instanceof HQAcousticPositionSource acoustic) {
             acoustic.hqspeaker$setAcousticPosition(x, y, z);
+            // processSound runs on the sound executor. Apply immediately so the mixer never spends a full
+            // client tick at SPR's raw reflected position; the SoundInstance copy keeps later MC tick writes stable.
+            if (AL10.alIsSource(openAlSource)) {
+                AL10.alSource3f(openAlSource, AL10.AL_POSITION, (float) x, (float) y, (float) z);
+            }
         }
     }
 
@@ -334,6 +339,12 @@ public final class HQSoundPhysicsRefreshClient {
         if (binding == null || BINDINGS.get(binding.source()) != binding) return;
         if (binding.sound() instanceof HQAcousticPositionSource acoustic) {
             acoustic.hqspeaker$clearAcousticPosition();
+            AcousticPosition physical = physicalPosition(binding.sound());
+            if (AL10.alIsSource(openAlSource)) {
+                AL10.alSource3f(
+                    openAlSource, AL10.AL_POSITION,
+                    (float) physical.x(), (float) physical.y(), (float) physical.z());
+            }
         }
     }
 
