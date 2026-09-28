@@ -81,6 +81,18 @@ class HQAudioTuningProfileTest {
     }
 
     @Test
+    void audibleGainCannotResolveToZeroRange() {
+        assertThrows(IllegalArgumentException.class, () -> new HQAudioTuningProfile(
+            1.5,
+            3.0,
+            true,
+            256.0,
+            new double[]{ 0.10, 0.17, 0.34, 0.50, 0.67, 0.84, 1.0 },
+            new double[]{ 0.0, 12.0, 29.0, 48.0, 70.0, 96.0, 132.0 }
+        ));
+    }
+
+    @Test
     void malformedConfigProfileIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new HQAudioTuningProfile(
             1.5,

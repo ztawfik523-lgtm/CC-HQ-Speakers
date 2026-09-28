@@ -44,6 +44,12 @@ public final class HQAudioTuningProfile {
 
         this.gainAnchors = validateAnchors(gainAnchors, "gain", 0.0, 1.0);
         this.rangeAnchors = validateAnchors(rangeAnchors, "range", 0.0, maxRange);
+        for (int i = 0; i < INPUT_ANCHORS.length; i++) {
+            if (this.gainAnchors[i] > 0.0 && this.rangeAnchors[i] <= 0.0) {
+                throw new IllegalArgumentException(
+                    "range anchor " + INPUT_ANCHORS[i] + " must be greater than 0 when its gain anchor is audible");
+            }
+        }
         this.defaultVolume = defaultVolume;
         this.maxVolume = maxVolume;
         this.allowRangeOverride = allowRangeOverride;

@@ -64,6 +64,7 @@ public record HQFiniteMediaStatePacket(
             && Float.isFinite(volume) && volume >= 0.0f && volume <= 3.0f
             && Float.isFinite(gain) && gain >= 0.0f && gain <= 1.0f
             && Float.isFinite(range) && range >= 0.0f && range <= 4096.0f
+            && !(gain > 0.0f && range <= 0.0f)
             && anchorOffset >= 0L
             && Double.isFinite(anchorTime) && anchorTime >= 0.0 && anchorTime <= position + 1.0e-6;
     }

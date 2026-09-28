@@ -165,7 +165,7 @@ public final class HQFiniteMediaClient {
                 sendReadyIfDue(session, now);
                 return;
             }
-            if (!session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
+            if (!session.anchorReady || session.gain <= 0.0f || session.localExhausted) return;
 
             updateMovingPosition(session, minecraft.level);
 
@@ -286,7 +286,7 @@ public final class HQFiniteMediaClient {
     private static void rangeData0(HQFiniteMediaRangeDataPacket packet) {
         Session session = SESSIONS.get(packet.source());
         if (!matches(session, packet.assetId(), packet.generation()) || session.terminal
-                || !session.anchorReady || session.volume <= 0.0f || session.localExhausted) return;
+                || !session.anchorReady || session.gain <= 0.0f || session.localExhausted) return;
         if (session.window.accept(packet.offset(), packet.data())) {
             FiniteEncodedInputStream input = session.encodedInput;
             if (input != null) input.signalDataAvailable();
@@ -376,7 +376,7 @@ public final class HQFiniteMediaClient {
 
     private static void tryStartRenderer(Session session, long nowNanos) {
         if (session.terminal || session.rendererStarted || session.pcmQueue == null
-                || session.volume <= 0.0f || session.localExhausted) return;
+                || session.gain <= 0.0f || session.localExhausted) return;
         if (!catchUpToServerTime(session, nowNanos)) return;
 
         FinitePcmQueue pcm = session.pcmQueue;

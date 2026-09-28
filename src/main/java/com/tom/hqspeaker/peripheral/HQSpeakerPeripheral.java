@@ -270,9 +270,9 @@ public class HQSpeakerPeripheral implements IPeripheral {
         speakerDefaultVolume = requested;
     }
 
-    float defaultVolume() {
+    float defaultVolume() throws LuaException {
         if (Double.isFinite(speakerDefaultVolume)) return (float) speakerDefaultVolume;
-        return (float) HQSpeakerServerConfig.audioProfile().defaultVolume();
+        return (float) currentAudioProfile().defaultVolume();
     }
 
     @LuaFunction

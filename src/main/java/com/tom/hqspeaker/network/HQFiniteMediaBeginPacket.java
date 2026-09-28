@@ -66,6 +66,7 @@ public record HQFiniteMediaBeginPacket(
                 || totalBytes <= 0L) {
             return false;
         }
+        if (gain > 0.0f && range <= 0.0f) return false;
         WavLayout wav = descriptor.wavLayout();
         return wav == null || (wav.dataOffset() <= totalBytes && wav.dataLength() <= totalBytes - wav.dataOffset());
     }
