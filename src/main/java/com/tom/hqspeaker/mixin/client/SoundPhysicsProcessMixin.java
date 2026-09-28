@@ -53,11 +53,13 @@ public abstract class SoundPhysicsProcessMixin {
         CallbackInfoReturnable<Vec3> cir
     ) {
         Vec3 reflected = cir.getReturnValue();
+        String soundId = sound == null ? "" : sound.toString();
+        HQSoundPhysicsRefreshClient.soundPhysicsProcessed(sourceId, x, y, z, soundId);
         HQAudioDiagnosticsClient.soundPhysicsProcessed(
             sourceId,
             x, y, z,
             category == null ? "" : category.getName(),
-            sound == null ? "" : sound.toString(),
+            soundId,
             reflected != null,
             reflected == null ? 0.0 : reflected.x,
             reflected == null ? 0.0 : reflected.y,
