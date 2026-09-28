@@ -56,48 +56,6 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
     public final long startTick;
     public final UUID syncGroupId;
 
-    // Compatibility constructors retained for internal/tests which only care about transport shape.
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
-                                byte[] data) {
-        this(source, format, volume, legacyGain(volume), legacyRange(volume), false,
-            x, y, z, blockX, blockY, blockZ, data, null, 0L, null);
-    }
-
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
-                                byte[] data, long startTick) {
-        this(source, format, volume, legacyGain(volume), legacyRange(volume), false,
-            x, y, z, blockX, blockY, blockZ, data, null, startTick, null);
-    }
-
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
-                                String streamUrl) {
-        this(source, format, volume, legacyGain(volume), legacyRange(volume), false,
-            x, y, z, blockX, blockY, blockZ, new byte[0], streamUrl, 0L, null);
-    }
-
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
-                                String streamUrl, long startTick) {
-        this(source, format, volume, legacyGain(volume), legacyRange(volume), false,
-            x, y, z, blockX, blockY, blockZ, new byte[0], streamUrl, startTick, null);
-    }
-
-    public HQSpeakerAudioPacket(UUID source, AudioFormat format, float volume,
-                                float x, float y, float z,
-                                int blockX, int blockY, int blockZ,
-                                String streamUrl, long startTick,
-                                UUID syncGroupId) {
-        this(source, format, volume, legacyGain(volume), legacyRange(volume), false,
-            x, y, z, blockX, blockY, blockZ, new byte[0], streamUrl, startTick, syncGroupId);
-    }
-
     public HQSpeakerAudioPacket(UUID source, AudioFormat format,
                                 float volume, float gain, float range, boolean explicitRange,
                                 float x, float y, float z,
@@ -236,17 +194,6 @@ public class HQSpeakerAudioPacket implements CustomPacketPayload {
         return new HQSpeakerAudioPacket(source, format,
             volume, gain, range, explicitRange, x, y, z,
             blockX, blockY, blockZ, data, null, startTick, syncGroupId);
-    }
-
-    private static float legacyGain(float volume) {
-        if (!Float.isFinite(volume)) return Float.NaN;
-        return Math.max(0.0f, Math.min(1.0f, volume));
-    }
-
-    private static float legacyRange(float volume) {
-        if (!Float.isFinite(volume)) return Float.NaN;
-        if (volume <= 0.0f) return 0.0f;
-        return Math.max(1.0f, volume) * 16.0f;
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
