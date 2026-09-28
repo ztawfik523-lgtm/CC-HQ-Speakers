@@ -531,6 +531,7 @@ public final class HQFiniteMediaClient {
             if (needsPause) {
                 if (desired) channel.pause();
                 else channel.unpause();
+                HQSoundPhysicsRefreshClient.setPaused(session.begin.source(), desired);
             }
             Minecraft.getInstance().execute(() -> {
                 if (session.sound == sound) {
