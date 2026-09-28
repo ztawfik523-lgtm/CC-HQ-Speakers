@@ -92,12 +92,21 @@ public final class HQSoundPhysicsRefreshClient {
         if (oldSource != null && oldSource != binding) {
             BINDINGS.remove(oldSource.source(), oldSource);
         }
+
+        // Channel-start processing may happen before this event. Force one immediate HQ-owned refresh
+        // so the approved progressive/smoothing path is installed promptly without enabling SPR's
+        // global moving-sounds option.
+        synchronized (binding) {
+            binding.policy.markUrgent();
+        }
+        HQSoundPhysicsAcousticsClient.attach(source, openAlSource);
     }
 
     public static void detach(UUID source) {
         if (source == null) return;
         Binding removed = BINDINGS.remove(source);
         if (removed != null) BY_OPENAL_SOURCE.remove(removed.openAlSource(), removed);
+        HQSoundPhysicsAcousticsClient.detach(source);
     }
 
     public static void setPaused(UUID source, boolean paused) {
@@ -148,6 +157,7 @@ public final class HQSoundPhysicsRefreshClient {
         BINDINGS.clear();
         BY_OPENAL_SOURCE.clear();
         ACTIVE_TASK_TOKEN.set(0L);
+        HQSoundPhysicsAcousticsClient.clear();
     }
 
     public static void tick() {
@@ -291,6 +301,24 @@ public final class HQSoundPhysicsRefreshClient {
         }
     }
 
+    static AcousticSnapshot acousticSnapshot(int openAlSource) {
+        Binding binding = BY_OPENAL_SOURCE.get(openAlSource);
+        if (binding == null || BINDINGS.get(binding.source()) != binding) return null;
+
+        Vec3 listener = currentListener();
+        if (listener == null) return null;
+
+        SoundInstance sound = binding.sound();
+        return new AcousticSnapshot(
+            sound.getX(), sound.getY(), sound.getZ(),
+            listener.x, listener.y, listener.z);
+    }
+
+    static record AcousticSnapshot(
+        double sourceX, double sourceY, double sourceZ,
+        double listenerX, double listenerY, double listenerZ
+    ) {}
+
     private static Vec3 currentListener() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.gameRenderer == null || minecraft.gameRenderer.getMainCamera() == null) return null;
@@ -299,7 +327,9 @@ public final class HQSoundPhysicsRefreshClient {
 
     private static void removeBinding(Binding binding) {
         if (binding == null) return;
-        BINDINGS.remove(binding.source(), binding);
+        if (BINDINGS.remove(binding.source(), binding)) {
+            HQSoundPhysicsAcousticsClient.detach(binding.source());
+        }
         BY_OPENAL_SOURCE.remove(binding.openAlSource(), binding);
     }
 
