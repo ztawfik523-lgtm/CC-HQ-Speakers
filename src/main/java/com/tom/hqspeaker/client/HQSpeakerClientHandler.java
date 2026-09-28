@@ -267,7 +267,10 @@ public final class HQSpeakerClientHandler {
             UUID source = packet == null ? null : packet.source;
             if (sound != null) minecraft.getSoundManager().stop(sound);
             if (stream != null) stream.closeAndStop();
-            if (source != null) HQAudioDiagnosticsClient.detach(source);
+            if (source != null) {
+                HQSoundPhysicsRefreshClient.detach(source);
+                HQAudioDiagnosticsClient.detach(source);
+            }
             sound = null;
             stream = null;
             packet = null;
