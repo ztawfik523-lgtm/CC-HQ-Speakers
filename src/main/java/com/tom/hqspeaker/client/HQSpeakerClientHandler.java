@@ -77,16 +77,7 @@ public final class HQSpeakerClientHandler {
     }
 
     private static boolean isPacketSafe(HQSpeakerAudioPacket packet) {
-        if (packet == null || packet.source == null || packet.format == null) return false;
-        if (!Float.isFinite(packet.volume) || !Float.isFinite(packet.x)
-                || !Float.isFinite(packet.y) || !Float.isFinite(packet.z)) return false;
-        if (packet.isStreamingFormat()) {
-            return packet.streamUrl != null && !packet.streamUrl.isBlank()
-                && packet.streamUrl.length() <= HQSpeakerAudioPacket.MAX_URL_CHARS;
-        }
-        return packet.format == HQSpeakerAudioPacket.AudioFormat.PCM_S16LE
-            && packet.data != null && packet.data.length > 0
-            && packet.data.length <= HQSpeakerAudioPacket.MAX_BYTES;
+        return packet != null && packet.sensible();
     }
 
     public static void tick() {
@@ -190,6 +181,7 @@ public final class HQSpeakerClientHandler {
         private HQAudioStream stream;
         private HQSpeakerSound sound;
         private HQSpeakerAudioPacket packet;
+        private float appliedRange = Float.NaN;
 
         void push(HQSpeakerAudioPacket next) {
             Mode nextMode = next.isStreamingFormat() ? Mode.STREAM : Mode.RAW;
@@ -206,27 +198,33 @@ public final class HQSpeakerClientHandler {
             }
             if (stream == null) stream = new HQAudioStream();
             stream.push(next);
+            float previousRange = packet == null ? Float.NaN : packet.range;
             packet = next;
 
             Minecraft minecraft = Minecraft.getInstance();
             if (sound != null && minecraft.getSoundManager().isActive(sound)) {
-                sound.update(next.volume, next.x, next.y, next.z);
+                sound.update(next.gain, next.x, next.y, next.z);
+                if (Float.compare(previousRange, next.range) != 0) appliedRange = Float.NaN;
+                HQSoundChannelControl.refreshBlocksVolume();
             }
         }
 
         void tick(Level level) {
             tryStart(level);
             tickPosition(level, sound, packet);
+            applyRange();
         }
 
         private void tryStart(Level level) {
             if (stream == null || packet == null || stream.isDrained() || !stream.isStreamReady()) return;
             if (packet.syncGroupId != null) return;
             if (packet.startTick > 0L && level.getGameTime() < packet.startTick) return;
+            if (packet.gain <= 0.0f || packet.range <= 0.0f) return;
             Minecraft minecraft = Minecraft.getInstance();
             if (sound != null && minecraft.getSoundManager().isActive(sound)) return;
-            sound = new HQSpeakerSound(stream, packet, packet.volume,
+            sound = new HQSpeakerSound(stream, packet, packet.gain,
                 packet.x, packet.y, packet.z);
+            appliedRange = Float.NaN;
             minecraft.getSoundManager().play(sound);
         }
 
@@ -242,10 +240,12 @@ public final class HQSpeakerClientHandler {
 
         void forceStart(Level level) {
             if (stream == null || packet == null || stream.isDrained() || !stream.isStreamReady()) return;
+            if (packet.gain <= 0.0f || packet.range <= 0.0f) return;
             Minecraft minecraft = Minecraft.getInstance();
             if (sound != null && minecraft.getSoundManager().isActive(sound)) return;
-            sound = new HQSpeakerSound(stream, packet, packet.volume,
+            sound = new HQSpeakerSound(stream, packet, packet.gain,
                 packet.x, packet.y, packet.z);
+            appliedRange = Float.NaN;
             minecraft.getSoundManager().play(sound);
         }
 
@@ -256,6 +256,19 @@ public final class HQSpeakerClientHandler {
             BlockPos blockPos = new BlockPos(currentPacket.blockX, currentPacket.blockY, currentPacket.blockZ);
             Vector3d world = MovingSourcePosition.resolve(level, blockPos, new Vector3d());
             currentSound.updatePosition((float) world.x, (float) world.y, (float) world.z);
+        }
+
+        private void applyRange() {
+            HQSpeakerSound currentSound = sound;
+            HQSpeakerAudioPacket currentPacket = packet;
+            if (currentSound == null || currentPacket == null || currentPacket.range <= 0.0f) return;
+            if (Float.compare(appliedRange, currentPacket.range) == 0) return;
+            if (!Minecraft.getInstance().getSoundManager().isActive(currentSound)) return;
+
+            float desiredRange = currentPacket.range;
+            if (HQSoundChannelControl.execute(currentSound, channel -> channel.linearAttenuation(desiredRange))) {
+                appliedRange = desiredRange;
+            }
         }
 
         UUID currentSyncGroupId() { return packet == null ? null : packet.syncGroupId; }
@@ -275,6 +288,7 @@ public final class HQSpeakerClientHandler {
             stream = null;
             packet = null;
             mode = Mode.NONE;
+            appliedRange = Float.NaN;
         }
 
         boolean isDone() {

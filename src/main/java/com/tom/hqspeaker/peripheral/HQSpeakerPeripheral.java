@@ -1,6 +1,8 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.config.HQAudioTuningProfile;
+import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.network.HQSpeakerAudioPacket;
 import com.tom.hqspeaker.network.HQSpeakerNetwork;
 import com.tom.hqspeaker.network.HQSpeakerStopPacket;
@@ -42,13 +44,17 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private static final int    SPEAKER_MAX_AUDIO   = 8 * 1024 * 1024;
     private static final int    SPEAKER_MAX_QUEUE   = 16;          
     private static final int    SPEAKER_READY_MARK  = 4;
-    private static final double SPEAKER_RADIUS      = 32.0;
     private static final long   SPEAKER_MIN_START_DELAY = 0L;
 
     private final UUID speakerSource = UUID.randomUUID();
     private final ArrayBlockingQueue<SpeakerChunk> speakerQueue = new ArrayBlockingQueue<>(SPEAKER_MAX_QUEUE);
     private final AtomicBoolean speakerReadyPending = new AtomicBoolean(false);
-    private volatile float speakerDefaultVolume = 1.0f;
+    /** NaN means "use the current server config default" for the next new source. */
+    private volatile double speakerDefaultVolume = Double.NaN;
+    private HQAudioTuningProfile rawTuning;
+    private float rawLastRange;
+    private float activeStopRange;
+    private float streamRange;
 
     private final AtomicBoolean streamActive = new AtomicBoolean(false);
     private volatile String     streamUrl    = null;
@@ -59,8 +65,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
     /** Invalidates blocking stream admissions which outlive a detach/cleanup lifecycle boundary. */
     private long lifecycleEpoch;
 
-    private record SpeakerChunk(HQSpeakerAudioPacket.AudioFormat format, byte[] data, float volume,
-                                long startTick) {}
+    private record SpeakerChunk(
+        HQSpeakerAudioPacket.AudioFormat format, byte[] data,
+        float volume, float gain, float range, boolean explicitRange,
+        float deliveryRange, long startTick
+    ) {}
 
     public HQSpeakerPeripheral(BlockPos pos, Level world) {
         this.pos = pos;
@@ -136,12 +145,14 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public synchronized void cleanup() {
         lifecycleEpoch++;
         ACTIVE_SPEAKERS.remove(this);
+        float stopRange = activeStopRange;
         speakerQueue.clear();
         speakerReadyPending.set(false);
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
-        broadcastStopPacket();
+        broadcastStopPacket(stopRange);
+        resetTuningState();
     }
 
     
@@ -155,17 +166,11 @@ public class HQSpeakerPeripheral implements IPeripheral {
             float wz = (float) resolved.z;
 
             var pkt = new HQSpeakerAudioPacket(
-                speakerSource, chunk.format(), chunk.volume(),
+                speakerSource, chunk.format(),
+                chunk.volume(), chunk.gain(), chunk.range(), chunk.explicitRange(),
                 wx, wy, wz, pos.getX(), pos.getY(), pos.getZ(), chunk.data(), chunk.startTick()
             );
-
-            final float fwx = wx, fwy = wy, fwz = wz;
-            for (ServerPlayer player : sl.players()) {
-                double dx = player.getX() - fwx, dy = player.getY() - fwy, dz = player.getZ() - fwz;
-                if (dx*dx + dy*dy + dz*dz <= SPEAKER_RADIUS*SPEAKER_RADIUS) {
-                    HQSpeakerNetwork.sendToPlayer(pkt, player);
-                }
-            }
+            sendToNearby(sl, pkt, wx, wy, wz, chunk.deliveryRange());
         }
 
         if (speakerQueue.size() < SPEAKER_READY_MARK) speakerReadyPending.set(true);
@@ -176,28 +181,62 @@ public class HQSpeakerPeripheral implements IPeripheral {
     }
 
     
-    static record PreparedPcm(byte[] data, float volume, int samples) {
+    static record PreparedPcm(
+        byte[] data,
+        float volume, float gain, float range, boolean explicitRange,
+        HQAudioTuningProfile tuning,
+        int samples
+    ) {
         PreparedPcm {
             data = java.util.Arrays.copyOf(data, data.length);
         }
     }
 
-    PreparedPcm preparePcm(IArguments args) throws LuaException {
-        return preparePcm(args, 0, 1);
+    synchronized PreparedPcm preparePcm(IArguments args) throws LuaException {
+        return preparePcm(args, 0, 1, 2);
     }
 
-    PreparedPcm preparePcm(IArguments args, int dataIndex, int volumeIndex) throws LuaException {
+    synchronized PreparedPcm preparePcm(IArguments args, int dataIndex, int volumeIndex, int rangeIndex)
+            throws LuaException {
         Map<?, ?> table = args.getTable(dataIndex);
-        float volume = clampVolChecked(args.optDouble(volumeIndex, speakerDefaultVolume), "volume");
+        HQAudioTuningProfile tuning = rawTuning != null ? rawTuning : currentAudioProfile();
+        Double requestedVolume = args.optDouble(volumeIndex).orElse(null);
+        if (requestedVolume == null && Double.isFinite(speakerDefaultVolume)) requestedVolume = speakerDefaultVolume;
+        Double requestedRange = args.optDouble(rangeIndex).orElse(null);
+        HQAudioTuningProfile.Resolved resolved = resolve(tuning, requestedVolume, requestedRange);
+
         int len = 0;
         while ((table.containsKey((long)(len + 1)) || table.containsKey((double)(len + 1))) && len <= SPEAKER_MAX_PCM) len++;
         byte[] data = rawTableToPcmBytes(table, len, "speakPCM");
-        return new PreparedPcm(data, volume, len);
+        return new PreparedPcm(
+            data,
+            resolved.logicalVolume(), resolved.gain(), resolved.range(), resolved.explicitRange(),
+            tuning,
+            len
+        );
     }
 
-    boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
-        return prepared != null && enqueue(
-            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, prepared.data(), prepared.volume(), startTick);
+    synchronized boolean enqueuePreparedPcmAtTick(PreparedPcm prepared, long startTick) {
+        if (prepared == null) return false;
+        if (rawTuning != null && rawTuning != prepared.tuning()) {
+            throw new IllegalStateException("RAW source tuning profile changed during one source lifetime");
+        }
+        if (speakerQueue.size() >= SPEAKER_MAX_QUEUE) return false;
+
+        float deliveryRange = Math.max(rawLastRange, prepared.range());
+        byte[] safe = java.util.Arrays.copyOf(prepared.data(), prepared.data().length);
+        SpeakerChunk chunk = new SpeakerChunk(
+            HQSpeakerAudioPacket.AudioFormat.PCM_S16LE, safe,
+            prepared.volume(), prepared.gain(), prepared.range(), prepared.explicitRange(),
+            deliveryRange, Math.max(0L, startTick)
+        );
+        if (!speakerQueue.offer(chunk)) return false;
+
+        if (rawTuning == null) rawTuning = prepared.tuning();
+        rawLastRange = prepared.range();
+        activeStopRange = Math.max(activeStopRange, deliveryRange);
+        if (speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
+        return true;
     }
 
     long nextGroupStartTick() {
@@ -206,22 +245,32 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
     @LuaFunction
     public final void speakStop() {
+        float stopRange = activeStopRange;
         speakerQueue.clear();
         speakerReadyPending.set(false);
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
-        broadcastStopPacket();
+        broadcastStopPacket(stopRange);
+        resetTuningState();
         HQSpeakerMod.log("HQSpeaker: stopped at " + pos);
     }
 
     @LuaFunction
     public final void speakVolume(IArguments args) throws LuaException {
-        speakerDefaultVolume = clampVolChecked(args.getDouble(0), "volume");
+        double requested = args.getDouble(0);
+        HQAudioTuningProfile tuning = currentAudioProfile();
+        try {
+            tuning.validateVolume(requested);
+        } catch (IllegalArgumentException e) {
+            throw new LuaException(e.getMessage());
+        }
+        speakerDefaultVolume = requested;
     }
 
     float defaultVolume() {
-        return speakerDefaultVolume;
+        if (Double.isFinite(speakerDefaultVolume)) return (float) speakerDefaultVolume;
+        return (float) HQSpeakerServerConfig.audioProfile().defaultVolume();
     }
 
     @LuaFunction
@@ -275,7 +324,8 @@ public class HQSpeakerPeripheral implements IPeripheral {
         if (!streamActive.get() || player == null || player.level() != world) return false;
         float[] wp = computeWorldPos();
         double dx = player.getX() - wp[0], dy = player.getY() - wp[1], dz = player.getZ() - wp[2];
-        return dx * dx + dy * dy + dz * dz <= SPEAKER_RADIUS * SPEAKER_RADIUS;
+        float radius = streamRange;
+        return radius > 0.0f && dx * dx + dy * dy + dz * dz <= radius * radius;
     }
 
     public void onIcyMetadata(String rawTitle, String stationName, String genre, String description) {
@@ -370,56 +420,71 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         return lifecycleEpoch == expected;
     }
 
-    boolean startValidatedStream(String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format,
+    boolean startValidatedStream(String url, Optional<Double> volume, Optional<Double> range,
+                                 HQSpeakerAudioPacket.AudioFormat format,
                                  String method, long expectedLifecycle) throws LuaException {
-        return startValidatedStreamAtTick(url, volume, format, method, 0L, null, expectedLifecycle);
+        return startValidatedStreamAtTick(url, volume, range, format, method, 0L, null, expectedLifecycle);
     }
 
     synchronized boolean startValidatedStreamAtTick(
-            String url, Optional<Double> volume, HQSpeakerAudioPacket.AudioFormat format, String method,
+            String url, Optional<Double> volume, Optional<Double> range,
+            HQSpeakerAudioPacket.AudioFormat format, String method,
             long startTick, java.util.UUID syncGroupId, long expectedLifecycle) throws LuaException {
         if (lifecycleEpoch != expectedLifecycle) return false;
-        float vol = clampVolChecked(volume.orElse((double) speakerDefaultVolume), "volume");
+
+        HQAudioTuningProfile tuning = currentAudioProfile();
+        Double requestedVolume = volume.orElse(null);
+        if (requestedVolume == null && Double.isFinite(speakerDefaultVolume)) requestedVolume = speakerDefaultVolume;
+        HQAudioTuningProfile.Resolved resolved = resolve(tuning, requestedVolume, range.orElse(null));
+
         speakStop();
         clearIcyMeta();
-
         if (startTick < 0L) startTick = 0L;
 
         if (world instanceof ServerLevel sl) {
             float[] wp = computeWorldPos();
             var pkt = new HQSpeakerAudioPacket(
-                speakerSource, format, vol, wp[0], wp[1], wp[2],
+                speakerSource, format,
+                resolved.logicalVolume(), resolved.gain(), resolved.range(), resolved.explicitRange(),
+                wp[0], wp[1], wp[2],
                 pos.getX(), pos.getY(), pos.getZ(), url, startTick, syncGroupId);
-            sendToNearby(sl, pkt, wp[0], wp[1], wp[2]);
+            sendToNearby(sl, pkt, wp[0], wp[1], wp[2], resolved.range());
         }
 
         streamActive.set(true);
         streamUrl = url;
+        streamRange = resolved.range();
+        activeStopRange = resolved.range();
         IcyMetaPacket.SPEAKER_REGISTRY.put(speakerSource, this);
-        HQSpeakerMod.log("HQSpeaker: started stream (" + method + ") from " + url);
+        HQSpeakerMod.log("HQSpeaker: started stream (" + method + ") from " + url
+            + " volume=" + resolved.logicalVolume() + " gain=" + resolved.gain()
+            + " range=" + resolved.range());
         return true;
     }
 
-    private boolean enqueue(HQSpeakerAudioPacket.AudioFormat fmt, byte[] data, float volume,
-                            long startTick) {
-        // The legacy queue is now RAW-only. Finite MP3/WAV uses HQFiniteMediaServer; retired packed formats
-        // must not recreate a second whole-file playback engine through this queue.
-        if (fmt != HQSpeakerAudioPacket.AudioFormat.PCM_S16LE) return false;
-        if (data == null || data.length == 0 || data.length > SPEAKER_MAX_AUDIO) return false;
-        if (!Float.isFinite(volume)) volume = 1.0f;
-        volume = Math.max(0.0f, Math.min(3.0f, volume));
-        if (startTick < SPEAKER_MIN_START_DELAY) startTick = 0L;
-        if (speakerQueue.size() >= SPEAKER_MAX_QUEUE) return false;
-
-        byte[] safe = java.util.Arrays.copyOf(data, data.length);
-        boolean offered = speakerQueue.offer(new SpeakerChunk(fmt, safe, volume, startTick));
-        if (offered && speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
-        return offered;
+    private HQAudioTuningProfile currentAudioProfile() throws LuaException {
+        try {
+            return HQSpeakerServerConfig.audioProfile();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw new LuaException("invalid HQ speaker server audio config: " + e.getMessage());
+        }
     }
 
-    private static float clampVolChecked(double v, String name) throws LuaException {
-        if (!Double.isFinite(v)) throw new LuaException(name + " must be finite");
-        return (float) Math.max(0.0, Math.min(3.0, v));
+    private HQAudioTuningProfile.Resolved resolve(
+            HQAudioTuningProfile tuning, Double requestedVolume, Double requestedRange) throws LuaException {
+        double volume = requestedVolume == null ? tuning.defaultVolume() : requestedVolume;
+        try {
+            return tuning.resolve(volume, requestedRange);
+        } catch (IllegalArgumentException e) {
+            throw new LuaException(e.getMessage());
+        }
+    }
+
+    private void resetTuningState() {
+        rawTuning = null;
+        rawLastRange = 0.0f;
+        activeStopRange = 0.0f;
+        streamRange = 0.0f;
     }
 
     private void clearIcyMeta() {
@@ -434,19 +499,21 @@ public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess compute
         return new float[]{(float) resolved.x, (float) resolved.y, (float) resolved.z};
     }
 
-    private void sendToNearby(ServerLevel sl, CustomPacketPayload pkt, float wx, float wy, float wz) {
+    private void sendToNearby(ServerLevel sl, CustomPacketPayload pkt,
+                              float wx, float wy, float wz, float radius) {
+        if (!(radius > 0.0f)) return;
+        double radiusSquared = (double) radius * radius;
         for (ServerPlayer player : sl.players()) {
             double dx = player.getX() - wx, dy = player.getY() - wy, dz = player.getZ() - wz;
-            if (dx*dx + dy*dy + dz*dz <= SPEAKER_RADIUS*SPEAKER_RADIUS)
-                HQSpeakerNetwork.sendToPlayer(pkt, player);
+            if (dx * dx + dy * dy + dz * dz <= radiusSquared) HQSpeakerNetwork.sendToPlayer(pkt, player);
         }
     }
 
-    private void broadcastStopPacket() {
-        if (!(world instanceof ServerLevel sl)) return;
+    private void broadcastStopPacket(float radius) {
+        if (!(world instanceof ServerLevel sl) || !(radius > 0.0f)) return;
         var pkt = new HQSpeakerStopPacket(speakerSource);
         float[] wp = computeWorldPos();
-        sendToNearby(sl, pkt, wp[0], wp[1], wp[2]);
+        sendToNearby(sl, pkt, wp[0], wp[1], wp[2], radius);
     }
 
     static void validateStreamUrl(String url, String method) throws LuaException {

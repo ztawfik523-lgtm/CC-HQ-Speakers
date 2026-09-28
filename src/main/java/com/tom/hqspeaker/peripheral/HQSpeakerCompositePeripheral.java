@@ -935,7 +935,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult startRawAt(IComputerAccess computer, String name, IArguments args) throws LuaException {
         HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
-        HQSpeakerPeripheral.PreparedPcm prepared = member.legacy.preparePcm(args, 1, 2);
+        HQSpeakerPeripheral.PreparedPcm prepared = member.legacy.preparePcm(args, 1, 2, 3);
         validateRawPrepared(name, prepared);
         member.commandRevision.incrementAndGet();
 
@@ -985,7 +985,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                                  ILuaContext context, IArguments args) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
-        if (volume.isPresent() && !Double.isFinite(volume.get())) throw new LuaException("volume must be finite");
+        Optional<Double> range = args.optDouble(2);
 
         List<HQSpeakerCompositePeripheral> targets = membersFor(computer);
         if (targets.isEmpty()) targets = List.of(this);
@@ -1017,7 +1017,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 boolean complete = true;
                 for (HQSpeakerCompositePeripheral member : snapshot) {
                     boolean started = member.legacy.startValidatedStreamAtTick(
-                        url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                        url, volume, range, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                         sealTick, groupId, expectedLifecycles.get(member));
                     if (!started) {
                         complete = false;
@@ -1044,7 +1044,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         HQSpeakerCompositePeripheral target = memberAt(computer, args.getInt(0));
         String url = args.getString(1);
         Optional<Double> volume = args.optDouble(2);
-        if (volume.isPresent() && !Double.isFinite(volume.get())) throw new LuaException("volume must be finite");
+        Optional<Double> range = args.optDouble(3);
 
         long expectedRevision = target.commandRevision.incrementAndGet();
         long expectedLifecycle = target.legacy.lifecycleEpochSnapshot();
@@ -1060,7 +1060,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             }
             target.beginReplacingHQ(Owner.STREAM);
             boolean started = target.legacy.startValidatedStreamAtTick(
-                url, volume, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
+                url, volume, range, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                 0L, null, expectedLifecycle);
             if (started) target.owner = Owner.STREAM;
             return new Object[]{ started };
@@ -1071,6 +1071,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                               long expectedCommandRevision) throws LuaException {
         String url = args.getString(0);
         Optional<Double> volume = args.optDouble(1);
+        Optional<Double> range = args.optDouble(2);
         long expectedLifecycle = legacy.lifecycleEpochSnapshot();
 
         // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
@@ -1085,7 +1086,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 synchronized (this) {
                     if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return new Object[]{ false };
                     beginReplacingHQ(Owner.STREAM);
-                    boolean started = legacy.startValidatedStream(url, volume, format, name, expectedLifecycle);
+                    boolean started = legacy.startValidatedStream(url, volume, range, format, name, expectedLifecycle);
                     if (started) owner = Owner.STREAM;
                     return new Object[]{ started };
                 }
