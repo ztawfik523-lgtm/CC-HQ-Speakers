@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -26,38 +25,26 @@ public abstract class SoundPhysicsEnvironmentMixin {
         throw new AssertionError("mixin shadow");
     }
 
-    @Shadow(remap = false)
-    public static void setEnvironment(
-        int sourceId,
-        float r0, float r1, float r2, float r3,
-        float h0, float h1, float h2, float h3,
-        float directCutoff, float directGain
-    ) {
-        throw new AssertionError("mixin shadow");
-    }
-
     /**
-     * Replace only the final normal SPR environment application for a bound HQ source.
+     * Isolate every environment write for an already-bound HQ source.
      *
-     * <p>SPR still performs its complete room/reverb/reflection calculation. HQ reuses SPR's own
-     * runOcclusion primitive for the approved progressive direct model, then applies the resulting
-     * environment with private per-source filters. Early/default SPR environments and any failure path
-     * call the untouched native setEnvironment method.</p>
+     * <p>This intentionally covers both the normal final environment and SPR's early/default environment
+     * paths (for example its sound-rate limiter). Once an HQ source owns private filters, no later native
+     * default write may reconnect it to SPR's shared mutable low-pass filters.</p>
      */
-    @Redirect(
-        method = "evaluateEnvironment(IDDDLnet/minecraft/sounds/SoundSource;Lnet/minecraft/resources/ResourceLocation;Z)Lnet/minecraft/world/phys/Vec3;",
-        at = @At(
-            value = "INVOKE",
-            target = "Lcom/sonicether/soundphysics/SoundPhysics;setEnvironment(IFFFFFFFFFF)V"
-        ),
+    @Inject(
+        method = "setEnvironment(IFFFFFFFFFF)V",
+        at = @At("HEAD"),
+        cancellable = true,
         remap = false,
         require = 0
     )
-    private static void hqspeaker$applyEnvironment(
+    private static void hqspeaker$applyPrivateEnvironment(
         int sourceId,
         float r0, float r1, float r2, float r3,
         float h0, float h1, float h2, float h3,
-        float directCutoff, float directGain
+        float directCutoff, float directGain,
+        CallbackInfo ci
     ) {
         boolean handled = HQSoundPhysicsAcousticsClient.applyEnvironment(
             sourceId,
@@ -66,13 +53,7 @@ public abstract class SoundPhysicsEnvironmentMixin {
             directCutoff, directGain,
             (sx, sy, sz, lx, ly, lz) -> runOcclusion(
                 new Vec3(sx, sy, sz), new Vec3(lx, ly, lz)));
-        if (handled) return;
-
-        setEnvironment(
-            sourceId,
-            r0, r1, r2, r3,
-            h0, h1, h2, h3,
-            directCutoff, directGain);
+        if (handled) ci.cancel();
     }
 
     @Inject(method = "setEnvironment", at = @At("TAIL"), remap = false, require = 0)

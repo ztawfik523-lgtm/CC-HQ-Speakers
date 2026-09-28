@@ -36,10 +36,11 @@ class HQSoundPhysicsIntegrationSafetyTest {
             "src", "main", "java", "com", "tom", "hqspeaker", "client",
             "HQPrivateEfxClient.java");
 
-        assertTrue(mixin.contains("@Redirect"));
+        assertTrue(mixin.contains("method = \"setEnvironment(IFFFFFFFFFF)V\""));
+        assertTrue(mixin.contains("at = @At(\"HEAD\")"));
         assertTrue(mixin.contains("HQSoundPhysicsAcousticsClient.applyEnvironment"));
-        assertTrue(mixin.contains("if (handled) return;"));
-        assertTrue(mixin.contains("setEnvironment("), "unhandled environments must fall back to native SPR");
+        assertTrue(mixin.contains("if (handled) ci.cancel()"),
+            "successful private EFX must prevent SPR's shared filter objects from being reattached");
 
         assertTrue(privateEfx.contains("final int[] sendFilters = new int[4]"));
         assertTrue(privateEfx.contains("int directFilter"));
