@@ -299,16 +299,22 @@ public final class HQSpeakerClientHandler {
 
     @OnlyIn(Dist.CLIENT)
     public static final class HQSpeakerSound extends AbstractSoundInstance
-            implements TickableSoundInstance, HQDiagnosticSource {
+            implements TickableSoundInstance, HQDiagnosticSource, HQAcousticPositionSource {
         private final HQAudioStream stream;
         private final boolean streaming;
         private final HQDiagnostics.SourceIdentity diagnosticIdentity;
+        private float physicalX;
+        private float physicalY;
+        private float physicalZ;
 
         HQSpeakerSound(HQAudioStream stream, HQSpeakerAudioPacket packet,
                        float volume, float x, float y, float z) {
             super(AUDIO_SOURCE_LOC, SoundSource.BLOCKS, SoundInstance.createUnseededRandom());
             this.stream = stream;
             this.volume = volume;
+            this.physicalX = x;
+            this.physicalY = y;
+            this.physicalZ = z;
             this.x = x;
             this.y = y;
             this.z = z;
@@ -320,15 +326,42 @@ public final class HQSpeakerClientHandler {
 
         void update(float volume, float x, float y, float z) {
             this.volume = volume;
+            updatePosition(x, y, z);
+        }
+
+        synchronized void updatePosition(float x, float y, float z) {
+            float dx = x - physicalX;
+            float dy = y - physicalY;
+            float dz = z - physicalZ;
+            physicalX = x;
+            physicalY = y;
+            physicalZ = z;
+            this.x += dx;
+            this.y += dy;
+            this.z += dz;
+        }
+
+        @Override
+        public synchronized double hqspeaker$physicalX() { return physicalX; }
+
+        @Override
+        public synchronized double hqspeaker$physicalY() { return physicalY; }
+
+        @Override
+        public synchronized double hqspeaker$physicalZ() { return physicalZ; }
+
+        @Override
+        public synchronized void hqspeaker$setAcousticPosition(double x, double y, double z) {
             this.x = x;
             this.y = y;
             this.z = z;
         }
 
-        void updatePosition(float x, float y, float z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
+        @Override
+        public synchronized void hqspeaker$clearAcousticPosition() {
+            this.x = physicalX;
+            this.y = physicalY;
+            this.z = physicalZ;
         }
 
         @Override public boolean isStopped() { return streaming && stream.isDrained(); }

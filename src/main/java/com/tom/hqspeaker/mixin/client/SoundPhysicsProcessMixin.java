@@ -1,6 +1,7 @@
 package com.tom.hqspeaker.mixin.client;
 
 import com.tom.hqspeaker.client.HQAudioDiagnosticsClient;
+import com.tom.hqspeaker.client.HQSoundPhysicsAcousticsClient;
 import com.tom.hqspeaker.client.HQSoundPhysicsRefreshClient;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
@@ -54,6 +55,14 @@ public abstract class SoundPhysicsProcessMixin {
     ) {
         Vec3 reflected = cir.getReturnValue();
         String soundId = sound == null ? "" : sound.toString();
+        if ("hqspeaker:hq_audio_source".equals(soundId)) {
+            HQSoundPhysicsAcousticsClient.soundPhysicsProcessed(
+                sourceId,
+                reflected == null ? 0.0 : reflected.x,
+                reflected == null ? 0.0 : reflected.y,
+                reflected == null ? 0.0 : reflected.z,
+                reflected != null);
+        }
         HQSoundPhysicsRefreshClient.soundPhysicsProcessed(sourceId, x, y, z, soundId);
         HQAudioDiagnosticsClient.soundPhysicsProcessed(
             sourceId,

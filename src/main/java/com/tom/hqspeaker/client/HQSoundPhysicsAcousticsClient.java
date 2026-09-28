@@ -133,6 +133,44 @@ public final class HQSoundPhysicsAcousticsClient {
         }
     }
 
+    public static boolean shouldSuppressReflectedPosition(int openAlSource) {
+        SourceState state = BY_OPENAL_SOURCE.get(openAlSource);
+        if (state == null || BY_IDENTITY.get(state.source) != state) return false;
+        SprConfigSnapshot config = currentSprConfig();
+        return config != null && !config.strictOcclusion;
+    }
+
+    public static void soundPhysicsProcessed(
+        int openAlSource,
+        double reflectedX, double reflectedY, double reflectedZ,
+        boolean hasReflected
+    ) {
+        SourceState state = BY_OPENAL_SOURCE.get(openAlSource);
+        if (state == null || BY_IDENTITY.get(state.source) != state) return;
+
+        SprConfigSnapshot config = currentSprConfig();
+        if (config == null || config.strictOcclusion) {
+            HQSoundPhysicsRefreshClient.clearAcousticPosition(openAlSource);
+            return;
+        }
+
+        HQSoundPhysicsRefreshClient.AcousticSnapshot position =
+            HQSoundPhysicsRefreshClient.acousticSnapshot(openAlSource);
+        if (position == null) return;
+
+        synchronized (state) {
+            HQReflectionStabilizer.Point physical = new HQReflectionStabilizer.Point(
+                position.sourceX(), position.sourceY(), position.sourceZ());
+            HQReflectionStabilizer.Point reflected = hasReflected
+                ? new HQReflectionStabilizer.Point(reflectedX, reflectedY, reflectedZ)
+                : null;
+            HQReflectionStabilizer.Point stabilized =
+                state.reflection.update(physical, reflected, state.rawOcclusion);
+            HQSoundPhysicsRefreshClient.applyAcousticPosition(
+                openAlSource, stabilized.x(), stabilized.y(), stabilized.z());
+        }
+    }
+
     static double rawOcclusion(int openAlSource) {
         SourceState state = BY_OPENAL_SOURCE.get(openAlSource);
         if (state == null || BY_IDENTITY.get(state.source) != state) return 0.0;

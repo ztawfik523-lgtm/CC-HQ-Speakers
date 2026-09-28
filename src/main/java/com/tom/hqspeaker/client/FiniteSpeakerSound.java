@@ -13,7 +13,8 @@ import net.minecraft.sounds.SoundSource;
 import java.util.concurrent.CompletableFuture;
 
 /** One Minecraft positional source for one physical speaker's modern finite renderer epoch. */
-final class FiniteSpeakerSound extends AbstractSoundInstance implements TickableSoundInstance, HQDiagnosticSource {
+final class FiniteSpeakerSound extends AbstractSoundInstance
+        implements TickableSoundInstance, HQDiagnosticSource, HQAcousticPositionSource {
     private static final ResourceLocation AUDIO_SOURCE =
         ResourceLocation.fromNamespaceAndPath("hqspeaker", "hq_audio_source");
 
@@ -29,6 +30,9 @@ final class FiniteSpeakerSound extends AbstractSoundInstance implements Tickable
         this.stream = stream;
         this.diagnosticIdentity = diagnosticIdentity;
         this.volume = volume;
+        this.physicalX = x;
+        this.physicalY = y;
+        this.physicalZ = z;
         this.x = x;
         this.y = y;
         this.z = z;
@@ -40,10 +44,39 @@ final class FiniteSpeakerSound extends AbstractSoundInstance implements Tickable
         this.volume = volume;
     }
 
-    void updatePosition(float x, float y, float z) {
+    synchronized void updatePosition(float x, float y, float z) {
+        float dx = x - physicalX;
+        float dy = y - physicalY;
+        float dz = z - physicalZ;
+        physicalX = x;
+        physicalY = y;
+        physicalZ = z;
+        this.x += dx;
+        this.y += dy;
+        this.z += dz;
+    }
+
+    @Override
+    public synchronized double hqspeaker$physicalX() { return physicalX; }
+
+    @Override
+    public synchronized double hqspeaker$physicalY() { return physicalY; }
+
+    @Override
+    public synchronized double hqspeaker$physicalZ() { return physicalZ; }
+
+    @Override
+    public synchronized void hqspeaker$setAcousticPosition(double x, double y, double z) {
         this.x = x;
         this.y = y;
         this.z = z;
+    }
+
+    @Override
+    public synchronized void hqspeaker$clearAcousticPosition() {
+        this.x = physicalX;
+        this.y = physicalY;
+        this.z = physicalZ;
     }
 
     void stopLocally() {

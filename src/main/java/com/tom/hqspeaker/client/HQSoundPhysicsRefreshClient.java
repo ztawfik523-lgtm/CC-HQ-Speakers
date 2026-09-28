@@ -231,9 +231,10 @@ public final class HQSoundPhysicsRefreshClient {
             if (state != AL10.AL_PLAYING) return;
 
             SoundInstance sound = binding.sound();
-            double x = sound.getX();
-            double y = sound.getY();
-            double z = sound.getZ();
+            AcousticPosition physical = physicalPosition(sound);
+            double x = physical.x();
+            double y = physical.y();
+            double z = physical.z();
 
             if (!invokeSoundPhysics(source, x, y, z)) return;
 
@@ -309,10 +310,39 @@ public final class HQSoundPhysicsRefreshClient {
         if (listener == null) return null;
 
         SoundInstance sound = binding.sound();
+        AcousticPosition physical = physicalPosition(sound);
         return new AcousticSnapshot(
-            sound.getX(), sound.getY(), sound.getZ(),
+            physical.x(), physical.y(), physical.z(),
             listener.x, listener.y, listener.z);
     }
+
+    static void applyAcousticPosition(int openAlSource, double x, double y, double z) {
+        Binding binding = BY_OPENAL_SOURCE.get(openAlSource);
+        if (binding == null || BINDINGS.get(binding.source()) != binding) return;
+        if (binding.sound() instanceof HQAcousticPositionSource acoustic) {
+            acoustic.hqspeaker$setAcousticPosition(x, y, z);
+        }
+    }
+
+    static void clearAcousticPosition(int openAlSource) {
+        Binding binding = BY_OPENAL_SOURCE.get(openAlSource);
+        if (binding == null || BINDINGS.get(binding.source()) != binding) return;
+        if (binding.sound() instanceof HQAcousticPositionSource acoustic) {
+            acoustic.hqspeaker$clearAcousticPosition();
+        }
+    }
+
+    private static AcousticPosition physicalPosition(SoundInstance sound) {
+        if (sound instanceof HQAcousticPositionSource acoustic) {
+            return new AcousticPosition(
+                acoustic.hqspeaker$physicalX(),
+                acoustic.hqspeaker$physicalY(),
+                acoustic.hqspeaker$physicalZ());
+        }
+        return new AcousticPosition(sound.getX(), sound.getY(), sound.getZ());
+    }
+
+    private record AcousticPosition(double x, double y, double z) {}
 
     static record AcousticSnapshot(
         double sourceX, double sourceY, double sourceZ,
