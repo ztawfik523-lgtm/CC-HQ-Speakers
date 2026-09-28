@@ -225,6 +225,9 @@ public final class HQSoundPhysicsAcousticsClient {
 
         SprConfigSnapshot config = currentSprConfig();
         if (config == null || config.strictOcclusion) {
+            synchronized (state) {
+                state.reflection.reset();
+            }
             // In native/fallback modes keep SPR's own reflected target persistent across Minecraft's
             // TickableSoundInstance position update instead of snapping it back to the physical block next tick.
             if (hasReflected) {
