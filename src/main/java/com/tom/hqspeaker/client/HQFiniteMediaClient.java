@@ -93,6 +93,7 @@ public final class HQFiniteMediaClient {
         }
 
         void stopRenderer() {
+            HQSoundPhysicsRefreshClient.detach(begin.source());
             HQAudioDiagnosticsClient.detach(begin.source());
             FiniteSpeakerSound currentSound = sound;
             sound = null;
