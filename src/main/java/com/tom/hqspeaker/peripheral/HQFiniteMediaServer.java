@@ -1,6 +1,8 @@
 package com.tom.hqspeaker.peripheral;
 
 import com.tom.hqspeaker.HQSpeakerMod;
+import com.tom.hqspeaker.config.HQAudioTuningProfile;
+import com.tom.hqspeaker.config.HQSpeakerServerConfig;
 import com.tom.hqspeaker.compat.MovingSourcePosition;
 import com.tom.hqspeaker.media.FiniteDecodeAnchorSelector;
 import com.tom.hqspeaker.media.FiniteDecodeDescriptor;
@@ -42,8 +44,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Server-authoritative finite playback state plus M1F transport and M1G decoder descriptors/anchors. */
 public final class HQFiniteMediaServer {
-    private static final double SPEAKER_RADIUS = 32.0;
-
     private static final Set<HQFiniteMediaServer> ACTIVE = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, HQFiniteMediaServer> BY_SOURCE = new ConcurrentHashMap<>();
 
@@ -101,10 +101,22 @@ public final class HQFiniteMediaServer {
             }
         }
 
-        boolean setAllEndpointVolumes(double volume, long nowNanos) {
+        boolean setAllEndpointVolumes(double volume, long nowNanos) throws LuaException {
+            List<HQFiniteMediaServer> snapshot = new ArrayList<>(endpoints);
+            for (HQFiniteMediaServer endpoint : snapshot) endpoint.validateSharedEndpointVolume(this, volume);
             boolean changed = false;
-            for (HQFiniteMediaServer endpoint : new ArrayList<>(endpoints)) {
+            for (HQFiniteMediaServer endpoint : snapshot) {
                 changed = endpoint.setSharedEndpointVolume(this, volume, nowNanos) || changed;
+            }
+            return changed;
+        }
+
+        boolean setAllEndpointRanges(Double range, long nowNanos) throws LuaException {
+            List<HQFiniteMediaServer> snapshot = new ArrayList<>(endpoints);
+            for (HQFiniteMediaServer endpoint : snapshot) endpoint.validateSharedEndpointRange(this, range);
+            boolean changed = false;
+            for (HQFiniteMediaServer endpoint : snapshot) {
+                changed = endpoint.setSharedEndpointRange(this, range, nowNanos) || changed;
             }
             return changed;
         }
@@ -133,14 +145,19 @@ public final class HQFiniteMediaServer {
         final MediaMetadata metadata;
         final long totalBytes;
         final FinitePlaybackAuthority playback;
+        final HQAudioTuningProfile tuning;
         float volume;
+        float gain;
+        float range;
+        boolean explicitRange;
         boolean muted;
         final FiniteRangeReadService rangeReads;
         final MediaAssetReleaseQueue releases;
         final UUID retainedAssetId;
         final FiniteListenerMembership listeners = new FiniteListenerMembership();
 
-        Session(SharedPlayback shared, long generation, double volume) {
+        Session(SharedPlayback shared, long generation, HQAudioTuningProfile tuning,
+                HQAudioTuningProfile.Resolved resolved) {
             this.shared = shared;
             this.mediaId = shared.mediaId;
             this.generation = generation;
@@ -151,7 +168,8 @@ public final class HQFiniteMediaServer {
             this.releases = shared.releases;
             this.retainedAssetId = shared.retainedAssetId;
             this.playback = shared.playback;
-            this.volume = clampVolume(volume);
+            this.tuning = tuning;
+            applyResolved(this, resolved);
         }
     }
 
@@ -244,7 +262,13 @@ public final class HQFiniteMediaServer {
     }
 
     synchronized PreparedStart preparePreparedStart(String assetId, double volume) throws LuaException {
-        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        return preparePreparedStart(assetId, volume, null);
+    }
+
+    synchronized PreparedStart preparePreparedStart(String assetId, Double requestedVolume, Double requestedRange)
+            throws LuaException {
+        HQAudioTuningProfile tuning = currentAudioProfile();
+        HQAudioTuningProfile.Resolved resolved = resolveRequested(tuning, requestedVolume, requestedRange);
 
         UUID id = HQMediaStaging.parseAssetId(assetId);
         MediaAssetStore store = staging.assetStore();
@@ -273,7 +297,7 @@ public final class HQFiniteMediaServer {
             long now = System.nanoTime();
             SharedPlayback shared = new SharedPlayback(id, metadata, asset.sizeBytes(),
                 mediaAssets.rangeReads(), mediaAssets.releases(), now);
-            Session next = new Session(shared, generation, volume);
+            Session next = new Session(shared, generation, tuning, resolved);
             return new PreparedStart(this, next, statusOf(next, now));
         } catch (RuntimeException e) {
             MediaAssetReleaseQueue.Result release = mediaAssets.releases().release(id);
@@ -287,8 +311,15 @@ public final class HQFiniteMediaServer {
 
     PreparedGroupStart preparePreparedGroupStart(List<HQFiniteMediaServer> targets,
                                                        String assetId, double volume) throws LuaException {
-        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
+        return preparePreparedGroupStart(targets, assetId, volume, null);
+    }
+
+    PreparedGroupStart preparePreparedGroupStart(List<HQFiniteMediaServer> targets,
+                                                       String assetId, Double requestedVolume, Double requestedRange)
+            throws LuaException {
         if (targets == null || targets.isEmpty()) throw new LuaException("no speakers connected to this computer");
+        HQAudioTuningProfile tuning = currentAudioProfile();
+        HQAudioTuningProfile.Resolved resolved = resolveRequested(tuning, requestedVolume, requestedRange);
 
         UUID id = HQMediaStaging.parseAssetId(assetId);
         MediaAssetStore store = staging.assetStore();
@@ -325,7 +356,7 @@ public final class HQFiniteMediaServer {
                 synchronized (target) {
                     long generation = target.generationCounter + 1L;
                     if (generation <= 0L) throw new IllegalStateException("finite generation exhausted");
-                    next.put(target, new Session(shared, generation, volume));
+                    next.put(target, new Session(shared, generation, tuning, resolved));
                 }
             }
             if (next.isEmpty()) throw new LuaException("no speakers connected to this computer");
@@ -492,8 +523,6 @@ public final class HQFiniteMediaServer {
     }
 
     public boolean setVolume(double volume) throws LuaException {
-        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
-
         long now = System.nanoTime();
         SharedNotification notification = null;
         synchronized (this) {
@@ -502,7 +531,7 @@ public final class HQFiniteMediaServer {
             if (finalizeNaturalEnd(s, now)) {
                 notification = new SharedNotification(s.shared, now);
             } else {
-                s.volume = clampVolume(volume);
+                applyResolved(s, resolveForVolume(s, volume));
                 notifyState(s, now);
                 return true;
             }
@@ -532,13 +561,13 @@ public final class HQFiniteMediaServer {
 
     /** Apply endpoint gain to the complete start-time playback snapshot, not current computer attachments. */
     public boolean setVolumeAll(double volume) throws LuaException {
-        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
         SharedPlayback shared;
         boolean ended;
         long now = System.nanoTime();
         synchronized (this) {
             Session s = session;
             if (s == null || s.playback.terminal()) return false;
+            resolveForVolume(s, volume);
             shared = s.shared;
             ended = finalizeNaturalEnd(s, now);
         }
@@ -547,6 +576,42 @@ public final class HQFiniteMediaServer {
             return false;
         }
         return shared.setAllEndpointVolumes(volume, now);
+    }
+
+    public boolean setRange(Double range) throws LuaException {
+        long now = System.nanoTime();
+        SharedNotification notification = null;
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            if (finalizeNaturalEnd(s, now)) {
+                notification = new SharedNotification(s.shared, now);
+            } else {
+                applyResolved(s, resolveForRange(s, range));
+                notifyState(s, now);
+                return true;
+            }
+        }
+        notifyShared(notification);
+        return false;
+    }
+
+    public boolean setRangeAll(Double range) throws LuaException {
+        SharedPlayback shared;
+        boolean ended;
+        long now = System.nanoTime();
+        synchronized (this) {
+            Session s = session;
+            if (s == null || s.playback.terminal()) return false;
+            resolveForRange(s, range);
+            shared = s.shared;
+            ended = finalizeNaturalEnd(s, now);
+        }
+        if (ended) {
+            notifyShared(new SharedNotification(shared, now));
+            return false;
+        }
+        return shared.setAllEndpointRanges(range, now);
     }
 
     /** Apply mute to the complete start-time playback snapshot, not current computer attachments. */
@@ -567,10 +632,30 @@ public final class HQFiniteMediaServer {
         return shared.setAllEndpointMuted(muted, now);
     }
 
-    private synchronized boolean setSharedEndpointVolume(SharedPlayback shared, double volume, long nowNanos) {
+    private synchronized void validateSharedEndpointVolume(SharedPlayback shared, double volume) throws LuaException {
+        Session s = session;
+        if (s != null && s.shared == shared && !s.playback.terminal()) resolveForVolume(s, volume);
+    }
+
+    private synchronized boolean setSharedEndpointVolume(SharedPlayback shared, double volume, long nowNanos)
+            throws LuaException {
         Session s = session;
         if (s == null || s.shared != shared || s.playback.terminal()) return false;
-        s.volume = clampVolume(volume);
+        applyResolved(s, resolveForVolume(s, volume));
+        notifyState(s, nowNanos);
+        return true;
+    }
+
+    private synchronized void validateSharedEndpointRange(SharedPlayback shared, Double range) throws LuaException {
+        Session s = session;
+        if (s != null && s.shared == shared && !s.playback.terminal()) resolveForRange(s, range);
+    }
+
+    private synchronized boolean setSharedEndpointRange(SharedPlayback shared, Double range, long nowNanos)
+            throws LuaException {
+        Session s = session;
+        if (s == null || s.shared != shared || s.playback.terminal()) return false;
+        applyResolved(s, resolveForRange(s, range));
         notifyState(s, nowNanos);
         return true;
     }
@@ -822,7 +907,7 @@ public final class HQFiniteMediaServer {
         float[] world = computeWorldPos();
         Map<UUID, ServerPlayer> relevantPlayers = new HashMap<>();
         for (ServerPlayer player : level.players()) {
-            if (isRelevant(player, world)) relevantPlayers.put(player.getUUID(), player);
+            if (isRelevant(s, player, world)) relevantPlayers.put(player.getUUID(), player);
         }
 
         FiniteListenerMembership.Delta delta = s.listeners.plan(relevantPlayers.keySet());
@@ -833,14 +918,14 @@ public final class HQFiniteMediaServer {
                 s.listeners.remove(playerId);
                 continue;
             }
-            if (isRelevant(player, world)) continue;
+            if (isRelevant(s, player, world)) continue;
             if (sendStop(s, player)) s.listeners.remove(playerId);
         }
 
         HQFiniteMediaBeginPacket begin = delta.joined().isEmpty() ? null : beginPacket(s, world);
         for (UUID playerId : delta.joined()) {
             ServerPlayer player = relevantPlayers.get(playerId);
-            if (player == null || !isRelevant(player, world)) continue;
+            if (player == null || !isRelevant(s, player, world)) continue;
             if (!sendPacketToPlayer("BEGIN", begin, player)) continue;
             s.listeners.admit(playerId);
             sendState(s, player);
@@ -849,7 +934,8 @@ public final class HQFiniteMediaServer {
 
     private HQFiniteMediaBeginPacket beginPacket(Session s, float[] world) {
         return new HQFiniteMediaBeginPacket(source, s.mediaId, s.playback.playbackId(), s.generation, s.descriptor,
-            effectiveVolume(s), world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
+            s.volume, effectiveGain(s), s.range, s.explicitRange,
+            world[0], world[1], world[2], pos.getX(), pos.getY(), pos.getZ(),
             s.totalBytes, s.playback.looping(), s.playback.state() == FinitePlaybackAuthority.State.PAUSED);
     }
 
@@ -890,8 +976,8 @@ public final class HQFiniteMediaServer {
         return new HQFiniteMediaStatePacket(
             source, s.mediaId, playback.playbackId(), s.generation,
             playback.stateRevision(), playback.decodeRevision(), wireState(playback.state()),
-            playback.position(), playback.duration(), effectiveVolume(s), playback.looping(),
-            anchor.offset(), anchor.seconds(), playback.error()
+            playback.position(), playback.duration(), s.volume, effectiveGain(s), s.range, s.explicitRange,
+            playback.looping(), anchor.offset(), anchor.seconds(), playback.error()
         );
     }
 
@@ -916,17 +1002,17 @@ public final class HQFiniteMediaServer {
                 + safeMessage(failure)));
     }
 
-    private boolean isRelevant(ServerPlayer player) {
-        return isRelevant(player, computeWorldPos());
+    private boolean isRelevant(Session s, ServerPlayer player) {
+        return isRelevant(s, player, computeWorldPos());
     }
 
-    private boolean isRelevant(ServerPlayer player, float[] world) {
-        if (player == null || world == null || world.length < 3) return false;
+    private boolean isRelevant(Session s, ServerPlayer player, float[] world) {
+        if (s == null || s.range <= 0.0f || player == null || world == null || world.length < 3) return false;
         double distanceSquared = player.distanceToSqr(world[0], world[1], world[2]);
         // Sable sub-levels are plots owned by the parent Minecraft Level, not separate Level instances.
         // Keep this equality as the normal same-dimension guard after projecting the speaker into world space.
         return FiniteRangeValidation.listenerRelevant(
-            player.level() == level, player.isRemoved(), distanceSquared, SPEAKER_RADIUS);
+            player.level() == level, player.isRemoved(), distanceSquared, s.range);
     }
 
     private Map<String, Object> statusOf(Session s, long now) {
@@ -947,6 +1033,9 @@ public final class HQFiniteMediaServer {
         out.put("channels", s.metadata.channels());
         out.put("bitsPerSample", s.metadata.bitsPerSample());
         out.put("volume", (double) s.volume);
+        out.put("gain", (double) s.gain);
+        out.put("range", (double) s.range);
+        out.put("rangeMode", s.explicitRange ? "explicit" : "auto");
         out.put("muted", s.muted);
         out.put("looping", playback.looping());
         out.put("totalBytes", s.totalBytes);
@@ -958,12 +1047,46 @@ public final class HQFiniteMediaServer {
         return out;
     }
 
-    private static float effectiveVolume(Session session) {
-        return session.muted ? 0.0f : session.volume;
+    private static float effectiveGain(Session session) {
+        return session.muted ? 0.0f : session.gain;
     }
 
-    private static float clampVolume(double volume) {
-        return (float) Math.max(0.0, Math.min(3.0, volume));
+    private static HQAudioTuningProfile currentAudioProfile() throws LuaException {
+        try {
+            return HQSpeakerServerConfig.audioProfile();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw new LuaException("invalid HQ speaker server audio config: " + e.getMessage());
+        }
+    }
+
+    private static HQAudioTuningProfile.Resolved resolveRequested(
+            HQAudioTuningProfile tuning, Double requestedVolume, Double requestedRange) throws LuaException {
+        double volume = requestedVolume == null ? tuning.defaultVolume() : requestedVolume;
+        return resolve(tuning, volume, requestedRange);
+    }
+
+    private static HQAudioTuningProfile.Resolved resolveForVolume(Session s, double volume) throws LuaException {
+        return resolve(s.tuning, volume, s.explicitRange ? (double) s.range : null);
+    }
+
+    private static HQAudioTuningProfile.Resolved resolveForRange(Session s, Double range) throws LuaException {
+        return resolve(s.tuning, s.volume, range);
+    }
+
+    private static HQAudioTuningProfile.Resolved resolve(
+            HQAudioTuningProfile tuning, double volume, Double range) throws LuaException {
+        try {
+            return tuning.resolve(volume, range);
+        } catch (IllegalArgumentException e) {
+            throw new LuaException(e.getMessage());
+        }
+    }
+
+    private static void applyResolved(Session s, HQAudioTuningProfile.Resolved resolved) {
+        s.volume = resolved.logicalVolume();
+        s.gain = resolved.gain();
+        s.range = resolved.range();
+        s.explicitRange = resolved.explicitRange();
     }
 
     private static Map<String, Object> idleStatus() {

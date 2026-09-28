@@ -48,7 +48,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> STANDARD_ALL = Set.of("playNoteAll", "playSoundAll", "playAudioAll");
     private static final Set<String> STANDARD_AT = Set.of("playNoteAt", "playSoundAt", "playAudioAt");
     private static final Set<String> FINITE_CONTROLS = Set.of(
-        "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetLooping", "audioStop"
+        "audioStatus", "audioPause", "audioResume", "audioSeek", "audioSetVolume", "audioSetRange", "audioSetLooping", "audioStop"
     );
     private static final Set<String> FINITE_SHARED_CONTROLS = Set.of(
         "audioPause", "audioResume", "audioSeek", "audioSetLooping", "audioStop"
@@ -70,11 +70,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     );
     private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
-        "audioSetVolumeAll", "audioSetLoopingAll", "audioStopAll"
+        "audioSetVolumeAll", "audioSetRangeAll", "audioSetLoopingAll", "audioStopAll"
     );
     private static final Set<String> FINITE_AT_CONTROLS = Set.of(
         "audioStatusAt", "audioPauseAt", "audioResumeAt", "audioSeekAt",
-        "audioSetVolumeAt", "audioSetLoopingAt", "audioStopAt"
+        "audioSetVolumeAt", "audioSetRangeAt", "audioSetLoopingAt", "audioStopAt"
     );
     /** Dynamic calls which observe state/capabilities but do not supersede an in-flight stream start. */
     private static final Set<String> READ_ONLY_DYNAMIC = Set.of(
@@ -295,17 +295,23 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return List.copyOf(members);
     }
 
-    private record FiniteControlInput(double number, boolean flag) {}
+    private record FiniteControlInput(double number, boolean flag, boolean numberPresent) {
+        Double optionalNumber() { return numberPresent ? number : null; }
+    }
 
     private static FiniteControlInput parseFiniteControlInput(String name, IArguments args, int offset)
             throws LuaException {
         if (name.startsWith("audioSeek") || name.startsWith("audioSetVolume")) {
-            return new FiniteControlInput(args.getDouble(offset), false);
+            return new FiniteControlInput(args.getDouble(offset), false, true);
+        }
+        if (name.startsWith("audioSetRange")) {
+            Optional<Double> value = args.optDouble(offset);
+            return new FiniteControlInput(value.orElse(0.0), false, value.isPresent());
         }
         if (name.startsWith("audioSetLooping")) {
-            return new FiniteControlInput(0.0, args.getBoolean(offset));
+            return new FiniteControlInput(0.0, args.getBoolean(offset), false);
         }
-        return new FiniteControlInput(0.0, false);
+        return new FiniteControlInput(0.0, false, false);
     }
 
     private static Object[] supersededControlValues(String name) {
@@ -374,14 +380,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     @LuaFunction(mainThread = true)
-    public final boolean audioPlayPrepared(String assetId, Optional<Double> volume) throws LuaException {
+    public final boolean audioPlayPrepared(String assetId, Optional<Double> volume,
+                                           Optional<Double> range) throws LuaException {
         // This direct CC:T main-thread method must invalidate any older stream still blocked in DNS before it waits
         // for the short command commit lock.
         commandRevision.incrementAndGet();
         synchronized (commandLock) {
             synchronized (this) {
                 try (HQFiniteMediaServer.PreparedStart prepared =
-                         finite.preparePreparedStart(assetId, volume.orElse(1.0))) {
+                         finite.preparePreparedStart(assetId, volume.orElse(null), range.orElse(null))) {
                     beginReplacingHQ(Owner.STAGED_FINITE);
                     if (!finite.commitPreparedStart(prepared)) {
                         throw new IllegalStateException("admitted prepared replacement could not be committed");
@@ -395,7 +402,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     @LuaFunction(mainThread = true)
     public final boolean audioPlayPreparedAll(IComputerAccess computer, String assetId,
-                                              Optional<Double> volume) throws LuaException {
+                                              Optional<Double> volume, Optional<Double> range) throws LuaException {
         List<HQSpeakerCompositePeripheral> members = membersFor(computer);
         if (members.isEmpty()) members = List.of(this);
         members = List.copyOf(members);
@@ -404,7 +411,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         List<HQFiniteMediaServer> targets = members.stream().map(member -> member.finite).toList();
 
         try (HQFiniteMediaServer.PreparedGroupStart prepared =
-                 finite.preparePreparedGroupStart(targets, assetId, volume.orElse(1.0))) {
+                 finite.preparePreparedGroupStart(targets, assetId, volume.orElse(null), range.orElse(null))) {
             List<HQSpeakerCompositePeripheral> snapshot = members;
             return withGroupLocks(snapshot, () -> {
                 if (!revisionsMatch(expectedRevisions)) return false;
@@ -807,6 +814,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
         int dataIndex = at ? 1 : 0;
         int volumeIndex = at ? 2 : 1;
+        int rangeIndex = at ? 3 : 2;
         ByteBuffer source = args.getBytes(dataIndex);
         byte[] bytes = new byte[source.remaining()];
         source.duplicate().get(bytes);
@@ -817,14 +825,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         }
 
         double volume = args.optDouble(volumeIndex, legacy.defaultVolume());
-        if (!Double.isFinite(volume)) throw new LuaException("volume must be finite");
-        volume = Math.max(0.0, Math.min(3.0, volume));
+        Double range = args.optDouble(rangeIndex).orElse(null);
 
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
 
         MediaAsset asset = staging.importAnalyzedBytes(name, bytes, expectedFormat);
         String assetId = asset.id().toString();
         double appliedVolume = volume;
+        Double appliedRange = range;
         List<HQSpeakerCompositePeripheral> snapshot = List.copyOf(targets);
 
         try {
@@ -837,7 +845,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                             snapshot.stream().map(member -> member.finite).toList();
                         HQFiniteMediaServer coordinator = snapshot.getFirst().finite;
                         try (HQFiniteMediaServer.PreparedGroupStart prepared =
-                                 coordinator.preparePreparedGroupStart(finiteTargets, assetId, appliedVolume)) {
+                                 coordinator.preparePreparedGroupStart(finiteTargets, assetId, appliedVolume, appliedRange)) {
                             return withGroupLocks(snapshot, () -> {
                                 if (!revisionsMatch(expectedRevisions)) return new Object[]{ false };
                                 for (HQSpeakerCompositePeripheral member : snapshot) {
@@ -862,7 +870,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                 return new Object[]{ false };
                             }
                             try (HQFiniteMediaServer.PreparedStart prepared =
-                                     target.finite.preparePreparedStart(assetId, appliedVolume)) {
+                                     target.finite.preparePreparedStart(assetId, appliedVolume, appliedRange)) {
                                 target.beginReplacingHQ(Owner.STAGED_FINITE);
                                 if (!target.finite.commitPreparedStart(prepared)) {
                                     throw new LuaException("admitted " + name + " replacement could not be committed");
@@ -1163,6 +1171,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 case "audioResume" -> new Object[]{ finite.resume() };
                 case "audioSeek" -> new Object[]{ finite.seek(input.number()) };
                 case "audioSetVolume" -> new Object[]{ finite.setVolume(input.number()) };
+                case "audioSetRange" -> new Object[]{ finite.setRange(input.optionalNumber()) };
                 case "audioSetLooping" -> new Object[]{ finite.setLooping(input.flag()) };
                 default -> new Object[]{ false };
             };
@@ -1180,6 +1189,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             case "audioSeekAll" -> new Object[]{ finite.seek(input.number()) };
             case "audioSetLoopingAll" -> new Object[]{ finite.setLooping(input.flag()) };
             case "audioSetVolumeAll" -> new Object[]{ finite.setVolumeAll(input.number()) };
+            case "audioSetRangeAll" -> new Object[]{ finite.setRangeAll(input.optionalNumber()) };
             case "audioStopAll" -> {
                 stopFinitePlaybackAndClearOwners();
                 yield new Object[0];
@@ -1202,6 +1212,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                 case "audioResumeAt" -> new Object[]{ member.finite.resume() };
                 case "audioSeekAt" -> new Object[]{ member.finite.seek(input.number()) };
                 case "audioSetVolumeAt" -> new Object[]{ member.finite.setVolume(input.number()) };
+                case "audioSetRangeAt" -> new Object[]{ member.finite.setRange(input.optionalNumber()) };
                 case "audioSetLoopingAt" -> new Object[]{ member.finite.setLooping(input.flag()) };
                 default -> new Object[]{ false };
             };

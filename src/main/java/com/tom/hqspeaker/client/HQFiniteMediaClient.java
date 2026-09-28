@@ -38,7 +38,6 @@ public final class HQFiniteMediaClient {
     private static final long REQUEST_TIMEOUT_NANOS = 2_000_000_000L;
     private static final int MIN_PCM_QUEUE_BYTES = 32 * 1024;
     private static final int MAX_PCM_QUEUE_BYTES = 256 * 1024;
-    private static final float FIXED_ATTENUATION_DISTANCE = 32.0f;
     private static final long RENDERER_START_GRACE_NANOS = 1_000_000_000L;
     private static final long LONG_STARVATION_NANOS = 5_000_000_000L;
     private static final long REJOIN_READY_RETRY_NANOS = 1_000_000_000L;
@@ -70,6 +69,9 @@ public final class HQFiniteMediaClient {
         boolean desiredPaused;
         boolean looping;
         float volume;
+        float gain;
+        float range;
+        boolean explicitRange;
         FiniteEncodedInputStream encodedInput;
         FinitePcmQueue pcmQueue;
         Future<?> decoderTask;
@@ -90,6 +92,9 @@ public final class HQFiniteMediaClient {
             this.desiredPaused = begin.paused();
             this.looping = begin.looping();
             this.volume = begin.volume();
+            this.gain = begin.gain();
+            this.range = begin.range();
+            this.explicitRange = begin.explicitRange();
         }
 
         void stopRenderer() {
@@ -241,7 +246,7 @@ public final class HQFiniteMediaClient {
         boolean decoderUsable = session.encodedInput != null && session.pcmQueue != null;
         boolean exhaustedBlocksRestart = session.localExhausted && !packet.looping();
         FiniteDecodeCoordinator.StateDecision decision = session.coordinator.observeState(
-            packet.decodeRevision(), decoderUsable, exhaustedBlocksRestart, packet.volume() <= 0.0f);
+            packet.decodeRevision(), decoderUsable, exhaustedBlocksRestart, packet.gain() <= 0.0f);
         if (decision == FiniteDecodeCoordinator.StateDecision.STALE) return;
 
         session.recovery.stateReceived();
@@ -258,7 +263,7 @@ public final class HQFiniteMediaClient {
         session.anchorTime = packet.anchorTime();
         session.targetPosition = projectedServerPosition(session, now);
         session.anchorReady = true;
-        setVolume(session, packet.volume());
+        setTuning(session, packet);
 
         if (decision == FiniteDecodeCoordinator.StateDecision.HIBERNATE) {
             session.localExhausted = false;
@@ -381,7 +386,7 @@ public final class HQFiniteMediaClient {
 
         FinitePcmAudioStream stream = new FinitePcmAudioStream(
             pcm, session.begin.descriptor().sampleRate(), session.recovery, session.begin.source());
-        FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, diagnosticIdentity(session), session.volume,
+        FiniteSpeakerSound sound = new FiniteSpeakerSound(stream, diagnosticIdentity(session), session.gain,
             session.begin.x(), session.begin.y(), session.begin.z());
         session.rendererStream = stream;
         session.sound = sound;
@@ -527,7 +532,7 @@ public final class HQFiniteMediaClient {
         if (!needsPause && !needsAttenuation) return;
 
         boolean found = HQSoundChannelControl.execute(sound, channel -> {
-            channel.linearAttenuation(FIXED_ATTENUATION_DISTANCE);
+            channel.linearAttenuation(session.range);
             if (needsPause) {
                 if (desired) channel.pause();
                 else channel.unpause();
@@ -546,12 +551,18 @@ public final class HQFiniteMediaClient {
         }
     }
 
-    private static void setVolume(Session session, double value) {
-        if (!Double.isFinite(value)) return;
-        session.volume = (float) Math.max(0.0, Math.min(3.0, value));
+    private static void setTuning(Session session, HQFiniteMediaStatePacket packet) {
+        if (packet == null) return;
+        float previousRange = session.range;
+        session.volume = packet.volume();
+        session.gain = packet.gain();
+        session.range = packet.range();
+        session.explicitRange = packet.explicitRange();
+        if (Float.compare(previousRange, session.range) != 0) session.fixedAttenuationApplied = false;
+
         FiniteSpeakerSound sound = session.sound;
         if (sound != null) {
-            sound.updateVolume(session.volume);
+            sound.updateVolume(session.gain);
             HQSoundChannelControl.refreshBlocksVolume();
         }
     }

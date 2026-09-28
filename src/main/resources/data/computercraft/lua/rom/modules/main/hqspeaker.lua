@@ -121,15 +121,17 @@ end
 ---
 --- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
 --- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
---- @param options? table Optional table, currently { volume = number }.
+--- @param options? table Optional table, { volume = number, range = number }.
 --- @return boolean accepted True when playback was accepted.
 function hqspeaker.playPrepared(speaker, assetId, options)
     checkSpeaker(speaker)
     if type(assetId) ~= "string" then error("assetId must be a string", 2) end
     options = options or {}
     local volume = options.volume
+    local range = options.range
     if volume ~= nil and type(volume) ~= "number" then error("volume must be a number", 2) end
-    return speaker.audioPlayPrepared(assetId, volume)
+    if range ~= nil and type(range) ~= "number" then error("range must be a number", 2) end
+    return speaker.audioPlayPrepared(assetId, volume, range)
 end
 
 --- Start one shared prepared playback on the speakers currently attached to this computer.
@@ -140,15 +142,17 @@ end
 ---
 --- @param speaker table Any wrapped HQ-capable normal ComputerCraft speaker attached to this computer.
 --- @param assetId string Asset ID returned by prepareFile/audioPrepareStaged.
---- @param options? table Optional table, currently { volume = number }.
+--- @param options? table Optional table, { volume = number, range = number }.
 --- @return boolean accepted True when the multispeaker playback was accepted.
 function hqspeaker.playPreparedAll(speaker, assetId, options)
     checkSpeaker(speaker)
     if type(assetId) ~= "string" then error("assetId must be a string", 2) end
     options = options or {}
     local volume = options.volume
+    local range = options.range
     if volume ~= nil and type(volume) ~= "number" then error("volume must be a number", 2) end
-    return speaker.audioPlayPreparedAll(assetId, volume)
+    if range ~= nil and type(range) ~= "number" then error("range must be a number", 2) end
+    return speaker.audioPlayPreparedAll(assetId, volume, range)
 end
 
 --- Release this ComputerCraft computer's preparation reference to an asset.
@@ -174,19 +178,24 @@ end
 ---
 --- @param speaker table A wrapped HQ-capable normal ComputerCraft speaker.
 --- @param path string Path in the ComputerCraft filesystem.
---- @param options? table Optional table, currently { volume = number }.
+--- @param options? table Optional table, { volume = number, range = number }.
 --- @return boolean accepted True when playback was accepted.
 function hqspeaker.playFile(speaker, path, options)
     local assetId = hqspeaker.prepareFile(speaker, path)
 
     options = options or {}
     local volume = options.volume
+    local range = options.range
     if volume ~= nil and type(volume) ~= "number" then
         pcall(speaker.audioReleasePrepared, assetId)
         error("volume must be a number", 2)
     end
+    if range ~= nil and type(range) ~= "number" then
+        pcall(speaker.audioReleasePrepared, assetId)
+        error("range must be a number", 2)
+    end
 
-    local playOk, acceptedOrError = pcall(speaker.audioPlayPrepared, assetId, volume)
+    local playOk, acceptedOrError = pcall(speaker.audioPlayPrepared, assetId, volume, range)
     local releaseOk, releasedOrError = pcall(speaker.audioReleasePrepared, assetId)
 
     if not playOk then
@@ -206,19 +215,24 @@ end
 ---
 --- @param speaker table Any wrapped HQ-capable normal ComputerCraft speaker attached to this computer.
 --- @param path string Path in the ComputerCraft filesystem.
---- @param options? table Optional table, currently { volume = number }.
+--- @param options? table Optional table, { volume = number, range = number }.
 --- @return boolean accepted True when multispeaker playback was accepted.
 function hqspeaker.playFileAll(speaker, path, options)
     local assetId = hqspeaker.prepareFile(speaker, path)
 
     options = options or {}
     local volume = options.volume
+    local range = options.range
     if volume ~= nil and type(volume) ~= "number" then
         pcall(speaker.audioReleasePrepared, assetId)
         error("volume must be a number", 2)
     end
+    if range ~= nil and type(range) ~= "number" then
+        pcall(speaker.audioReleasePrepared, assetId)
+        error("range must be a number", 2)
+    end
 
-    local playOk, acceptedOrError = pcall(speaker.audioPlayPreparedAll, assetId, volume)
+    local playOk, acceptedOrError = pcall(speaker.audioPlayPreparedAll, assetId, volume, range)
     local releaseOk, releasedOrError = pcall(speaker.audioReleasePrepared, assetId)
 
     if not playOk then

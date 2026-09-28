@@ -13,7 +13,8 @@ import java.util.UUID;
 /** Authoritative finite playback snapshot sent by the server. */
 public record HQFiniteMediaStatePacket(
     UUID source, UUID mediaId, UUID playbackId, long generation, long stateRevision, long decodeRevision, PlaybackState state,
-    double position, double duration, float volume, boolean looping,
+    double position, double duration,
+    float volume, float gain, float range, boolean explicitRange, boolean looping,
     long anchorOffset, double anchorTime, String error
 ) implements CustomPacketPayload {
     public enum PlaybackState { PLAYING, PAUSED, ENDED, ERROR }
@@ -27,7 +28,8 @@ public record HQFiniteMediaStatePacket(
             return new HQFiniteMediaStatePacket(
                 buf.readUUID(), buf.readUUID(), buf.readUUID(), buf.readVarLong(), buf.readVarLong(), buf.readVarLong(),
                 buf.readEnum(PlaybackState.class),
-                buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readBoolean(),
+                buf.readDouble(), buf.readDouble(),
+                buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readBoolean(), buf.readBoolean(),
                 buf.readVarLong(), buf.readDouble(), buf.readUtf(MAX_ERROR));
         }
 
@@ -42,6 +44,9 @@ public record HQFiniteMediaStatePacket(
             buf.writeDouble(p.position());
             buf.writeDouble(p.duration());
             buf.writeFloat(p.volume());
+            buf.writeFloat(p.gain());
+            buf.writeFloat(p.range());
+            buf.writeBoolean(p.explicitRange());
             buf.writeBoolean(p.looping());
             buf.writeVarLong(Math.max(0L, p.anchorOffset()));
             buf.writeDouble(p.anchorTime());
@@ -56,7 +61,9 @@ public record HQFiniteMediaStatePacket(
             && Double.isFinite(position) && position >= 0.0
             && Double.isFinite(duration) && duration > 0.0
             && position <= duration + 1.0e-6
-            && Float.isFinite(volume)
+            && Float.isFinite(volume) && volume >= 0.0f && volume <= 3.0f
+            && Float.isFinite(gain) && gain >= 0.0f && gain <= 1.0f
+            && Float.isFinite(range) && range >= 0.0f && range <= 4096.0f
             && anchorOffset >= 0L
             && Double.isFinite(anchorTime) && anchorTime >= 0.0 && anchorTime <= position + 1.0e-6;
     }
@@ -65,7 +72,7 @@ public record HQFiniteMediaStatePacket(
 
     public static void handle(HQFiniteMediaStatePacket packet, IPayloadContext context) {
         if (!packet.sensible()) {
-            HQSpeakerMod.warn("M1F finite STATE rejected as nonsensical source=" + packet.source()
+            HQSpeakerMod.warn("finite STATE rejected as nonsensical source=" + packet.source()
                 + " playback=" + packet.playbackId() + " generation=" + packet.generation()
                 + " stateRevision=" + packet.stateRevision() + " decodeRevision=" + packet.decodeRevision()
                 + " state=" + packet.state()

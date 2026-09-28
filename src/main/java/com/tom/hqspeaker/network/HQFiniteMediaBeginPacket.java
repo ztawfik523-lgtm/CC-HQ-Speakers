@@ -12,10 +12,11 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.UUID;
 
-/** Modern finite source descriptor. M1G intentionally exposes only MP3 or normalized common WAV. */
+/** Modern finite source descriptor. */
 public record HQFiniteMediaBeginPacket(
     UUID source, UUID mediaId, UUID playbackId, long generation, FiniteDecodeDescriptor descriptor,
-    float volume, float x, float y, float z,
+    float volume, float gain, float range, boolean explicitRange,
+    float x, float y, float z,
     int blockX, int blockY, int blockZ,
     long totalBytes, boolean looping, boolean paused
 ) implements CustomPacketPayload {
@@ -32,7 +33,8 @@ public record HQFiniteMediaBeginPacket(
                 FiniteDecodeDescriptor descriptor = readDescriptor(buf);
                 return new HQFiniteMediaBeginPacket(
                     source, mediaId, playbackId, generation, descriptor,
-                    buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                    buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readBoolean(),
+                    buf.readFloat(), buf.readFloat(), buf.readFloat(),
                     buf.readInt(), buf.readInt(), buf.readInt(), buf.readVarLong(),
                     buf.readBoolean(), buf.readBoolean());
             }
@@ -44,6 +46,9 @@ public record HQFiniteMediaBeginPacket(
                 buf.writeVarLong(Math.max(1L, p.generation()));
                 writeDescriptor(buf, p.descriptor());
                 buf.writeFloat(p.volume());
+                buf.writeFloat(p.gain());
+                buf.writeFloat(p.range());
+                buf.writeBoolean(p.explicitRange());
                 buf.writeFloat(p.x()); buf.writeFloat(p.y()); buf.writeFloat(p.z());
                 buf.writeInt(p.blockX()); buf.writeInt(p.blockY()); buf.writeInt(p.blockZ());
                 buf.writeVarLong(p.totalBytes());
@@ -54,7 +59,10 @@ public record HQFiniteMediaBeginPacket(
 
     public boolean sensible() {
         if (source == null || mediaId == null || playbackId == null || generation <= 0L || descriptor == null
-                || !Float.isFinite(volume) || !Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)
+                || !Float.isFinite(volume) || volume < 0.0f || volume > 3.0f
+                || !Float.isFinite(gain) || gain < 0.0f || gain > 1.0f
+                || !Float.isFinite(range) || range < 0.0f || range > 4096.0f
+                || !Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)
                 || totalBytes <= 0L) {
             return false;
         }
@@ -94,15 +102,15 @@ public record HQFiniteMediaBeginPacket(
 
     public static void handle(HQFiniteMediaBeginPacket packet, IPayloadContext context) {
         if (!packet.sensible()) {
-            HQSpeakerMod.warn("M1G finite BEGIN rejected as nonsensical");
+            HQSpeakerMod.warn("finite BEGIN rejected as nonsensical");
             return;
         }
-        HQSpeakerMod.log("M1J finite wire BEGIN received source=" + packet.source()
-            + " playback=" + packet.playbackId() + " generation=" + packet.generation() + " format=" + packet.descriptor().kind()
-            + " rate=" + packet.descriptor().sampleRate() + " channels=" + packet.descriptor().channels()
+        HQSpeakerMod.log("finite wire BEGIN received source=" + packet.source()
+            + " playback=" + packet.playbackId() + " generation=" + packet.generation()
+            + " format=" + packet.descriptor().kind()
             + " bytes=" + packet.totalBytes() + " volume=" + packet.volume()
-            + " worldPos=" + packet.x() + "," + packet.y() + "," + packet.z()
-            + " blockPos=" + packet.blockX() + "," + packet.blockY() + "," + packet.blockZ());
+            + " gain=" + packet.gain() + " range=" + packet.range()
+            + " worldPos=" + packet.x() + "," + packet.y() + "," + packet.z());
         HQFiniteMediaClient.begin(packet);
     }
 }
