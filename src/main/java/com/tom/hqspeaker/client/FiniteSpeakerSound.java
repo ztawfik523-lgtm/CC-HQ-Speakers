@@ -20,6 +20,9 @@ final class FiniteSpeakerSound extends AbstractSoundInstance
 
     private final AudioStream stream;
     private final HQDiagnostics.SourceIdentity diagnosticIdentity;
+    private float physicalX;
+    private float physicalY;
+    private float physicalZ;
     private volatile boolean stopped;
 
     FiniteSpeakerSound(AudioStream stream, HQDiagnostics.SourceIdentity diagnosticIdentity,
