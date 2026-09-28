@@ -26,6 +26,7 @@ public final class HQSpeakerClientEvents {
             sound.hqStream().attachChannel(event.getEngine(), event.getChannel());
         }
         if (event.getSound() instanceof HQDiagnosticSource diagnostic) {
+            HQSoundPhysicsRefreshClient.attach(event.getEngine(), event.getSound(), event.getChannel(), diagnostic);
             HQAudioDiagnosticsClient.attach(event.getEngine(), event.getSound(), event.getChannel(), diagnostic);
         } else {
             HQAudioDiagnosticsClient.attachNativeComputerCraft(
