@@ -98,12 +98,6 @@ final class HQSoundPhysicsRefreshPolicy {
         double sourceX, double sourceY, double sourceZ,
         Reason reason
     ) {
-        double previousDisplacement = Math.max(
-            distanceSquared(listenerX, listenerY, listenerZ,
-                evaluatedListenerX, evaluatedListenerY, evaluatedListenerZ),
-            distanceSquared(sourceX, sourceY, sourceZ,
-                evaluatedSourceX, evaluatedSourceY, evaluatedSourceZ));
-
         evaluatedListenerX = listenerX;
         evaluatedListenerY = listenerY;
         evaluatedListenerZ = listenerZ;
@@ -123,7 +117,7 @@ final class HQSoundPhysicsRefreshPolicy {
 
         boolean positionalRefresh =
             reason == Reason.MOVEMENT
-                || (reason == Reason.URGENT && previousDisplacement >= square(MOVEMENT_THRESHOLD));
+                || reason == Reason.URGENT;
         settleArmed = positionalRefresh;
         if (positionalRefresh) lastMotionNanos = nowNanos;
     }
