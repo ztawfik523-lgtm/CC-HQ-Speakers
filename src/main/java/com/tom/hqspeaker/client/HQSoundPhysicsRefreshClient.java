@@ -313,16 +313,17 @@ public final class HQSoundPhysicsRefreshClient {
         };
     }
 
-    private record Binding(
-        UUID source,
-        long lifetime,
-        SoundInstance sound,
-        int openAlSource,
-        SoundEngineExecutor executor,
-        long attachedNanos,
-        HQSoundPhysicsRefreshPolicy policy
-    ) {
-        private Binding(
+    private static final class Binding {
+        private final UUID source;
+        private final long lifetime;
+        private final SoundInstance sound;
+        private final int openAlSource;
+        private final SoundEngineExecutor executor;
+        private final long attachedNanos;
+        private final HQSoundPhysicsRefreshPolicy policy;
+        private boolean paused;
+
+        Binding(
             UUID source,
             long lifetime,
             SoundInstance sound,
@@ -332,23 +333,24 @@ public final class HQSoundPhysicsRefreshClient {
             Vec3 listener,
             double sourceX, double sourceY, double sourceZ
         ) {
-            this(
-                source,
-                lifetime,
-                sound,
-                openAlSource,
-                executor,
+            this.source = source;
+            this.lifetime = lifetime;
+            this.sound = sound;
+            this.openAlSource = openAlSource;
+            this.executor = executor;
+            this.attachedNanos = attachedNanos;
+            this.policy = new HQSoundPhysicsRefreshPolicy(
                 attachedNanos,
-                new HQSoundPhysicsRefreshPolicy(
-                    attachedNanos,
-                    listener.x, listener.y, listener.z,
-                    sourceX, sourceY, sourceZ));
+                listener.x, listener.y, listener.z,
+                sourceX, sourceY, sourceZ);
         }
 
-        // Mutated only under synchronized(binding).
-        private static final class PauseHolder {}
-
-        private boolean paused;
+        UUID source() { return source; }
+        long lifetime() { return lifetime; }
+        SoundInstance sound() { return sound; }
+        int openAlSource() { return openAlSource; }
+        SoundEngineExecutor executor() { return executor; }
+        long attachedNanos() { return attachedNanos; }
     }
 
     private record Candidate(
