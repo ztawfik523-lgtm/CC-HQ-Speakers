@@ -1,40 +1,43 @@
 # Runtime scripts
 
-Updated: 2026-09-27
+Updated: 2026-09-29
 
-## User-facing release acceptance
+## Current v11 focused acceptance
 
-Use exactly one normal acceptance runner:
+The active first runtime check is:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
+v11_c2_spr /cchq-speaker-runtime-test-48k-mono.mp3
 ```
 
-`v10_acceptance.lua` combines deterministic checks with the mod's built-in client/OpenAL diagnostics. It writes `/v10-acceptance.log`.
+`v11_c2_spr.lua` validates the current long-lived Sound Physics/acoustic integration with:
 
-The operator no longer presses PASS/FAIL for audio quality. The script may ask for physical actions such as walking out of listener range, pressing F3+T, moving the Sable contraption, moving behind an obstacle or connecting speakers. The diagnostics decide the result. Independent failures are recorded and later checks continue.
+- normal Minecraft ground;
+- one speaker/computer;
+- one solid normal-world wall;
+- SPR Update Moving Sounds OFF.
 
-The current master contains:
+It automatically requires repeated HQ SPR processing, progressive direct probes, private per-source EFX and a measurable open->wall occlusion change on the same continuously-playing finite source.
 
-- A1-A19 deterministic/API/admission/control/bounds/security checks;
-- R1-R9 real-client diagnostics;
-- C1-C4 target checks: Sable, Sound Physics, radio+membership and 8+ scale.
+It writes `/v11-c2-spr.log`.
 
-Selected release scope is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are outside scope.
+See `docs/RUNTIME-ACCEPTANCE-V11.md` for the rest of the v11 validation plan.
 
-## Isolation/debug scripts
+## Historical v10 master/regression scripts
 
-These remain useful only if the master runner identifies a concrete failure:
+`v10_acceptance.lua` and its focused v10 probes remain useful regression/debug evidence, but they are **not** the final acceptance runner for protocol v11 because v11 changed gain/range transport and SPR/acoustic behavior.
 
-- `p0_cc_speaker_contract.lua` — native CC:T contract isolation;
-- `p0_finite_regression.lua` — finite regression isolation;
-- `v10_core_acceptance.lua` — older core API/finite/RAW isolation;
-- `v10_raw_acceptance.lua` — RAW admission/backpressure isolation;
-- `v10_raw_audio_probe.lua` — focused RAW audible/continuation probe;
-- `v10_multispeaker_stress.lua` — older focused multispeaker stress;
-- `v10_radio_acceptance.lua` — focused radio isolation;
-- `v10_runtime_observer.lua` — event/status observation.
+Useful isolation scripts include:
 
-`v10_phase0_acceptance.lua` and the old phased workflow are superseded. Do not make the user run phases unless isolating a master-test failure.
+- `v10_rejection_recheck.lua`;
+- `v10_c4_finite.lua`;
+- `v10_core_acceptance.lua`;
+- `v10_raw_acceptance.lua`;
+- `v10_raw_audio_probe.lua`;
+- `v10_multispeaker_stress.lua`;
+- `v10_radio_acceptance.lua`;
+- `v10_runtime_observer.lua`.
 
-Historical milestone scripts (`m0-*`, `m1_*`, `m1a_*`, `m1c_*`, `m1d_*`, `m1e_*`) are not current release acceptance.
+Historical M0/M1 scripts remain milestone evidence only.
+
+Do not make the user rerun broad old phases before the focused v11 checks unless a concrete regression needs isolation.

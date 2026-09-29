@@ -2,64 +2,47 @@
 
 CC:HQ Speakers upgrades the normal CC:Tweaked `computercraft:speaker` with higher-quality programmable audio while preserving CC:T's native speaker behavior.
 
-Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. The release is built once against **NeoForge 21.1.247** and declares `[21.1,21.2)`.
+Target: Minecraft 1.21.1, Java 21, CC:Tweaked 1.120.0, NeoForge 21.1.x. Build/test/package only **NeoForge 21.1.247**; the resulting mod declares `[21.1,21.2)`.
 
-## Current release-candidate status
+## Current candidate
 
-Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
-Runtime-tested candidate CI: `36238699768` — PASS  
-Runtime-tested artifact: `10905071824`  
-Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
-Network protocol: **v10**, 9 payloads.
+The active branch is `codex/m1j-multispeaker`.
 
-Current recheck source checkpoint: `87d08d3a62857dfeba16756591560eaa0e62d193`  
-Current recheck CI: `36293523518` — PASS  
-Current recheck artifact: `10922887347` — `hqspeaker-neoforge-21.1.247`
+Current implementation checkpoint: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`  
+CI: `36467453786` — PASS  
+Artifact: `10989724714` — `hqspeaker-neoforge-21.1.247`  
+JAR SHA-256: `c4240e252bbc57c3ef767b215f82b3ecd4cba368ebcfaa937b78d442a01adf66`  
+Network protocol: **v11**, still exactly 9 payloads.
 
-A1-A19 and R1-R9 have passed in real Minecraft. C3 MP3/ICY radio + strict membership also passed.
+Later commits on the branch may be documentation-only. Verify current head/CI once before continuing, but do not restart design work merely because the docs head moved.
 
-Release acceptance is still blocked by **runtime recheck evidence**, not by an unresolved architecture redesign:
+The v11 implementation now includes:
 
-- C1's false-negative assertion is fixed but needs a clean rerun;
-- direct SPR `processSound` diagnostics are implemented, and C2 now tests a normal-world wall plus long-running refresh vs restart;
-- the 8-speaker finite admission stampede has a source fix which shares the server's per-player request budget fairly, but C4 must prove it in Minecraft;
-- C4 now runs RAW independently, so the missing 8+ RAW evidence can finally be collected.
+- continuous logical volume `0..3`, with `1.5` as normal and `3` as maximum;
+- server-configurable gain and automatic-range anchor curves;
+- default automatic ranges `0 / 12 / 29 / 48 / 70 / 96 / 132` blocks;
+- optional explicit range in blocks, default server ceiling 256;
+- Lua errors for invalid/out-of-server-limit HQ volume/range requests;
+- live server-config reload for **new playback only**; already-running sources keep their starting profile;
+- server-resolved gain/range carried through protocol v11 and used for client attenuation plus server listener/delivery relevance;
+- HQ-only Sound Physics Remastered reevaluation for long-lived HQ sounds while global SPR **Update Moving Sounds remains OFF**;
+- the accepted progressive 17/9-probe direct-occlusion model, smoothing and reflected-position stabilization;
+- private per-source HQ EFX filters so simultaneous HQ sources do not share SPR's mutable direct/send filters.
 
-SPR remains optional/client-side. The server and protocol behave the same whether clients use SPR or not.
+## Runtime status
 
-See `docs/RUNTIME-INVESTIGATION-2026-09-27.md` for the forensic reconstruction.
+Historical v10 evidence already established A1-A19, R1-R9, C1 Sable tracking, C3 grouped radio/membership, C4 RAW, the corrected C4 finite catch-up result and the focused rejection checks.
 
-## Frozen v10 product
+Those results remain regression evidence, but **v11 itself is not yet runtime accepted** because gain/range transport and the SPR/acoustic path changed.
 
-The normal CC:T speaker is the only block product. Supported playback:
-
-- native CC:T `playNote`, `playSound`, `playAudio`, `stop`;
-- modern finite MP3 + supported common WAV;
-- prepared finite media on the same modern engine;
-- signed-16 mono RAW PCM at 48 kHz;
-- MP3/ICY internet radio: singular, All and At;
-- multispeaker finite playback with one shared authority and independent endpoints.
-
-Finite multispeaker membership is a start-time snapshot. Shared playback controls stay shared; volume/mute are endpoint-local; `audioStopAt(index)` detaches only that endpoint.
-
-Grouped radio is also strict-snapshot: late speakers join only after rerunning the stream command.
-
-All HQ positional paths resolve Sable Companion -> VS2 -> static block center.
-
-## Runtime diagnostics
-
-The release JAR contains dormant diagnostics for real Minecraft/OpenAL channels, PCM, recovery, sync, movement and SPR integration.
-
-The current SPR diagnostics are being strengthened so acceptance records actual `SoundPhysics.processSound` execution rather than only environment writes.
-
-## Runtime acceptance
-
-Use:
+The first required v11 runtime test is:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
+v11_c2_spr /cchq-speaker-runtime-test-48k-mono.mp3
 ```
 
-The selected target is singleplayer + Sable/Aeronautics + Sound Physics Remastered. Dedicated-server/multiplayer and VS2 are outside this release acceptance target.
+Use one normal-world speaker/computer and a solid normal-world wall, with SPR **Update Moving Sounds OFF**. The script automatically requires repeated SPR processing, progressive probes, private HQ EFX and measurable wall occlusion on the same continuously-playing source.
 
-Do not declare release-ready until the current target blockers are fixed and rerun.
+After C2 passes, recheck volume/range/config behavior and finite/RAW/radio/multispeaker regressions before release acceptance.
+
+See `docs/HANDOFF-2026-09-29-V11-RUNTIME.md` for the current handoff and `docs/RUNTIME-ACCEPTANCE-V11.md` for the active runtime plan.

@@ -1,9 +1,9 @@
 # Next-chat prompt
 
-Updated: 2026-09-26
+Updated: 2026-09-29
 
-Use `HANDOFF-PROMPT-2026-09-26.md`.
+Use:
 
-Key rules: one NeoForge 21.1.247 build only; one user-facing diagnostic master test; singleplayer + Sable + Sound Physics target; no VS2 or multiplayer runtime requirement; protocol v10 remains 9 payloads.
+`docs/HANDOFF-PROMPT-2026-09-29.md`
 
-Verify current branch/CI once, then continue runtime acceptance rather than restarting design/cleanup.
+The active phase is v11 runtime validation, beginning with `v11_c2_spr`. Older v10 prompt files remain historical.

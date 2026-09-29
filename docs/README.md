@@ -1,28 +1,30 @@
 # Documentation index
 
-Updated: 2026-09-27
+Updated: 2026-09-29
 
-Build policy: **NeoForge 21.1.247 only**; the one artifact declares `[21.1,21.2)`.
+Build policy: **NeoForge 21.1.247 only**. The one artifact declares `[21.1,21.2)`.
 
-Read current authority in this order:
+## Current authority
 
-1. `HANDOFF-2026-09-27-TARGET-RERUN.md`
-2. `API-FREEZE-V10.md`
-3. `CURRENT-STATE.md`
+Read in this order:
+
+1. `HANDOFF-2026-09-29-V11-RUNTIME.md`
+2. `CURRENT-STATE.md`
+3. `RUNTIME-ACCEPTANCE-V11.md`
 4. `KNOWN-ISSUES.md`
-5. `RUNTIME-INVESTIGATION-2026-09-27.md`
-6. `SPR-INTEGRATION-REEVALUATION-2026-09-27.md`
-7. `RUNTIME-ACCEPTANCE-V10.md`
-8. `RUNTIME-RESULTS-V10.md`
+5. `ROADMAP.md`
+6. `LUA-API.md`
+7. `SERVER-CONFIG.md`
+8. `ARCHITECTURE.md`
 9. `TESTING.md`
 10. `VERIFIED-FACTS.md`
-11. `ARCHITECTURE.md`
-12. `ROADMAP.md`
-13. `LUA-API.md`
-14. `CC-T-COMPATIBILITY-CONTRACT.md`
-15. `SERVER-CONFIG.md`
-16. `SOURCES.md`
+11. `CC-T-COMPATIBILITY-CONTRACT.md`
+12. `SOURCES.md`
 
-Current runtime state: A1-A19 PASS and R1-R9 PASS remain historical runtime evidence; attempt-7 C3 passed. The current recheck source checkpoint `87d08d3a62857dfeba16756591560eaa0e62d193` is CI-green in run `36293523518` with artifact `10922887347`. It contains the C1 harness correction, fair shared finite-range admission, independent C4 RAW execution, and direct HQ-only SPR process diagnostics. C1-C4 require a fresh target rerun before their runtime status is upgraded.
+Current implementation checkpoint: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`, CI `36467453786` PASS, protocol v11 / 9 payloads.
 
-Historical dated handoffs and M0/M1 milestone documents remain evidence for their old checkpoints and should not be rewritten as current authority.
+The implementation is source/CI green but not yet runtime accepted. Historical v10 A/R/C results remain regression evidence. The immediate next test is `scripts/v11_c2_spr.lua` with SPR Update Moving Sounds OFF.
+
+## Historical material
+
+`API-FREEZE-V10.md`, `RUNTIME-ACCEPTANCE-V10.md`, `RUNTIME-RESULTS-V10.md`, dated older handoffs and M0/M1 milestone documents describe their own checkpoints. Keep them as evidence; do not treat them as current authority.

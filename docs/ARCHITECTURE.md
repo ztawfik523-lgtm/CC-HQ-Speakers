@@ -1,91 +1,169 @@
 # Architecture
 
-Updated: 2026-09-27
+Updated: 2026-09-29
 
 ## Product boundary
 
-The normal CC:T `computercraft:speaker` is upgraded through `HQSpeakerCompositePeripheral`, while the real CC:T `SpeakerPeripheral` remains the owner of native behavior.
+The normal CC:T `computercraft:speaker` is the product surface. `HQSpeakerCompositePeripheral` adds HQ behavior while the real CC:T `SpeakerPeripheral` remains the owner of native `playNote`, `playSound`, `playAudio`, `stop` and native `speaker_audio_empty`.
 
 One physical speaker remains one mono positional source.
 
 ## Ownership
 
-One HQ continuous owner exists per endpoint: NONE, RAW, STAGED_FINITE or STREAM.
+Each endpoint has one HQ continuous owner: NONE, RAW, STAGED_FINITE or STREAM.
 
-Finite multispeaker playback shares canonical authority/asset, while endpoints own source/listener/transport/decoder/renderer/gain/mute state.
+Finite multispeaker playback shares canonical media/playback authority while endpoints keep their own listener membership, transport, decoder, renderer, gain, range and mute state.
+
+RAW and radio are endpoint sources. Grouped starts use strict membership snapshots rather than automatic later membership.
+
+## Server-authoritative audio tuning
+
+Protocol v11 separates logical volume from resolved source gain and audible range.
+
+For each new source, the server snapshots the current `HQAudioTuningProfile` and resolves:
+
+```text
+logical volume -> gain anchor interpolation
+logical volume -> automatic range anchor interpolation
+explicit range -> replaces automatic range only
+```
+
+Clients receive the concrete resolved gain/range; they do not reinterpret the server config.
+
+The source snapshot is immutable for its lifetime. A live server-config reload affects later starts only. Continuous RAW retains one source profile across chunks.
+
+## Audible range
+
+The historical fixed 32-block HQ radius is gone.
+
+The resolved range is used consistently for:
+
+- finite listener relevance;
+- RAW/radio packet delivery;
+- radio metadata relevance;
+- stop/update delivery safety;
+- Minecraft/OpenAL linear attenuation on the client.
+
+With the current linear-clamped OpenAL setup, range is the fade-to-zero distance in blocks.
 
 ## Finite transport
 
 Prepared encoded media is stored server-side as immutable assets and fetched progressively in bounded ranges.
 
-Current tuning:
+Transport bounds remain separate from audible range:
 
-- 128 KiB max range;
-- 512 KiB client encoded window;
-- 2 finite client requests may be in flight per endpoint;
-- **4 outstanding requests / 512 KiB outstanding bytes per player server-side**;
+- 128 KiB maximum encoded range response;
+- 512 KiB client encoded sliding window;
+- 4 outstanding range requests / 512 KiB outstanding bytes per player;
 - 2 server range IO workers;
-- queue 64.
+- server range IO queue 64.
 
-### Attempt-7 scale finding and current fix
+All local finite endpoints share the same per-player admission budget so eight endpoints cannot independently stampede the four-request server cap.
 
-Attempt 7 exposed a composition bug: eight sources could independently submit up to 16 requests while the server admitted four requests / 512 KiB per player. Silent over-limit drops then waited for the 2-second client request timeout.
-
-The current client now treats those server limits as one shared player budget. It may still pipeline two requests for a source when capacity is free, but the total local pending count never intentionally exceeds the server request cap, and request opportunities are distributed toward endpoints which have issued fewer requests.
-
-This preserves bounded IO/memory and protocol v10 while directly removing the demonstrated admission stampede. Runtime C4 remains the authority on whether the fix is sufficient.
-
-## Renderer ownership and scale
-
-Finite/RAW/radio currently use Minecraft `SoundManager` / `Channel` paths rather than raw OpenAL ownership.
-
-This keeps lifecycle/resource integration simple and is compatible with normal Minecraft sound processing, but Minecraft's streamed-source capacity may become relevant above eight simultaneous HQ sounds. That is a separate architecture question from the attempt-7 range bug and needs explicit measurement.
+Finite catch-up prefers joining the correct media time over forcing simultaneous channel creation.
 
 ## RAW
 
-RAW is producer-fed signed-16 mono 48-kHz PCM with bounded backpressure. Later PCM re-pumps an exhausted existing Minecraft/OpenAL channel rather than inserting fake silence.
+HQ RAW is producer-fed signed-16 mono 48 kHz PCM with bounded queue/backpressure.
 
-8+ RAW still needs runtime evidence because attempt 7 never reached that half of C4.
+A continuous RAW lifetime snapshots its audio tuning profile when it starts. Later chunks reuse that profile. `speakPCMAll` preserves each endpoint's existing RAW profile if endpoints began under different config snapshots.
+
+Locally exhausted channels are repumped when later PCM arrives rather than padded with fake silence.
 
 ## MP3/ICY radio
 
-Grouped radio uses strict start-time membership and one shared client-local decoder/prebuffer feeding endpoint taps. Late speakers do not auto-join; rerunning creates a new group.
+Radio supports direct MP3/ICY HTTP(S) streams only.
 
-C3 runtime acceptance passed.
+Grouped radio uses strict start-time membership and one client-local shared decoder/prebuffer feeding endpoint taps. Late/new speakers join only after a rerun.
+
+`isStreaming()` is server stream ownership/request state, not proof that every client connected or is audible.
 
 ## Movement
 
-All HQ positional paths call `MovingSourcePosition`: Sable Companion, then VS2, then static center.
+All HQ positional paths use `MovingSourcePosition`:
 
-Attempt 7 demonstrated Sable requested and actual OpenAL movement matching over ~52-53 blocks. The runner's C1 failure was caused by unrelated listener relevance history.
+1. Sable Companion;
+2. VS2;
+3. static block center.
+
+The physical speaker position is kept separate from any acoustically redirected/reflected render position.
 
 ## Sound Physics Remastered
 
-SPR remains an **optional client-side acoustic system**. The HQ server, protocol and playback authority do not depend on it.
+SPR is optional and client-side. The HQ server, playback authority and network protocol do not depend on SPR being installed.
 
-Current custom HQ finite/RAW/radio sounds already use normal Minecraft streaming channels under `SoundSource.BLOCKS`. We therefore keep Minecraft channel ownership and first measure what upstream SPR already does.
+HQ finite/RAW/radio sources use Minecraft streaming channels under `SoundSource.BLOCKS` with sound id `hqspeaker:hq_audio_source`.
 
-The branch now has client-only diagnostic integration which:
+### Long-lived refresh scheduler
 
-- observes the exact SPR 1.21.1-1.5.1 `processSound` call;
-- scopes observations only to `hqspeaker:hq_audio_source`;
-- records the processed position/category/sound id and reflected-position return;
-- correlates the environment write to the same active HQ process, preventing unrelated sounds or recycled OpenAL ids from being mistaken for HQ evidence.
+SPR normally evaluates a sound when it starts. Its global Update Moving Sounds option can periodically reevaluate active sounds, but that option is intentionally allowed to remain OFF.
 
-No acoustic behavior is currently overridden.
+HQ therefore tracks only its own active sources and schedules full normal SPR `processSound` reevaluations when needed:
 
-C2 uses a normal-world wall and compares a continuously-playing source against a restarted source. If that proves long-running HQ acoustics are stale, the next architecture step is a small client-only refresh mechanism for active HQ sounds. If upstream SPR already refreshes correctly, nothing is added.
+- ~0.15 block accumulated listener/source displacement;
+- >=100 ms between ordinary movement refreshes;
+- >=1 block urgent displacement;
+- settle refresh after movement stops;
+- fixed ~1 second hard-stale refresh;
+- starts/resumes urgent;
+- no catch-up bursts;
+- at most one expensive HQ SPR task globally queued/running at once.
 
-Native Minecraft/CC:T sounds remain SPR's responsibility. We do not special-case SPR policy choices such as its treatment of RECORDS sounds.
+The scheduler uses physical source position. Reflection-stabilized render position never feeds back into movement scheduling.
 
-Sable-wall geometry is a separate future compatibility problem and is not part of the present SPR integration phase.
+### Progressive direct occlusion
 
-## Built-in diagnostics
+SPR remains authoritative for room/reverb/reflection calculations. HQ replaces only the direct/dry target for bound HQ sources with the runtime-approved compat behavior.
 
-Diagnostics remain dormant in normal play and are enabled only by acceptance/debug workflows. They observe actual client channels, PCM/buffer state, source movement, recovery, sync and SPR hooks without adding a v10 network payload.
+Full refresh: center + 8 inner probes at 0.20 + 8 outer probes at 0.49.
 
-## Protocol/build
+After a valid full cache, alternating partial refreshes evaluate center+inner or center+outer, for 9 fresh paths.
 
-Protocol v10 remains exactly 9 payloads.
+Weights and gate:
 
-Build/test/package baseline remains NeoForge 21.1.247 with metadata `[21.1,21.2)`.
+```text
+centerWeight = 4
+innerWeight  = 1
+outerWeight  = 0.5
+ringScale = 0.20 + 0.80 * smoothstep(centerOcclusion)
+denominator = 16
+```
+
+Direct targets use the accepted scales:
+
+```text
+cutoffOcc = min(SPR maxOcclusion, raw * 0.35)
+gainOcc   = min(SPR maxOcclusion, raw * 0.50)
+cutoff    = exp(-cutoffOcc * blockAbsorption * 3.0)
+gain      = exp(-gainOcc   * blockAbsorption * 0.3)
+```
+
+SPR strict-occlusion mode falls back to native direct behavior.
+
+### Smoothing and reflection
+
+Accepted smoothing:
+
+- direct muffling alpha 0.30;
+- log-space direct clearing alpha 0.18 cutoff / 0.16 gain;
+- room/reverb target smoothing alpha 0.22.
+
+Reflected positions are bounded and smoothed before becoming the persistent render position. Native/strict fallback preserves SPR's own reflected position rather than snapping back to the physical block on the next Minecraft tick.
+
+### Private EFX isolation
+
+SPR 1.21.1-1.5.1 owns one shared set of mutable direct/send filters. Sharing those across simultaneously active HQ sources can contaminate one source with another source's environment.
+
+HQ therefore creates per-source private low-pass filters after the source is PLAYING/PAUSED, writes SPR-derived room targets plus the HQ direct pair into those filters, and reattaches them on every environment application.
+
+SPR's native aux effect slots/reverb effects remain authoritative. If private EFX cannot be applied safely, the mixin allows stock SPR `setEnvironment` to run as fallback.
+
+## Diagnostics
+
+Release JARs carry dormant diagnostics used by runtime acceptance. They observe real Minecraft/OpenAL channels, stream/buffer state, movement, synchronization, SPR process calls, progressive probes, reflection stabilization and private EFX.
+
+Diagnostics do not add another payload; protocol v11 remains exactly 9 payloads.
+
+## Build policy
+
+Build/test/package only NeoForge 21.1.247. Metadata remains `[21.1,21.2)`; do not create a second 21.1.248 artifact.

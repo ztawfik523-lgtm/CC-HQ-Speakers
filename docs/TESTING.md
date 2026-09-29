@@ -1,70 +1,97 @@
 # Testing
 
-Updated: 2026-09-27
+Updated: 2026-09-29
 
 ## Evidence rule
 
-CI proves compilation, deterministic tests and package structure. It does not prove real Minecraft/OpenAL behavior.
+CI proves compilation, deterministic tests and package structure. It does **not** prove real Minecraft/OpenAL/Sound Physics behavior.
 
-Runtime-tested candidate checkpoint: `84bce876106345553155aa1dcab72a45c72f3360`  
-Runtime-tested JAR SHA-256: `32e6f0956da581295819bd97c6b94c42d2689ca8071894baf4c88fbd5277d9d8`  
-Build baseline: NeoForge 21.1.247 only.
+Current implementation checkpoint: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`  
+CI: `36467453786` — PASS  
+Artifact: `10989724714` — `hqspeaker-neoforge-21.1.247`  
+JAR SHA-256: `c4240e252bbc57c3ef767b215f82b3ecd4cba368ebcfaa937b78d442a01adf66`.
 
-## Evidence already passed
+Build/test/package only NeoForge 21.1.247.
 
-A1-A19 and R1-R9 are real-runtime PASS on the current candidate.
+## Deterministic/source checks now covered
 
-C3 radio/membership is also PASS: sustained grouped radio, metadata, strict late membership, rerun membership, singular and indexed radio all completed.
+The current CI suite includes checks for:
 
-## Target failures and what they actually mean
+- protocol v11 and exactly 9 payload registrations;
+- server-resolved gain/range carried by finite and RAW/radio packet shapes;
+- anchor interpolation and invalid volume/range rejection;
+- range/profile invariants;
+- HQ SPR scheduler thresholds and priority behavior;
+- physical speaker position used for scheduler decisions;
+- private per-source HQ EFX rather than SPR shared filters;
+- private EFX creation only after PLAYING/PAUSED;
+- reflection-position persistence/stabilization wiring;
+- packaged mod structure.
 
-### C1
+These tests intentionally do not pretend to replace in-game OpenAL/SPR evidence.
 
-The product movement evidence was already good. The runner has now been corrected to accept expected relevance leave/rejoin history while requiring final PLAYING health and real movement.
+## Historical runtime regression evidence
 
-### C2
+The v10 runtime campaign established:
 
-The old evidence was insufficient because it observed only `setEnvironment` and used a Sable wall.
+- A1-A19 deterministic/runtime contract checks;
+- R1-R9 real client/OpenAL checks;
+- C1 Sable tracking;
+- C3 grouped MP3/ICY radio, metadata and strict membership;
+- C4 RAW at eight speakers;
+- corrected C4 finite catch-up behavior after the range-admission fix;
+- focused A8/A9/A18 rejection checks.
 
-The branch now records the exact SPR `processSound` call for HQ custom sounds and C2 uses ordinary world geometry. It also keeps the same sound running while moving behind the wall before doing a fresh behind-wall restart, so stale long-running behavior is automatically distinguished from startup failure.
+Keep those as regression evidence. Do not call them v11 acceptance because v11 changed gain/range transport and active SPR acoustics.
 
-### C4
+## Active v11 runtime plan
 
-The demonstrated range-admission mismatch has a source fix: all finite sessions on one client share the same four-request per-player budget enforced by the server, with fair request-slot assignment.
+Use `RUNTIME-ACCEPTANCE-V11.md`.
 
-The runner also guarantees RAW runs independently from finite.
+### First: C2 live SPR/acoustics
 
-## Required deterministic regression coverage before rerun
+Requirements:
 
-Implemented/covered in source tests and CI:
+- one computer + one speaker on normal Minecraft ground;
+- one solid normal-world wall;
+- Sound Physics Remastered 1.21.1-1.5.1;
+- SPR **Update Moving Sounds OFF**;
+- the current v11 candidate JAR.
 
-- Lua syntax/runner invariants for corrected C1;
-- C4 finite/RAW independent-subcheck structure;
-- direct SPR process hook presence;
-- HQ-only SPR diagnostic scoping so unrelated/recycled OpenAL ids cannot create false evidence;
-- direct SPR evidence required for finite, radio and RAW target paths.
-
-The new finite request scheduler is intentionally validated by the real exactly-8 C4 runtime test rather than by inventing a second mock scheduler implementation in tests.
-
-## Next runtime evidence
-
-Use the new branch JAR and the existing master log with `--resume`.
-
-The next run should produce all four target results:
-
-1. corrected C1 clean Sable tracking result;
-2. C2 normal-world open/live-wall/restarted-wall SPR result;
-3. fresh C3 radio + SPR-path result;
-4. C4 exactly-8 finite plus independently recorded 8+ RAW result.
-
-Interpret C2 narrowly: only if restarted-wall occlusion works while the live source stays stale do we add a client-only HQ SPR refresh mechanism.
-
-After exactly 8 is clean, test >8 separately only if that concurrency level is an intended guarantee.
-
-The master command remains:
+Command:
 
 ```
-v10_acceptance <mp3> <wav> [direct-mp3-or-icy-url] [--resume]
+v11_c2_spr /cchq-speaker-runtime-test-48k-mono.mp3
 ```
 
-Use `RUNTIME-INVESTIGATION-2026-09-27.md` for the forensic evidence behind these changes.
+The script automatically requires:
+
+- real SPR `processSound` evidence;
+- at least one long-lived re-evaluation beyond startup;
+- progressive direct probes;
+- a private HQ direct EFX filter;
+- additional reevaluation after listener movement;
+- measurable open->wall direct gain/HF reduction on the same continuously-playing source.
+
+Send back `/v11-c2-spr.log`, `latest.log` and `debug.log`.
+
+### Then: volume/range/config
+
+Verify representative automatic anchors/interpolation, explicit range override, Lua error boundaries and live config behavior:
+
+```text
+existing playback keeps old profile
+new playback after reload uses new profile
+```
+
+### Then: regression/scale
+
+Recheck finite/RAW/radio gain+range, pause/resume/seek/loop, endpoint-local controls and eight-speaker finite + RAW behavior under v11.
+
+Also verify simultaneous occluded/clear speakers do not cross-contaminate private SPR filter state.
+
+## Release verdict
+
+Do not mark v11 release-ready until the focused v11 checks pass and the docs are frozen to the runtime-tested artifact.
+
+Dedicated multiplayer, VS2 runtime, >8 streamed-source guarantee and a separate NeoForge 21.1.248 build remain outside the selected release target.
