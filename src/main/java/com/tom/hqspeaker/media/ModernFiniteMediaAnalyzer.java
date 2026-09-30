@@ -5,13 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 
-/**
- * M1G prepared/local finite-media acceptance boundary.
- *
- * <p>The historical analyzer remains available for inherited/legacy paths, but modern prepared playback deliberately
- * narrows to MPEG Layer III and the common WAV subset. This wrapper is the server-side gate the prepared path should
- * use.</p>
- */
+/** Server-side acceptance boundary for the supported finite formats: MP3 and common WAV. */
 public final class ModernFiniteMediaAnalyzer {
     private ModernFiniteMediaAnalyzer() {}
 
@@ -20,11 +14,7 @@ public final class ModernFiniteMediaAnalyzer {
         try {
             if (isRiffWave(channel)) return CommonWavAnalyzer.analyze(channel);
 
-            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(channel);
-            if (metadata.format() != FiniteMediaFormat.MP3) {
-                throw new IOException("modern finite playback supports MP3 and common WAV only");
-            }
-            return metadata;
+            return FiniteMediaAnalyzer.analyze(channel);
         } finally {
             channel.position(0L);
         }
