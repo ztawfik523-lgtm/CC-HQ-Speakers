@@ -106,11 +106,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         STREAM
     }
 
-    private final HQSpeakerPeripheral legacy;
+    private final HQSpeakerPeripheral transport;
     private final SpeakerPeripheral vanilla;
     private final HQFiniteMediaServer finite;
     private final HQMediaStaging staging;
-    private final Map<String, PeripheralMethod> legacyMethods;
+    private final Map<String, PeripheralMethod> transportMethods;
     private final String[] dynamicNames;
     private final Set<Integer> attachedComputerIds = ConcurrentHashMap.newKeySet();
     /** Requested sample count for each computer currently waiting for RAW capacity. */
@@ -132,14 +132,14 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private volatile Owner owner = Owner.NONE;
 
-    public HQSpeakerCompositePeripheral(HQSpeakerPeripheral legacy, SpeakerPeripheral vanilla,
+    public HQSpeakerCompositePeripheral(HQSpeakerPeripheral transport, SpeakerPeripheral vanilla,
                                         HQFiniteMediaServer finite, HQMediaStaging staging) {
-        this.legacy = legacy;
+        this.transport = transport;
         this.vanilla = vanilla;
         this.finite = finite;
         this.staging = staging;
-        this.legacyMethods = METHOD_SUPPLIER.getSelfMethods(legacy);
-        LinkedHashSet<String> names = new LinkedHashSet<>(legacyMethods.keySet());
+        this.transportMethods = METHOD_SUPPLIER.getSelfMethods(transport);
+        LinkedHashSet<String> names = new LinkedHashSet<>(transportMethods.keySet());
         names.addAll(STANDARD);
         names.addAll(STANDARD_ALL);
         names.addAll(STANDARD_AT);
@@ -174,17 +174,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private synchronized void tickOwnership() {
         if (owner != Owner.RAW) return;
 
-        boolean queueHasData = legacy.speakIsPlaying();
+        boolean queueHasData = transport.speakIsPlaying();
 
         if (rawLifetime.tick(queueHasData)) {
-            legacy.speakStop();
+            transport.speakStop();
             rawCapacityWaiters.clear();
             rawLifetime.clear();
             owner = Owner.NONE;
             return;
         }
 
-        if (!rawCapacityWaiters.isEmpty() && legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT) {
+        if (!rawCapacityWaiters.isEmpty() && transport.speakQueueSize() < HQ_RAW_QUEUE_LIMIT) {
             for (Map.Entry<IComputerAccess, Integer> entry : rawCapacityWaiters.entrySet()) {
                 IComputerAccess computer = entry.getKey();
                 int requestedSamples = entry.getValue();
@@ -205,7 +205,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         int computerId = computer.getID();
         attachedComputerIds.add(computerId);
         COMPUTER_SPEAKERS.computeIfAbsent(computerId, ignored -> ConcurrentHashMap.newKeySet()).add(this);
-        legacy.attach(computer);
+        transport.attach(computer);
     }
 
     @Override
@@ -216,7 +216,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         int computerId = computer.getID();
         attachedComputerIds.remove(computerId);
         unregisterComputer(computerId, this);
-        legacy.detach(computer);
+        transport.detach(computer);
         vanilla.detach(computer);
     }
 
@@ -229,7 +229,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         rawLifetime.clear();
         finite.cleanup();
         staging.cleanup();
-        legacy.cleanup();
+        transport.cleanup();
     }
 
     private static void unregisterComputer(int computerId, HQSpeakerCompositePeripheral peripheral) {
@@ -358,7 +358,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     /**
      * Truthful capability surface for the modern prepared engine.
      *
-     * <p>Keep this separate from inherited speakSupportedFiles(), which still describes legacy compatibility paths.</p>
+     * <p>Keep this separate from speakSupportedFiles(), which describes the byte-compatible finite surface.</p>
      */
     @LuaFunction
     public final Map<String, Boolean> audioPreparedFormats() {
@@ -843,12 +843,12 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         byte[] bytes = new byte[source.remaining()];
         source.duplicate().get(bytes);
         if (bytes.length == 0) throw new LuaException(name + ": data is empty");
-        if (bytes.length > legacy.speakMaxAudioBytes()) {
+        if (bytes.length > transport.speakMaxAudioBytes()) {
             throw new LuaException(name + ": file too large (max "
-                + (legacy.speakMaxAudioBytes() / 1024 / 1024) + " MB)");
+                + (transport.speakMaxAudioBytes() / 1024 / 1024) + " MB)");
         }
 
-        double volume = args.optDouble(volumeIndex, legacy.defaultVolume());
+        double volume = args.optDouble(volumeIndex, transport.defaultVolume());
         Double range = args.optDouble(rangeIndex).orElse(null);
 
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(targets);
@@ -915,7 +915,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult startRaw(IComputerAccess computer, ILuaContext context, String name, IArguments args) throws LuaException {
-        HQSpeakerPeripheral.PreparedPcm prepared = legacy.preparePcm(args);
+        HQSpeakerPeripheral.PreparedPcm prepared = transport.preparePcm(args);
         validateRawPrepared(name, prepared);
         if (!canAcceptRaw(prepared)) {
             rawCapacityWaiters.put(computer, prepared.samples());
@@ -925,7 +925,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult startRawAll(IComputerAccess computer, String name, IArguments args) throws LuaException {
-        HQSpeakerPeripheral.PreparedPcm anchorPrepared = legacy.preparePcm(args);
+        HQSpeakerPeripheral.PreparedPcm anchorPrepared = transport.preparePcm(args);
         validateRawPrepared(name, anchorPrepared);
         Double requestedRange = args.optDouble(2).orElse(null);
 
@@ -936,15 +936,15 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         LinkedHashMap<HQSpeakerCompositePeripheral, HQSpeakerPeripheral.PreparedPcm> preparedByMember =
             new LinkedHashMap<>();
         for (HQSpeakerCompositePeripheral member : members) {
-            HQSpeakerPeripheral.PreparedPcm prepared = member.legacy == legacy
+            HQSpeakerPeripheral.PreparedPcm prepared = member.transport == transport
                 ? anchorPrepared
-                : member.legacy.retunePreparedPcm(anchorPrepared, requestedRange);
+                : member.transport.retunePreparedPcm(anchorPrepared, requestedRange);
             validateRawPrepared(name, prepared);
             preparedByMember.put(member, prepared);
         }
 
         Map<HQSpeakerCompositePeripheral, Long> expectedRevisions = reserveCommandRevisions(members);
-        long startTick = members.size() > 1 ? members.getFirst().legacy.nextGroupStartTick() : 0L;
+        long startTick = members.size() > 1 ? members.getFirst().transport.nextGroupStartTick() : 0L;
         List<HQSpeakerCompositePeripheral> snapshot = members;
 
         return withGroupLocks(snapshot, () -> {
@@ -972,7 +972,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private MethodResult startRawAt(IComputerAccess computer, String name, IArguments args) throws LuaException {
         HQSpeakerCompositePeripheral member = memberAt(computer, args.getInt(0));
-        HQSpeakerPeripheral.PreparedPcm prepared = member.legacy.preparePcm(args, 1, 2, 3);
+        HQSpeakerPeripheral.PreparedPcm prepared = member.transport.preparePcm(args, 1, 2, 3);
         validateRawPrepared(name, prepared);
         member.commandRevision.incrementAndGet();
 
@@ -996,7 +996,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private boolean canAcceptRaw(HQSpeakerPeripheral.PreparedPcm prepared) {
         if (owner != Owner.RAW) return true;
         int samples = prepared.samples();
-        return legacy.speakQueueSize() < HQ_RAW_QUEUE_LIMIT
+        return transport.speakQueueSize() < HQ_RAW_QUEUE_LIMIT
             && rawLifetime.canAccept(samples, HQ_RAW_BUFFER_SAMPLES);
     }
 
@@ -1007,7 +1007,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             beginReplacingHQ(Owner.RAW);
         }
 
-        if (!legacy.enqueuePreparedPcmAtTick(prepared, startTick)) {
+        if (!transport.enqueuePreparedPcmAtTick(prepared, startTick)) {
             if (owner == Owner.RAW) rawCapacityWaiters.put(computer, prepared.samples());
             return false;
         }
@@ -1034,8 +1034,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             new LinkedHashMap<>();
         HQAudioTuningProfile groupProfile = HQSpeakerPeripheral.currentServerAudioProfile();
         for (HQSpeakerCompositePeripheral target : targets) {
-            expectedLifecycles.put(target, target.legacy.lifecycleEpochSnapshot());
-            preparedTunings.put(target, target.legacy.prepareNewSourceTuning(groupProfile, volume, range));
+            expectedLifecycles.put(target, target.transport.lifecycleEpochSnapshot());
+            preparedTunings.put(target, target.transport.prepareNewSourceTuning(groupProfile, volume, range));
         }
 
         // Validate all cheap tuning/input state before DNS or replacing current output.
@@ -1044,11 +1044,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         List<HQSpeakerCompositePeripheral> snapshot = targets;
 
         return context.executeMainThreadTask(() -> {
-            long sealTick = snapshot.size() > 1 ? snapshot.getFirst().legacy.nextGroupStartTick() : 0L;
+            long sealTick = snapshot.size() > 1 ? snapshot.getFirst().transport.nextGroupStartTick() : 0L;
             return withGroupLocks(snapshot, () -> {
                 if (!revisionsMatch(expectedRevisions)) return new Object[]{ false };
                 for (HQSpeakerCompositePeripheral member : snapshot) {
-                    if (!member.legacy.lifecycleEpochMatches(expectedLifecycles.get(member))) {
+                    if (!member.transport.lifecycleEpochMatches(expectedLifecycles.get(member))) {
                         return new Object[]{ false };
                     }
                 }
@@ -1057,7 +1057,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
                 boolean complete = true;
                 for (HQSpeakerCompositePeripheral member : snapshot) {
-                    boolean started = member.legacy.startValidatedStreamAtTick(
+                    boolean started = member.transport.startValidatedStreamAtTick(
                         url, preparedTunings.get(member), HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                         sealTick, groupId, expectedLifecycles.get(member));
                     if (!started) {
@@ -1068,7 +1068,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
                 if (!complete) {
                     for (HQSpeakerCompositePeripheral member : snapshot) {
-                        member.legacy.speakStop();
+                        member.transport.speakStop();
                         member.owner = Owner.NONE;
                     }
                     return new Object[]{ false };
@@ -1087,10 +1087,10 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         Optional<Double> volume = args.optDouble(2);
         Optional<Double> range = args.optDouble(3);
         HQSpeakerPeripheral.PreparedTuning preparedTuning =
-            target.legacy.prepareNewSourceTuning(volume, range);
+            target.transport.prepareNewSourceTuning(volume, range);
 
         long expectedRevision = target.commandRevision.incrementAndGet();
-        long expectedLifecycle = target.legacy.lifecycleEpochSnapshot();
+        long expectedLifecycle = target.transport.lifecycleEpochSnapshot();
 
         // DNS may block, so validate on the ComputerCraft thread before scheduling the short world/network commit.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
@@ -1098,11 +1098,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         return context.executeMainThreadTask(() -> withGroupLocks(List.of(target), () -> {
             if (target.commandRevision.get() != expectedRevision
                     || !ACTIVE.contains(target)
-                    || !target.legacy.lifecycleEpochMatches(expectedLifecycle)) {
+                    || !target.transport.lifecycleEpochMatches(expectedLifecycle)) {
                 return new Object[]{ false };
             }
             target.beginReplacingHQ(Owner.STREAM);
-            boolean started = target.legacy.startValidatedStreamAtTick(
+            boolean started = target.transport.startValidatedStreamAtTick(
                 url, preparedTuning, HQSpeakerAudioPacket.AudioFormat.MP3_STREAM, "speakStream",
                 0L, null, expectedLifecycle);
             if (started) target.owner = Owner.STREAM;
@@ -1116,8 +1116,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         Optional<Double> volume = args.optDouble(1);
         Optional<Double> range = args.optDouble(2);
         HQSpeakerPeripheral.PreparedTuning preparedTuning =
-            legacy.prepareNewSourceTuning(volume, range);
-        long expectedLifecycle = legacy.lifecycleEpochSnapshot();
+            transport.prepareNewSourceTuning(volume, range);
+        long expectedLifecycle = transport.lifecycleEpochSnapshot();
 
         // Validate tuning before potentially blocking DNS and before replacing current output.
         HQSpeakerPeripheral.validateStreamUrl(url, name);
@@ -1129,9 +1129,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             synchronized (commandLock) {
                 if (commandRevision.get() != expectedCommandRevision) return new Object[]{ false };
                 synchronized (this) {
-                    if (!legacy.lifecycleEpochMatches(expectedLifecycle)) return new Object[]{ false };
+                    if (!transport.lifecycleEpochMatches(expectedLifecycle)) return new Object[]{ false };
                     beginReplacingHQ(Owner.STREAM);
-                    boolean started = legacy.startValidatedStream(url, preparedTuning, format, name, expectedLifecycle);
+                    boolean started = transport.startValidatedStream(url, preparedTuning, format, name, expectedLifecycle);
                     if (started) owner = Owner.STREAM;
                     return new Object[]{ started };
                 }
@@ -1148,7 +1148,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private void stopCurrentHQ() {
         switch (owner) {
             case STAGED_FINITE -> finite.stop();
-            case RAW, STREAM -> legacy.speakStop();
+            case RAW, STREAM -> transport.speakStop();
             case NONE -> { }
         }
         rawCapacityWaiters.clear();
@@ -1160,7 +1160,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         vanilla.stop();
         if (owner == Owner.STAGED_FINITE) stopFinitePlaybackAndClearOwners();
         else finite.stop();
-        legacy.speakStop();
+        transport.speakStop();
         rawCapacityWaiters.clear();
         rawLifetime.clear();
         owner = Owner.NONE;
@@ -1187,9 +1187,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private boolean isHQContinuousActive() {
         return switch (owner) {
             case NONE -> false;
-            case RAW -> rawLifetime.active(legacy.speakIsPlaying());
+            case RAW -> rawLifetime.active(transport.speakIsPlaying());
             case STAGED_FINITE -> finite.isActive();
-            case STREAM -> legacy.isStreaming();
+            case STREAM -> transport.isStreaming();
         };
     }
 
@@ -1276,11 +1276,11 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
 
     private Map<String, Object> streamStatus() {
         Map<String, Object> status = new HashMap<>();
-        boolean active = legacy.isStreaming();
+        boolean active = transport.isStreaming();
         status.put("state", active ? "playing" : "idle");
         status.put("kind", active ? "stream" : "none");
         status.put("observed", false);
-        if (active) addTuningStatus(status, legacy.streamActiveTuning());
+        if (active) addTuningStatus(status, transport.streamActiveTuning());
         status.put("canPause", false);
         status.put("canSeek", false);
         status.put("canLoop", false);
@@ -1293,7 +1293,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         status.put("state", active ? "playing" : "idle");
         status.put("kind", "raw");
         status.put("observed", false);
-        if (active) addTuningStatus(status, legacy.rawActiveTuning());
+        if (active) addTuningStatus(status, transport.rawActiveTuning());
         status.put("canPause", false);
         status.put("canSeek", false);
         status.put("canLoop", false);
@@ -1320,8 +1320,8 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     }
 
     private MethodResult invokeLegacy(String name, IComputerAccess computer, ILuaContext context, IArguments args) throws LuaException {
-        PeripheralMethod legacyMethod = legacyMethods.get(name);
+        PeripheralMethod legacyMethod = transportMethods.get(name);
         if (legacyMethod == null) throw new LuaException("No such method " + name);
-        return legacyMethod.apply(legacy, context, computer, args);
+        return legacyMethod.apply(transport, context, computer, args);
     }
 }
