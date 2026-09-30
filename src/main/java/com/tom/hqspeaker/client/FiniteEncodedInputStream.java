@@ -113,10 +113,6 @@ public final class FiniteEncodedInputStream extends InputStream {
         cancel();
     }
 
-    public long cursor() {
-        return cursor;
-    }
-
     public boolean cancelled() {
         return cancelled;
     }
