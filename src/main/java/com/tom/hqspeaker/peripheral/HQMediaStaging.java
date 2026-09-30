@@ -148,8 +148,7 @@ public final class HQMediaStaging {
      *
      * <p>The source remains caller-owned. This is the single admission primitive for modern finite bytes: import
      * first, analyze the immutable committed copy second, and release the import-owner reference if analysis rejects
-     * the bytes. File staging uses it today; legacy MP3/WAV compatibility may reuse it later without inventing a
-     * separate storage path.</p>
+     * the bytes. Both staged files and the current byte-taking MP3/WAV frontends use this same storage path.</p>
      */
     MediaAsset importAnalyzedAsset(String sourceName, long sizeBytes, ReadableByteChannel source) throws LuaException {
         MediaAssetStore store = assetStore();
