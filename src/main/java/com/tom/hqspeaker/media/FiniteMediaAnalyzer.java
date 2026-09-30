@@ -7,7 +7,7 @@ import java.nio.channels.SeekableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Lightweight server-side MP3 frame inspection for finite prepared media. */
+/** Server-side acceptance and metadata inspection for finite MP3 and common WAV media. */
 public final class FiniteMediaAnalyzer {
     private static final int WINDOW_BYTES = 64 * 1024;
     private static final long MP3_SYNC_SEARCH_BYTES = 1024L * 1024L;
@@ -22,6 +22,9 @@ public final class FiniteMediaAnalyzer {
             channel.position(0L);
             Reader r = new Reader(channel);
             if (r.size < 4L) throw new IOException("media file is too small");
+            if (r.size >= 12L && r.matches(0L, "RIFF") && r.matches(8L, "WAVE")) {
+                return CommonWavAnalyzer.analyze(channel);
+            }
 
             MediaMetadata mp3 = tryAnalyzeMp3(r);
             if (mp3 != null) return mp3;
