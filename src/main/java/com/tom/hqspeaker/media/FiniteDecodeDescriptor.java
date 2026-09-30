@@ -1,11 +1,6 @@
 package com.tom.hqspeaker.media;
 
-/**
- * Decoder-facing format contract for the modern prepared finite path.
- *
- * <p>This intentionally contains only the two M1G core formats. Historical analyzer support for other containers must
- * not silently widen the modern decoder surface.</p>
- */
+/** Decoder-facing format contract for finite prepared playback. */
 public record FiniteDecodeDescriptor(
     Kind kind,
     int sampleRate,
@@ -34,8 +29,6 @@ public record FiniteDecodeDescriptor(
         return switch (metadata.format()) {
             case MP3 -> new FiniteDecodeDescriptor(Kind.MP3, metadata.sampleRate(), metadata.channels(), null);
             case WAV -> new FiniteDecodeDescriptor(Kind.WAV, metadata.sampleRate(), metadata.channels(), metadata.wavLayout());
-            default -> throw new IllegalArgumentException(
-                "modern finite playback supports MP3 and common WAV only, not " + metadata.format().id());
         };
     }
 }
