@@ -237,7 +237,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public final void speakStop() {
         float stopRange = activeStopRange;
         speakerQueue.clear();
-        speakerReadyPending.set(false);
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
