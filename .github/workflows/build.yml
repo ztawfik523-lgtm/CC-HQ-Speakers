@@ -12,16 +12,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build for NeoForge 21.1.247
         run: ./gradlew clean build --no-daemon
@@ -39,7 +39,7 @@ jobs:
           jar tf "$jar_file" | grep -Fx 'data/computercraft/lua/rom/modules/main/hqspeaker.lua'
 
       - name: Upload candidate JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hqspeaker-neoforge-21.1.247
           path: build/libs/hqspeaker-*.jar
