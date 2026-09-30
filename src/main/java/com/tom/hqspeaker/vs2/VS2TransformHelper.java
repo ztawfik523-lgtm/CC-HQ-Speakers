@@ -126,8 +126,4 @@ public class VS2TransformHelper {
         }
     }
 
-    public static void resetCache() {
-        vs2Available = null;
-        checkedForVS2 = false;
-    }
 }
