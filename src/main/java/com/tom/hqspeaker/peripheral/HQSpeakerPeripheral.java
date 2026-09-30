@@ -341,10 +341,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
 
 @LuaFunction
 public final Map<String, Object> getPos() {
-    return getPosMap();
-}
-
-public Map<String, Object> getPosMap() {
     Map<String, Object> out = new HashMap<>();
     out.put("x", pos.getX());
     out.put("y", pos.getY());
