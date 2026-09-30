@@ -6,7 +6,8 @@ import com.tom.hqspeaker.network.StreamUrlPolicy;
 import javax.sound.sampled.AudioFormat;
 import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -295,8 +296,12 @@ public class StreamingAudioSource {
     
     private HttpURLConnection openConnection(String urlStr) throws IOException {
         StreamUrlPolicy.validate(urlStr);
-        URL u = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+        final HttpURLConnection conn;
+        try {
+            conn = (HttpURLConnection) new URI(urlStr).toURL().openConnection();
+        } catch (URISyntaxException e) {
+            throw new IOException("invalid stream URL", e);
+        }
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(10_000);
         conn.setReadTimeout(30_000);
