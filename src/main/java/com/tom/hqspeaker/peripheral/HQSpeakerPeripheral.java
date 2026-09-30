@@ -42,12 +42,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
     private static final int    SPEAKER_MAX_PCM     = 131_072;
     private static final int    SPEAKER_MAX_AUDIO   = 8 * 1024 * 1024;
     private static final int    SPEAKER_MAX_QUEUE   = 16;          
-    private static final int    SPEAKER_READY_MARK  = 4;
     private static final long   SPEAKER_MIN_START_DELAY = 0L;
 
     private final UUID speakerSource = UUID.randomUUID();
     private final ArrayBlockingQueue<SpeakerChunk> speakerQueue = new ArrayBlockingQueue<>(SPEAKER_MAX_QUEUE);
-    private final AtomicBoolean speakerReadyPending = new AtomicBoolean(false);
     /** NaN means "use the current server config default" for the next new source. */
     private volatile double speakerDefaultVolume = Double.NaN;
     private HQAudioTuningProfile rawTuning;
@@ -124,7 +122,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         attachedComputers.clear();
         float stopRange = activeStopRange;
         speakerQueue.clear();
-        speakerReadyPending.set(false);
         streamActive.set(false);
         streamUrl = null;
         IcyMetaPacket.SPEAKER_REGISTRY.remove(speakerSource);
@@ -150,11 +147,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
             sendToNearby(sl, pkt, wx, wy, wz, chunk.deliveryRange());
         }
 
-        if (speakerQueue.size() < SPEAKER_READY_MARK) speakerReadyPending.set(true);
-
-        if (speakerReadyPending.getAndSet(false)) {
-            for (IComputerAccess comp : attachedComputers) comp.queueEvent("speaker_audio_empty", comp.getAttachmentName());
-        }
     }
 
     
@@ -234,7 +226,6 @@ public class HQSpeakerPeripheral implements IPeripheral {
         rawLastRange = prepared.range();
         rawLastExplicitRange = prepared.explicitRange();
         activeStopRange = Math.max(activeStopRange, deliveryRange);
-        if (speakerQueue.size() < SPEAKER_MAX_QUEUE) speakerReadyPending.set(true);
         return true;
     }
 
