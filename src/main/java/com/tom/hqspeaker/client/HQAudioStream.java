@@ -38,12 +38,6 @@ public class HQAudioStream implements AudioStream {
     private volatile Channel channel;
     private volatile net.minecraft.client.sounds.SoundEngineExecutor soundExecutor;
 
-    public boolean hasRealData() {
-        return hasRealData
-            || (sharedStreamingTap != null && sharedStreamingTap.hasData())
-            || (streamingSource != null && streamingSource.hasData());
-    }
-
     public boolean isStreamReady() {
         if (!isStreaming) return hasRealData;
         if (streamReady) return true;
@@ -80,14 +74,6 @@ public class HQAudioStream implements AudioStream {
             case PCM_S16LE -> pushPCM(packet.data);
             case MP3_STREAM -> startStreaming(packet);
         }
-    }
-
-    public boolean isEmpty() {
-        if (isStreaming) {
-            return (sharedStreamingTap == null || !sharedStreamingTap.hasData())
-                && (streamingSource == null || !streamingSource.hasData());
-        }
-        synchronized (queue) { return queue.isEmpty(); }
     }
 
     @Override
@@ -219,10 +205,6 @@ public class HQAudioStream implements AudioStream {
     public void startSharedStreaming() {
         if (sharedStreamingTap != null) sharedStreamingTap.start();
     }
-
-    public boolean isStreaming() { return isStreaming; }
-    public StreamingAudioSource getStreamingSource() { return streamingSource; }
-    public SharedStreamingGroup.Tap getSharedStreamingTap() { return sharedStreamingTap; }
 
     private void pushPCM(byte[] raw) {
         if (raw == null || raw.length == 0) return;
