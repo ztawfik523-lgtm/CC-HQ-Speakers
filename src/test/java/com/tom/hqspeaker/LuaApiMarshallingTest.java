@@ -9,6 +9,25 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LuaApiMarshallingTest {
+
+    @Test
+    void multispeakerDiscoveryUsesCompositeRegistryOnly() throws Exception {
+        String legacy = Files.readString(Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "peripheral", "HQSpeakerPeripheral.java"));
+        String composite = Files.readString(Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "peripheral", "HQSpeakerCompositePeripheral.java"));
+
+        assertFalse(legacy.contains("COMPUTER_SPEAKERS"),
+            "legacy peripheral must not keep a second computer-to-speaker registry");
+        assertFalse(legacy.contains("getSpeakerCount(IComputerAccess"),
+            "group discovery must not fall through to the legacy peripheral");
+        assertTrue(composite.contains("GROUP_DISCOVERY = Set.of("));
+        assertTrue(composite.contains("\"getSpeakerCount\", \"getSpeakers\", \"getSpeakerPos\""));
+        assertTrue(composite.contains("if (GROUP_DISCOVERY.contains(name)) return callGroupDiscovery(name, computer, args);"));
+        assertTrue(composite.contains("List<HQSpeakerCompositePeripheral> members = membersFor(computer);"),
+            "discovery must use the same registry as v11 grouped playback");
+    }
+
     @Test
     void streamUrlUsesLuaMarshalableReturnType() throws Exception {
         Path sourcePath = Path.of(
