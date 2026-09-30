@@ -96,10 +96,6 @@ public final class FinitePcmAudioStream implements AudioStream {
         return reachedEof;
     }
 
-    static int maxReadBytes() {
-        return MAX_READ_BYTES;
-    }
-
     private static ByteBuffer direct(byte[] bytes) {
         ByteBuffer out = ByteBuffer.allocateDirect(bytes.length).order(ByteOrder.LITTLE_ENDIAN);
         out.put(bytes).flip();
