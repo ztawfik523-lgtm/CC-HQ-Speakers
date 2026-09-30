@@ -15,7 +15,8 @@ class FiniteDecodeCoordinatorTest {
             coordinator.observeState(1L, true, false, false));
         assertEquals(FiniteDecodeCoordinator.StateDecision.RESTART,
             coordinator.observeState(2L, true, false, false));
-        assertEquals(2L, coordinator.serverRevision());
+        assertEquals(FiniteDecodeCoordinator.StateDecision.KEEP,
+            coordinator.observeState(2L, true, false, false));
     }
 
     @Test
@@ -25,7 +26,8 @@ class FiniteDecodeCoordinatorTest {
             coordinator.observeState(3L, false, false, false));
         assertEquals(FiniteDecodeCoordinator.StateDecision.STALE,
             coordinator.observeState(2L, true, false, false));
-        assertEquals(3L, coordinator.serverRevision());
+        assertEquals(FiniteDecodeCoordinator.StateDecision.KEEP,
+            coordinator.observeState(3L, true, false, false));
     }
 
     @Test
@@ -34,7 +36,6 @@ class FiniteDecodeCoordinatorTest {
 
         assertEquals(FiniteDecodeCoordinator.StateDecision.HIBERNATE,
             coordinator.observeState(4L, true, false, true));
-        assertEquals(4L, coordinator.serverRevision());
         assertEquals(FiniteDecodeCoordinator.StateDecision.RESTART,
             coordinator.observeState(4L, false, false, false));
     }
@@ -74,7 +75,8 @@ class FiniteDecodeCoordinatorTest {
 
         assertEquals(FiniteDecodeCoordinator.StateDecision.RESTART,
             coordinator.observeState(7L, false, false, false));
-        assertEquals(7L, coordinator.serverRevision());
+        assertEquals(FiniteDecodeCoordinator.StateDecision.KEEP,
+            coordinator.observeState(7L, true, false, false));
     }
 
 }
