@@ -7,7 +7,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.sound.SoundEngineLoadEvent;
 
 /** Client-only mod-bus hooks used by the built-in diagnostic subsystem. */
-@EventBusSubscriber(modid = HQSpeakerMod.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = HQSpeakerMod.MOD_ID, value = Dist.CLIENT)
 public final class HQSpeakerClientModEvents {
     private HQSpeakerClientModEvents() {}
 
