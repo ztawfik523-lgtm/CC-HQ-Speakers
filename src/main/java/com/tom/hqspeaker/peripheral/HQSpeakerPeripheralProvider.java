@@ -31,10 +31,10 @@ public class HQSpeakerPeripheralProvider {
         return levelCache.compute(key, (ignored, current) -> {
             if (current != null && current.usesVanilla(vanilla)) return current;
             if (current != null) current.cleanup();
-            HQSpeakerPeripheral legacy = new HQSpeakerPeripheral(key, world);
+            HQSpeakerPeripheral transport = new HQSpeakerPeripheral(key, world);
             HQMediaStaging staging = new HQMediaStaging(world);
             HQFiniteMediaServer finite = new HQFiniteMediaServer(world, key, staging);
-            return new HQSpeakerCompositePeripheral(legacy, vanilla, finite, staging);
+            return new HQSpeakerCompositePeripheral(transport, vanilla, finite, staging);
         });
     }
 
