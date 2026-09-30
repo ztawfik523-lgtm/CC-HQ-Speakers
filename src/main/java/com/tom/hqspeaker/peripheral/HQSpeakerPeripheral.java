@@ -31,7 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class HQSpeakerPeripheral implements IPeripheral {
 
-    private static final java.util.concurrent.ConcurrentHashMap<Integer, java.util.Set<HQSpeakerPeripheral>> COMPUTER_SPEAKERS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Set<HQSpeakerPeripheral> ACTIVE_SPEAKERS = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     private final java.util.Set<IComputerAccess> attachedComputers = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
@@ -95,18 +94,12 @@ public class HQSpeakerPeripheral implements IPeripheral {
     public void attach(@Nonnull IComputerAccess computer) {
         ACTIVE_SPEAKERS.add(this);
         attachedComputers.add(computer);
-        COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), id -> java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>())).add(this);
         HQSpeakerMod.log("HQSpeaker attached to computer " + computer.getID() + " at " + pos);
     }
 
     @Override
     public void detach(@Nonnull IComputerAccess computer) {
         attachedComputers.remove(computer);
-        var set = COMPUTER_SPEAKERS.get(computer.getID());
-        if (set != null) {
-            set.remove(this);
-            if (set.isEmpty()) COMPUTER_SPEAKERS.remove(computer.getID(), set);
-        }
         if (attachedComputers.isEmpty()) cleanup();
     }
 
@@ -125,34 +118,10 @@ public class HQSpeakerPeripheral implements IPeripheral {
         }
     }
 
-    public static java.util.List<HQSpeakerPeripheral> getSpeakersForComputer(int computerId) {
-        var set = COMPUTER_SPEAKERS.get(computerId);
-        if (set == null || set.isEmpty()) return java.util.List.of();
-
-        java.util.ArrayList<HQSpeakerPeripheral> out = new java.util.ArrayList<>(set);
-        out.sort(java.util.Comparator
-            .comparingInt((HQSpeakerPeripheral p) -> p.pos.getX())
-            .thenComparingInt(p -> p.pos.getY())
-            .thenComparingInt(p -> p.pos.getZ()));
-        return out;
-    }
-
-
-    private java.util.List<HQSpeakerPeripheral> membersFor(@Nullable IComputerAccess computer) {
-        if (computer == null) return java.util.List.of(this);
-        java.util.List<HQSpeakerPeripheral> members = getSpeakersForComputer(computer.getID());
-        return members.isEmpty() ? java.util.List.of(this) : members;
-    }
-
-    private HQSpeakerPeripheral byIndexFor(@Nullable IComputerAccess computer, int index) throws LuaException {
-        java.util.List<HQSpeakerPeripheral> members = membersFor(computer);
-        if (index < 1 || index > members.size()) throw new LuaException("speaker index out of range");
-        return members.get(index - 1);
-    }
-
     public synchronized void cleanup() {
         lifecycleEpoch++;
         ACTIVE_SPEAKERS.remove(this);
+        attachedComputers.clear();
         float stopRange = activeStopRange;
         speakerQueue.clear();
         speakerReadyPending.set(false);
@@ -398,29 +367,6 @@ private long nextSyncedStartTick() {
     if (world instanceof ServerLevel sl) return sl.getGameTime() + MULTI_SPEAKER_SYNC_LEAD_TICKS;
     return 0L;
 }
-
-@LuaFunction
-public final int getSpeakerCount(IComputerAccess computer) {
-    return membersFor(computer).size();
-}
-
-@LuaFunction
-public final java.util.List<java.util.Map<String, Object>> getSpeakers(IComputerAccess computer) {
-    java.util.List<HQSpeakerPeripheral> ps = membersFor(computer);
-    java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
-    for (int i = 0; i < ps.size(); i++) {
-        java.util.Map<String, Object> e = new java.util.HashMap<>(ps.get(i).getPosMap());
-        e.put("index", i + 1);
-        out.add(e);
-    }
-    return out;
-}
-
-@LuaFunction
-public final java.util.Map<String, Object> getSpeakerPos(IComputerAccess computer, int index) throws LuaException {
-    return byIndexFor(computer, index).getPosMap();
-}
-
 
     private byte[] rawTableToPcmBytes(java.util.Map<?, ?> table, int len, String fnName) throws LuaException {
         if (len <= 0) throw new LuaException(fnName + ": table is empty");
