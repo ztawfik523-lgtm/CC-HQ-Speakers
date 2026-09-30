@@ -1,15 +1,16 @@
 # Testing
 
-Updated: 2026-09-29
+Updated: 2026-10-01
 
 ## Evidence rule
 
 CI proves compilation, deterministic tests and package structure. It does **not** prove real Minecraft/OpenAL/Sound Physics behavior.
 
-Current implementation checkpoint: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`  
-CI: `36467453786` — PASS  
-Artifact: `10989724714` — `hqspeaker-neoforge-21.1.247`  
-JAR SHA-256: `c4240e252bbc57c3ef767b215f82b3ecd4cba368ebcfaa937b78d442a01adf66`.
+Current candidate checkpoint: `cd9a3f67ac3449df975c00240d83ee8e33239fc9`  
+Last production-code commit: `11a22e9f122ebf511744ac0aa1b17512fd69b6eb`  
+CI: `36783159001` — PASS  
+Artifact: `11128792552` — `hqspeaker-neoforge-21.1.247`  
+JAR SHA-256: `ce91a67e8c20d82bb7e1bcc82bee94a025edfec426cecede2035fdfda4337d76`.
 
 Build/test/package only NeoForge 21.1.247.
 
@@ -27,6 +28,11 @@ The current CI suite includes checks for:
 - private EFX creation only after PLAYING/PAUSED;
 - reflection-position persistence/stabilization wiring;
 - packaged mod structure.
+- Cobalt compilation of `v11_c2_spr.lua`, `v11_runtime_1.lua` and `v11_runtime_2.lua`;
+- finite format surface locked to MP3 + common WAV;
+- single composite speaker-group registry/discovery path;
+- absence of the dead native RAW ready-event proxy path;
+- narrow MP3-only radio capability advertisement.
 
 These tests intentionally do not pretend to replace in-game OpenAL/SPR evidence.
 
@@ -48,47 +54,22 @@ Keep those as regression evidence. Do not call them v11 acceptance because v11 c
 
 Use `RUNTIME-ACCEPTANCE-V11.md`.
 
-### First: C2 live SPR/acoustics
+Focused C2 already passed and is not repeated. The remaining runtime work is deliberately two integrated scripts on one exact JAR in one Minecraft launch:
 
-Requirements:
+1. `scripts/v11_runtime_1.lua` — exactly two normal-world speakers:
+   - tuning/range interpolation and rejection;
+   - endpoint-local controls;
+   - live config reload;
+   - simultaneous SPR private-filter isolation;
+   - F3+T recovery;
+   - 70-80 block SPR playback/occlusion.
+2. `scripts/v11_runtime_2.lua` — exactly eight Sable/Aeronautics speakers:
+   - finite scale/catch-up;
+   - Sable movement;
+   - RAW continuation/backpressure;
+   - MP3/ICY radio + metadata.
 
-- one computer + one speaker on normal Minecraft ground;
-- one solid normal-world wall;
-- Sound Physics Remastered 1.21.1-1.5.1;
-- SPR **Update Moving Sounds OFF**;
-- the current v11 candidate JAR.
-
-Command:
-
-```
-v11_c2_spr /cchq-speaker-runtime-test-48k-mono.mp3
-```
-
-The script automatically requires:
-
-- real SPR `processSound` evidence;
-- at least one long-lived re-evaluation beyond startup;
-- progressive direct probes;
-- a private HQ direct EFX filter;
-- additional reevaluation after listener movement;
-- measurable open->wall direct gain/HF reduction on the same continuously-playing source.
-
-Send back `/v11-c2-spr.log`, `latest.log` and `debug.log`.
-
-### Then: volume/range/config
-
-Verify representative automatic anchors/interpolation, explicit range override, Lua error boundaries and live config behavior:
-
-```text
-existing playback keeps old profile
-new playback after reload uses new profile
-```
-
-### Then: regression/scale
-
-Recheck finite/RAW/radio gain+range, pause/resume/seek/loop, endpoint-local controls and eight-speaker finite + RAW behavior under v11.
-
-Also verify simultaneous occluded/clear speakers do not cross-contaminate private SPR filter state.
+Both scripts are self-judging and log PASS/FAIL. Manual actions are limited to physical game actions which cannot be initiated from Lua.
 
 ## Release verdict
 
