@@ -288,7 +288,7 @@ public class HQSpeakerPeripheral implements IPeripheral {
         Map<String, Object> mp3 = new HashMap<>();
         mp3.put("name", "MP3/ICY Radio");
         mp3.put("method", "speakStream");
-        mp3.put("extensions", new String[]{".mp3", ".mp2"});
+        mp3.put("extensions", new String[]{".mp3"});
         mp3.put("protocols", new String[]{"http", "https"});
         mp3.put("supportsICY", true);
         info.put("mp3", mp3);
