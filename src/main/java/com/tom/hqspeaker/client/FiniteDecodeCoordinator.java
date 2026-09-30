@@ -34,5 +34,4 @@ public final class FiniteDecodeCoordinator {
 
     public long currentLocalEpoch() { return localEpoch; }
     public boolean isCurrentLocalEpoch(long epoch) { return epoch == localEpoch; }
-    public long serverRevision() { return serverRevision; }
 }
