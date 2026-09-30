@@ -1,12 +1,9 @@
 package com.tom.hqspeaker.media;
 
-/** Finite encoded formats which the server can currently inspect and the client has a real decode path for. */
+/** Finite encoded formats supported by the current server and client paths. */
 public enum FiniteMediaFormat {
     MP3("mp3"),
-    OGG_VORBIS("ogg"),
-    WAV("wav"),
-    AIFF("aiff"),
-    AU("au");
+    WAV("wav");
 
     private final String id;
 
