@@ -112,6 +112,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final HQMediaStaging staging;
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
+    private final Set<Integer> attachedComputerIds = ConcurrentHashMap.newKeySet();
     /** Requested sample count for each computer currently waiting for RAW capacity. */
     private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
@@ -201,7 +202,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         vanilla.attach(computer);
         staging.attach(computer);
         finite.attach(computer);
-        COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), ignored -> ConcurrentHashMap.newKeySet()).add(this);
+        int computerId = computer.getID();
+        attachedComputerIds.add(computerId);
+        COMPUTER_SPEAKERS.computeIfAbsent(computerId, ignored -> ConcurrentHashMap.newKeySet()).add(this);
         legacy.attach(computer);
     }
 
@@ -210,16 +213,17 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         rawCapacityWaiters.remove(computer);
         finite.detach(computer);
         staging.detach(computer);
-        unregisterComputer(computer.getID(), this);
+        int computerId = computer.getID();
+        attachedComputerIds.remove(computerId);
+        unregisterComputer(computerId, this);
         legacy.detach(computer);
         vanilla.detach(computer);
     }
 
     public synchronized void cleanup() {
         ACTIVE.remove(this);
-        for (IComputerAccess computer : new ArrayList<>(legacyComputerViews.keySet())) {
-            unregisterComputer(computer.getID(), this);
-        }
+        for (int computerId : attachedComputerIds) unregisterComputer(computerId, this);
+        attachedComputerIds.clear();
         rawCapacityWaiters.clear();
         owner = Owner.NONE;
         rawLifetime.clear();
