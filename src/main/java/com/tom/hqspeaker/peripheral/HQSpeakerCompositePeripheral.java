@@ -69,6 +69,9 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private static final Set<String> DIAGNOSTICS = Set.of(
         "hqDiagEnable", "hqDiagReset", "hqDiagSnapshot", "hqDiagCapabilities"
     );
+    private static final Set<String> GROUP_DISCOVERY = Set.of(
+        "getSpeakerCount", "getSpeakers", "getSpeakerPos"
+    );
     private static final Set<String> FINITE_ALL_CONTROLS = Set.of(
         "audioStatusAll", "audioPauseAll", "audioResumeAll", "audioSeekAll",
         "audioSetVolumeAll", "audioSetRangeAll", "audioSetLoopingAll", "audioStopAll"
@@ -153,6 +156,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         names.addAll(FINITE_ALL_CONTROLS);
         names.addAll(FINITE_AT_CONTROLS);
         names.addAll(DIAGNOSTICS);
+        names.addAll(GROUP_DISCOVERY);
         names.add("speakMaxSamples");
         dynamicNames = names.toArray(String[]::new);
         ACTIVE.add(this);
@@ -485,6 +489,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         String name = dynamicNames[method];
 
         if (DIAGNOSTICS.contains(name)) return callDiagnostics(name, args);
+        if (GROUP_DISCOVERY.contains(name)) return callGroupDiscovery(name, computer, args);
 
         if (MODERN_BYTE_FINITE.contains(name)) {
             return startModernByteFinite(name, computer, context, args);
@@ -539,6 +544,40 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
             case "hqDiagSnapshot" -> MethodResult.of((Object) HQDiagnostics.snapshot());
             case "hqDiagCapabilities" -> MethodResult.of((Object) HQDiagnostics.capabilities());
             default -> throw new LuaException("No such diagnostics method " + name);
+        };
+    }
+
+    private MethodResult callGroupDiscovery(String name, IComputerAccess computer, IArguments args)
+            throws LuaException {
+        List<HQSpeakerCompositePeripheral> members = membersFor(computer);
+        if (members.isEmpty()) members = List.of(this);
+
+        return switch (name) {
+            case "getSpeakerCount" -> MethodResult.of(members.size());
+            case "getSpeakers" -> {
+                ArrayList<Map<String, Object>> out = new ArrayList<>(members.size());
+                for (int i = 0; i < members.size(); i++) {
+                    var pos = members.get(i).finite.position();
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("x", pos.getX());
+                    row.put("y", pos.getY());
+                    row.put("z", pos.getZ());
+                    row.put("index", i + 1);
+                    out.add(row);
+                }
+                yield MethodResult.of((Object) out);
+            }
+            case "getSpeakerPos" -> {
+                int index = args.getInt(0);
+                if (index < 1 || index > members.size()) throw new LuaException("speaker index out of range");
+                var pos = members.get(index - 1).finite.position();
+                Map<String, Object> out = new HashMap<>();
+                out.put("x", pos.getX());
+                out.put("y", pos.getY());
+                out.put("z", pos.getZ());
+                yield MethodResult.of((Object) out);
+            }
+            default -> throw new LuaException("No such discovery method " + name);
         };
     }
 
