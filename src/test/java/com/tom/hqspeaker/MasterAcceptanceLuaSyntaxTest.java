@@ -84,6 +84,9 @@ class MasterAcceptanceLuaSyntaxTest {
         assertLuaCompiles("v10_c2_spr_ab.lua");
         assertLuaCompiles("v10_c4_finite.lua");
         assertLuaCompiles("v10_rejection_recheck.lua");
+        assertLuaCompiles("v11_c2_spr.lua");
+        assertLuaCompiles("v11_runtime_1.lua");
+        assertLuaCompiles("v11_runtime_2.lua");
     }
 
     private static void assertLuaCompiles(String filename) throws Exception {
