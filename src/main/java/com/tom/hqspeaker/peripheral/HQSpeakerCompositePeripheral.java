@@ -19,8 +19,6 @@ import dan200.computercraft.core.methods.PeripheralMethod;
 import dan200.computercraft.shared.peripheral.speaker.SpeakerPeripheral;
 
 import javax.annotation.Nullable;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -114,7 +112,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
     private final HQMediaStaging staging;
     private final Map<String, PeripheralMethod> legacyMethods;
     private final String[] dynamicNames;
-    private final Map<IComputerAccess, IComputerAccess> legacyComputerViews = new ConcurrentHashMap<>();
     /** Requested sample count for each computer currently waiting for RAW capacity. */
     private final Map<IComputerAccess, Integer> rawCapacityWaiters = new ConcurrentHashMap<>();
     private final RawFeedLifetime rawLifetime = new RawFeedLifetime();
@@ -205,8 +202,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         staging.attach(computer);
         finite.attach(computer);
         COMPUTER_SPEAKERS.computeIfAbsent(computer.getID(), ignored -> ConcurrentHashMap.newKeySet()).add(this);
-        IComputerAccess filtered = legacyComputerViews.computeIfAbsent(computer, this::filteredLegacyAccess);
-        legacy.attach(filtered);
+        legacy.attach(computer);
     }
 
     @Override
@@ -215,8 +211,7 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         finite.detach(computer);
         staging.detach(computer);
         unregisterComputer(computer.getID(), this);
-        IComputerAccess filtered = legacyComputerViews.remove(computer);
-        if (filtered != null) legacy.detach(filtered);
+        legacy.detach(computer);
         vanilla.detach(computer);
     }
 
@@ -231,7 +226,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
         finite.cleanup();
         staging.cleanup();
         legacy.cleanup();
-        legacyComputerViews.clear();
     }
 
     private static void unregisterComputer(int computerId, HQSpeakerCompositePeripheral peripheral) {
@@ -339,20 +333,6 @@ public final class HQSpeakerCompositePeripheral implements IDynamicPeripheral {
                                                    List<HQSpeakerCompositePeripheral> expectedMembers) {
         if ((anchor.owner == Owner.STAGED_FINITE) != expectedShared) return false;
         return !expectedShared || sameMembers(expectedMembers, sharedFiniteMembers(anchor));
-    }
-
-    private IComputerAccess filteredLegacyAccess(IComputerAccess delegate) {
-        return (IComputerAccess) Proxy.newProxyInstance(
-            IComputerAccess.class.getClassLoader(), new Class<?>[]{ IComputerAccess.class },
-            (proxy, method, args) -> {
-                if ("queueEvent".equals(method.getName()) && args != null && args.length > 0
-                        && "speaker_audio_empty".equals(args[0])) return null;
-                try {
-                    return method.invoke(delegate, args);
-                } catch (InvocationTargetException e) {
-                    throw e.getCause();
-                }
-            });
     }
 
     @LuaFunction
