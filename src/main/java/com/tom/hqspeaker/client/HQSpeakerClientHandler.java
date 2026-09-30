@@ -23,7 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Legacy client path for RAW PCM and optional live streams only. */
+/** Client path for HQ RAW PCM and MP3/ICY live streams. */
 @OnlyIn(Dist.CLIENT)
 public final class HQSpeakerClientHandler {
     private static final ResourceLocation AUDIO_SOURCE_LOC =
