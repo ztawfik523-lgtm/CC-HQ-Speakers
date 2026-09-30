@@ -9,7 +9,7 @@ import com.tom.hqspeaker.media.MediaAssetReleaseQueue;
 import com.tom.hqspeaker.media.MediaAssetStore;
 import com.tom.hqspeaker.media.MediaMetadata;
 import com.tom.hqspeaker.media.MediaStorageLimits;
-import com.tom.hqspeaker.media.ModernFiniteMediaAnalyzer;
+import com.tom.hqspeaker.media.FiniteMediaAnalyzer;
 import com.tom.hqspeaker.media.ServerMediaAssets;
 import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.filesystem.MountConstants;
@@ -161,7 +161,7 @@ public final class HQMediaStaging {
         }
 
         try (SeekableByteChannel committed = store.openRead(asset.id())) {
-            MediaMetadata metadata = ModernFiniteMediaAnalyzer.analyze(committed);
+            MediaMetadata metadata = FiniteMediaAnalyzer.analyze(committed);
             asset.attachMetadata(metadata);
             return asset;
         } catch (IOException | RuntimeException e) {
