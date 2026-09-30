@@ -34,6 +34,25 @@ class LuaApiMarshallingTest {
             "composite cleanup must track its own group registrations explicitly");
     }
 
+
+    @Test
+    void radioAndAudioStreamSurfaceStayNarrow() throws Exception {
+        String transport = Files.readString(Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "peripheral", "HQSpeakerPeripheral.java"));
+        String stream = Files.readString(Path.of(
+            "src", "main", "java", "com", "tom", "hqspeaker", "client", "HQAudioStream.java"));
+
+        assertTrue(transport.contains("new String[]{\".mp3\"}"),
+            "radio capability surface should advertise MP3 only");
+        assertFalse(transport.contains("\".mp2\""),
+            "radio capability surface must not advertise unsupported MPEG Layer II");
+        assertFalse(stream.contains("getStreamingSource()"));
+        assertFalse(stream.contains("getSharedStreamingTap()"));
+        assertFalse(stream.contains("public boolean isStreaming()"));
+        assertFalse(stream.contains("public boolean isEmpty()"));
+        assertFalse(stream.contains("public boolean hasRealData()"));
+    }
+
     @Test
     void streamUrlUsesLuaMarshalableReturnType() throws Exception {
         Path sourcePath = Path.of(
