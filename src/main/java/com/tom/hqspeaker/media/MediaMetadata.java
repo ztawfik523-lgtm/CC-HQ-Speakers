@@ -30,7 +30,7 @@ public record MediaMetadata(
             throw new IllegalArgumentException("durationSeconds must be finite and positive");
         }
         if (sampleRate <= 0) throw new IllegalArgumentException("sampleRate must be positive");
-        if (channels <= 0 || channels > 8) throw new IllegalArgumentException("channels must be between 1 and 8");
+        if (channels < 1 || channels > 2) throw new IllegalArgumentException("channels must be mono or stereo");
         if (bitsPerSample < 0) throw new IllegalArgumentException("bitsPerSample must be non-negative");
         seekPoints = seekPoints == null ? List.of() : List.copyOf(seekPoints);
         if (wavLayout != null) {
