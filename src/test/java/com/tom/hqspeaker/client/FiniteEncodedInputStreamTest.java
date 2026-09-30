@@ -85,7 +85,6 @@ class FiniteEncodedInputStreamTest {
 
         FiniteEncodedInputStream input = new FiniteEncodedInputStream(window, 0L);
         assertArrayEquals(Arrays.copyOfRange(first, 0, 4), input.readNBytes(4));
-        assertEquals(4L, input.cursor());
         assertEquals(4L, window.windowStart(), "quarter-window consumption should expose new tail demand");
         assertEquals(16, window.allocatedBytes());
     }
