@@ -26,6 +26,12 @@ class LuaApiMarshallingTest {
         assertTrue(composite.contains("if (GROUP_DISCOVERY.contains(name)) return callGroupDiscovery(name, computer, args);"));
         assertTrue(composite.contains("List<HQSpeakerCompositePeripheral> members = membersFor(computer);"),
             "discovery must use the same registry as v11 grouped playback");
+        assertFalse(legacy.contains("speakerReadyPending"),
+            "HQ RAW must not keep the dead native speaker_audio_empty readiness path");
+        assertFalse(composite.contains("Proxy.newProxyInstance"),
+            "composite attachment must not wrap IComputerAccess just to suppress a dead event");
+        assertTrue(composite.contains("attachedComputerIds"),
+            "composite cleanup must track its own group registrations explicitly");
     }
 
     @Test
