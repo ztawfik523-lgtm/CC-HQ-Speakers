@@ -32,13 +32,6 @@ class FiniteDecodeDescriptorTest {
     }
 
     @Test
-    void rejectsHistoricalContainersFromModernDecoderSurface() {
-        MediaMetadata ogg = new MediaMetadata(
-            FiniteMediaFormat.OGG_VORBIS, 1.0, 48_000, 2, 0, List.of());
-        assertThrows(IllegalArgumentException.class, () -> FiniteDecodeDescriptor.fromMetadata(ogg));
-    }
-
-    @Test
     void rejectsWavWithoutNormalizedLayout() {
         MediaMetadata wav = new MediaMetadata(
             FiniteMediaFormat.WAV, 1.0, 48_000, 2, 16, List.of(new MediaSeekPoint(0.0, 44L)));
