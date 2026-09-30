@@ -1,8 +1,8 @@
 # Roadmap
 
-Updated: 2026-09-28
+Updated: 2026-10-01
 
-Current implementation checkpoint before this docs update: `ac4548749bd16ab161eae9f233e89cb43ed4c0ce`.
+Audited candidate checkpoint before documentation-only updates: `cd9a3f67ac3449df975c00240d83ee8e33239fc9` (last production-code commit `11a22e9f122ebf511744ac0aa1b17512fd69b6eb`).
 
 This roadmap supersedes the older “v10 is frozen / no HQ refresh planned” wording. Runtime work proved that long-lived HQ sources need their own efficient SPR reevaluation path, and the product is now intentionally adding the agreed volume/range model plus the previously accepted acoustic tuning work.
 
@@ -16,9 +16,8 @@ Build/test/package only NeoForge **21.1.247**. Keep metadata compatibility `[21.
 - C4 RAW passed at 8 speakers.
 - C4 finite admission stall was fixed; corrected catch-up alignment is millisecond-scale.
 - A8/A9/A18 focused rejection recheck passed.
-- The C2 root cause is established: SPR processes an HQ source at start but does not reevaluate a long-lived source as the listener/environment changes unless moving-sound updates are enabled.
-- Enabling SPR “Update Moving Sounds” makes HQ occlusion update, confirming that missing reevaluation is the issue.
-- Current branch contains the HQ-only movement-gated SPR scheduler candidate: ~0.15-block accumulated movement threshold, ~100 ms moving cadence, settle refresh, fixed ~1 s safety refresh, no catch-up bursts, and at most one expensive SPR refresh task globally at a time.
+- Focused v11 C2 PASS: one continuously-playing HQ source reprocessed and became measurably occluded as the listener moved behind a normal-world wall with SPR Update Moving Sounds OFF.
+- The HQ-only movement-gated SPR scheduler is established at runtime: ~0.15-block accumulated movement threshold, ~100 ms moving cadence, settle refresh, fixed ~1 s safety refresh, no catch-up bursts, and at most one expensive SPR refresh task globally at a time.
 - The existing `HQSpeakerServerConfig` SERVER config has been extended with the selected audio tuning profile.
 
 ## Locked volume/range product model
@@ -91,6 +90,20 @@ Completed:
 
 The private-EFX decision is no longer conditional. Reinspection of the exact SPR 1.21.1-1.5.1 release source confirmed that stock `setEnvironment` mutates one shared set of direct/send low-pass filters for all sources. Historical runtime evidence already showed that this causes multispeaker contamination. The current implementation therefore uses separate HQ filters per OpenAL source, reattached on every environment application, with native SPR fallback if that path fails.
 
+A later explicit cleanup audit also removed or fixed:
+
+- duplicate stale speaker-group discovery state;
+- dead native RAW-ready event/proxy machinery;
+- retired OGG/AIFF/AU finite analyzer/model code;
+- obsolete modern-vs-historical analyzer layering;
+- dead stream/test-only accessors;
+- false `.mp2` radio capability advertising;
+- 1.20.1-era VS2 transform method scanning, replaced with the concrete 1.21.1 API shape;
+- the ignored/deprecated NeoForge event-bus selector;
+- deprecated GitHub Actions majors.
+
+The packaged candidate was dependency-scanned: all 85 top-level production classes have ordinary incoming references except the expected two NeoForge event subscribers and five mixins.
+
 The full recheck also fixed:
 
 - scheduler movement decisions accidentally observing the reflection-stabilized render position instead of the physical speaker position;
@@ -101,18 +114,14 @@ The full recheck also fixed:
 
 ## Remaining work
 
-1. **Runtime validation**
-   - C2: same continuously-playing HQ source must respond to open/wall movement with global SPR “Update Moving Sounds” OFF.
-   - Verify automatic range at representative anchors and interpolation points.
-   - Verify explicit range overrides volume-derived range.
-   - Reload audio config during playback: current source remains unchanged; the next source uses new settings.
-   - Recheck finite/RAW/radio gain + range, movement, pause/resume/seek, grouped playback and endpoint-local controls.
-   - Recheck 8-speaker finite + RAW scale with the new packet fields.
-   - Check long-range SPR behavior beyond the default cloned-world neighborhood; do not add a special far-range fallback unless runtime evidence shows one is needed.
+1. **Two integrated runtime runs on the audited candidate**
+   - Test 1: exactly two normal-world speakers — tuning/range/rejection, endpoint controls, live config reload, simultaneous SPR private-filter isolation, F3+T recovery and 70-80 block SPR behavior.
+   - Test 2: exactly eight Sable/Aeronautics speakers — finite scale/catch-up, Sable movement, RAW continuation/backpressure and grouped MP3/ICY radio + metadata.
+   - Use one JAR and one Minecraft launch. Focused C2 is already PASS and is not repeated.
 
-2. **Docs/freeze**
-   - Update `CURRENT-STATE.md`, `SERVER-CONFIG.md`, `LUA-API.md`, architecture/known-issues/runtime docs and the API freeze only after the implementation is stable.
-   - Freeze the resulting contract as protocol v11.
+2. **Release freeze**
+   - Keep the candidate metadata and runtime results synchronized in the authority docs.
+   - Mark release acceptance complete only after both integrated runs PASS.
    - Keep release diagnostics in the normal JAR.
 
 ## Important implementation facts found in the recheck
@@ -132,4 +141,3 @@ Still outside the selected release target unless deliberately reopened later:
 - OGG/FLAC/HLS/MPEG-TS/provider/playlists/standalone HQ block;
 - >8 streamed-source guarantee beyond the already selected 8-speaker acceptance target.
 
-No unrelated cleanup while the volume/range + SPR/acoustic work is active.
