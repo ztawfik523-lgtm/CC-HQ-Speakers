@@ -293,6 +293,7 @@ run("8-SPEAKER FINITE + SABLE MOVEMENT", function()
   diagReset("8 finite")
   assert(speaker.speakMp3All(mp3, 1.5), "8-speaker finite start rejected")
   local playbackId = waitAllPlaying(15, "8 finite")
+  assert(speaker.audioSetLoopingAll(true), "8 finite loop enable failed")
   for i = 1, COUNT do assertTuning(speaker.audioStatusAt(i), "finite endpoint " .. i) end
 
   sleep(3.0)
@@ -307,7 +308,6 @@ run("8-SPEAKER FINITE + SABLE MOVEMENT", function()
   assert(alignment <= ALIGNMENT_LIMIT_MS,
     ("finite catch-up alignment %.2f ms exceeds %.0f ms"):format(alignment, ALIGNMENT_LIMIT_MS))
   log("MEASURE", ("finite channelStart=%.2fms catchUpAlignment=%.2fms"):format(group.channelStartSkewMs, alignment))
-  assert(speaker.audioSetLoopingAll(true), "8 finite loop enable failed")
 
   prompt({
     "SABLE MOVEMENT PHASE",
