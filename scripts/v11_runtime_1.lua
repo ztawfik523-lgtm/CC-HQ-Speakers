@@ -71,6 +71,27 @@ local function waitEnter()
   end
 end
 
+local function waitEnterOrTerminate()
+  while true do
+    local e = {os.pullEventRaw()}
+    if e[1] == "terminate" then return false end
+    if e[1] == "key" and e[2] == keys.enter then return true end
+  end
+end
+
+local function waitRequiredEnter(reason)
+  while true do
+    local e = {os.pullEventRaw()}
+    if e[1] == "terminate" then
+      print("")
+      print(reason)
+      print("Press ENTER after the required restore is complete.")
+    elseif e[1] == "key" and e[2] == keys.enter then
+      return
+    end
+  end
+end
+
 local function prompt(lines)
   print("")
   for _, line in ipairs(lines) do print(line) end
@@ -280,7 +301,22 @@ run("LIVE CONFIG RELOAD", function()
     "Save the file. Do NOT restart Minecraft or the computer.",
     "Then return here and press ENTER.",
   })
-  waitEnter()
+  local proceed = waitEnterOrTerminate()
+  if not proceed then
+    prompt({
+      "SAFE ABORT -- RESTORE CONFIG BEFORE EXITING",
+      "Set [audio.gain] at1_5 to 0.50 (or leave it there if you had not changed it).",
+      "Save the file, then press ENTER. Ctrl+T is ignored until this restore step is acknowledged.",
+    })
+    waitRequiredEnter("The server config may have been modified and must be restored first.")
+    sleep(4.0)
+    safeStop()
+    assert(speaker.speakMp3At(1, mp3, 1.5), "safe-abort restore verification start rejected")
+    local abortRestored = waitStatus(1, "playing", 15, "safe-abort restore verification")
+    assertTuning(abortRestored, 1.5, 0.50, 48.0, "auto", "safe-abort restored config")
+    safeStop()
+    error("terminated", 0)
+  end
 
   local phaseOk, phaseErr = pcall(function()
     sleep(4.0)
@@ -312,7 +348,7 @@ run("LIVE CONFIG RELOAD", function()
     "    at1_5 = 0.50",
     "Save, then press ENTER.",
   })
-  waitEnter()
+  waitRequiredEnter("The server config must be restored to at1_5 = 0.50 before this test can exit.")
   sleep(4.0)
   safeStop()
   assert(speaker.speakMp3At(1, mp3, 1.5), "post-restore source start rejected")
@@ -379,20 +415,46 @@ run("SIMULTANEOUS SPR ISOLATION + F3+T", function()
   local r1 = waitStatus(1, "playing", 15, "endpoint 1 after F3+T")
   local r2 = waitStatus(2, "playing", 15, "endpoint 2 after F3+T")
   assert(r1.playbackId == playbackId and r2.playbackId == playbackId, "F3+T changed server playback authority")
-  sleep(2.0)
-  local after = diagSnapshot("after F3+T")
-  assert((after.soundEngineReloads or 0) > reloadsBefore, "diagnostics did not observe an F3+T sound-engine reload")
 
-  local recovered = 0
+  local after = nil
+  local recoveryDeadline = os.epoch("utc") + 15000
+  while os.epoch("utc") < recoveryDeadline do
+    local snap = speaker.hqDiagSnapshot()
+    local ready = (snap.soundEngineReloads or 0) > reloadsBefore
+    local recovered = 0
+    if ready then
+      for _, old in ipairs({clear, wall}) do
+        local now = sourceById(snap, old.source)
+        if not now
+          or (now.channelStarts or 0) <= (old.channelStarts or 0)
+          or (now.pcmReadBytes or 0) <= (old.pcmReadBytes or 0)
+          or (now.soundPhysicsProcessCalls or 0) <= (old.soundPhysicsProcessCalls or 0)
+          or (now.soundPhysicsPrivateEfxApplies or 0) <= (old.soundPhysicsPrivateEfxApplies or 0)
+          or (now.decoderFailures or 0) ~= 0 then
+          ready = false
+          break
+        end
+        recovered = recovered + math.max(0, (now.recoveryRejoins or 0) - (old.recoveryRejoins or 0))
+      end
+      if recovered <= 0 then ready = false end
+    end
+    if ready then after = snap break end
+    sleep(0.25)
+  end
+  assert(after, "F3+T recovery did not recreate channels, resume PCM, rejoin, and reapply SPR/private EFX within 15 seconds")
+  log("DIAG", "after F3+T recovery captured")
+
   for _, old in ipairs({clear, wall}) do
     local now = assert(sourceById(after, old.source), "source history missing after F3+T")
     assert((now.channelStarts or 0) > (old.channelStarts or 0), "client channel was not recreated after F3+T")
     assert((now.pcmReadBytes or 0) > (old.pcmReadBytes or 0), "PCM did not progress after F3+T")
+    assert((now.soundPhysicsProcessCalls or 0) > (old.soundPhysicsProcessCalls or 0),
+      "SPR did not reprocess source after F3+T")
+    assert((now.soundPhysicsPrivateEfxApplies or 0) > (old.soundPhysicsPrivateEfxApplies or 0),
+      "private EFX was not reapplied after F3+T")
     assert((now.decoderFailures or 0) == 0, "decoder failure during F3+T recovery")
-    recovered = recovered + math.max(0, (now.recoveryRejoins or 0) - (old.recoveryRejoins or 0))
     assertPrivateSpr(now, "recovered source")
   end
-  assert(recovered > 0, "F3+T did not trigger an authoritative finite renderer rejoin")
   local c2 = assert(sourceForEndpoint(after, 1, "finite"), "recovered endpoint 1 missing")
   local w2 = assert(sourceForEndpoint(after, 2, "finite"), "recovered endpoint 2 missing")
   assert(c2.soundPhysicsPrivateDirectFilter ~= w2.soundPhysicsPrivateDirectFilter,
@@ -426,15 +488,15 @@ run(">60 BLOCK SPR PLAYBACK + OCCLUSION", function()
     "NEAR BASELINE CAPTURED -- TIMED FAR SAMPLE",
     "When you press ENTER, EXIT the GUI immediately.",
     "Walk to the prepared 70-80 block point and stand behind the solid wall.",
-    "Be there by 10 seconds and stay there through 22 seconds.",
-    "The script captures the far sample automatically at roughly 18 seconds.",
-    "After 22 seconds, return to this computer and press ENTER again.",
+    "Be there by about 24 seconds and stay there through 32 seconds.",
+    "The script captures the far sample automatically at roughly 30 seconds.",
+    "After 32 seconds, return to this computer and press ENTER again.",
     "Press ENTER when ready to begin the timed walk.",
   })
   waitEnter()
 
-  log("ACTION", "timed far sample started; operator should be 70-80 blocks away behind wall by 10s")
-  sleep(18.0)
+  log("ACTION", "timed far sample started; operator should be 70-80 blocks away behind wall by about 24s")
+  sleep(30.0)
   local far = diagSnapshot("70-80 block wall sample")
   local farSource = assert(sourceById(far, nearSource.source), "long-range source disappeared before far sample")
   assert(farSource.lastState == "playing", "real client/OpenAL source was not PLAYING at the 70-80 block sample")
