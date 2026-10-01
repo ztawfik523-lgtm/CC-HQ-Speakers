@@ -11,6 +11,7 @@ Last production-code commit: `11a22e9f122ebf511744ac0aa1b17512fd69b6eb`
 CI: `36783159001` — PASS  
 Artifact: `11128792552` — `hqspeaker-neoforge-21.1.247`  
 JAR SHA-256: `ce91a67e8c20d82bb7e1bcc82bee94a025edfec426cecede2035fdfda4337d76`.
+Runtime script checkpoint: `d90b0b536dfbb77239deb3739e1079069aa80ba9`; script CI `36933446358` — PASS.
 
 Build/test/package only NeoForge 21.1.247.
 
@@ -70,6 +71,8 @@ Focused C2 already passed and is not repeated. The remaining runtime work is del
    - MP3/ICY radio + metadata.
 
 Both scripts are self-judging and log PASS/FAIL. Manual actions are limited to physical game actions which cannot be initiated from Lua.
+
+The final script recheck also covers the runner itself: all-eight RAW drain rather than anchor-only drain, early finite looping for short media, bounded polling for F3+T recovery, realistic long-range travel time, and mandatory config restore before Test 1 may exit.
 
 ## Release verdict
 
