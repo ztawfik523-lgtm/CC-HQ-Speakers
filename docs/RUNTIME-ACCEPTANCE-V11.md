@@ -11,10 +11,12 @@ Last production-code commit in that candidate: `11a22e9f122ebf511744ac0aa1b17512
 CI: `36783159001` — PASS  
 Artifact: `11128792552` — `hqspeaker-neoforge-21.1.247`  
 JAR SHA-256: `ce91a67e8c20d82bb7e1bcc82bee94a025edfec426cecede2035fdfda4337d76`  
+Runtime script checkpoint: `d90b0b536dfbb77239deb3739e1079069aa80ba9`  
+Runtime-script CI: `36933446358` — PASS  
 Protocol: v11 / exactly 9 payloads.  
 Build/test/package target: NeoForge 21.1.247 only.
 
-Commits after the candidate checkpoint are documentation-only unless explicitly stated otherwise.
+Commits after the candidate checkpoint currently contain documentation and the tracked runtime-script hardening only. No production Java/resources/build logic changed after the candidate.
 
 ## Evidence already established
 
@@ -51,6 +53,8 @@ Later cleanup did not change the SPR scheduler, progressive occlusion, smoothing
 Use **one exact candidate JAR, one Minecraft launch, two integrated tests**. Do not restart Minecraft between Test 1 and Test 2 unless the game itself fails.
 
 SPR visual/debug ray output is not required. Keep Sound Physics Remastered installed; keep SPR **Update Moving Sounds OFF** for Test 1.
+
+The current tracked scripts were re-audited against the v11 API/diagnostic fields and compile with CC:T's Cobalt parser. Test 1 now forces config restoration even on operator termination, allows up to 15 seconds for post-F3+T renderer/PCM/SPR/private-EFX recovery, and samples long range after a realistic 30-second travel window. Test 2 requires every one of the eight RAW endpoints to report idle before the drained snapshot and enables finite looping before its baseline.
 
 ### Test 1 — normal world / exactly two speakers
 
