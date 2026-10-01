@@ -10,10 +10,12 @@ Current candidate checkpoint: `cd9a3f67ac3449df975c00240d83ee8e33239fc9`
 Candidate CI: `36783159001` — PASS  
 Candidate artifact: `11128792552` — `hqspeaker-neoforge-21.1.247`  
 Candidate JAR SHA-256: `ce91a67e8c20d82bb7e1bcc82bee94a025edfec426cecede2035fdfda4337d76`  
+Runtime script checkpoint: `d90b0b536dfbb77239deb3739e1079069aa80ba9`  
+Runtime-script CI: `36933446358` — PASS  
 Protocol: **v11**, exactly 9 payloads.  
 Build baseline: **NeoForge 21.1.247 only**.
 
-Commits after that implementation checkpoint may be documentation-only. Always verify current branch head and latest CI once when resuming work.
+Commits after the production candidate may be documentation-only or runtime-script-only. The runtime-script checkpoint above changes no production Java/resources/build logic; keep the candidate JAR identity separate from script revisions.
 
 ## Product state
 
@@ -161,6 +163,8 @@ Use this exact candidate JAR in one Minecraft launch and run the two tracked int
    - grouped MP3/ICY radio + metadata.
 
 Do not rerun C2. CI now compiles both integrated scripts with CC:T's Cobalt parser.
+
+The script recheck hardened Test 1 against config-abort leakage, slow F3+T recovery and unrealistic long-range walk timing, and hardened Test 2 so RAW drain requires all eight endpoints plus finite looping begins before baseline measurement.
 
 Only after both integrated runs pass, freeze the v11 runtime verdict.
 
