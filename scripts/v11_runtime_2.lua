@@ -118,6 +118,21 @@ local function waitAllPlaying(timeout, label)
   error(label .. ": timed out waiting for all 8 endpoints", 0)
 end
 
+local function waitAllIdle(timeout, label)
+  local deadline = os.epoch("utc") + timeout * 1000
+  while os.epoch("utc") < deadline do
+    local idle = 0
+    for i = 1, COUNT do
+      local s = speaker.audioStatusAt(i)
+      if s.state == "error" then error(label .. " endpoint " .. i .. ": " .. tostring(s.error), 0) end
+      if s.state == "idle" then idle = idle + 1 end
+    end
+    if idle == COUNT then return end
+    sleep(0.05)
+  end
+  error(label .. ": timed out waiting for all 8 endpoints to become idle", 0)
+end
+
 local function waitUntil(predicate, timeout)
   local deadline = os.epoch("utc") + timeout * 1000
   while os.epoch("utc") < deadline do
@@ -349,7 +364,7 @@ run("8-SPEAKER RAW CONTINUATION + BACKPRESSURE", function()
   end
   assertSettledSync("raw", "raw:", 50, RAW_START_SKEW_LIMIT_MS, "8 RAW")
 
-  assert(waitUntil(function() return not speaker.speakIsPlaying() end, 12), "8 RAW server lifetime did not drain")
+  waitAllIdle(12, "8 RAW drain")
   local done = diagSnapshot("8 RAW drained", 0.5)
   local final = diagSources(done, "raw")
   assert(#final == COUNT, "RAW diagnostic history lost sources after drain")
